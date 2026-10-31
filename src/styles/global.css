@@ -1,0 +1,179 @@
+@import "./theme.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- Home screen ---------- */
+
+.home {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.home-header {
+  padding: 28px 32px 8px;
+}
+
+.home-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.home-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+  padding: 20px 32px;
+  align-content: start;
+  overflow-y: auto; /* keeps 30+ tools scrollable in the future */
+}
+
+.tile {
+  aspect-ratio: 1 / 1; /* square tiles */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.06s ease;
+}
+
+.tile:hover:enabled {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.tile:active:enabled {
+  transform: scale(0.98);
+}
+
+.tile:focus-visible,
+.back-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.tile:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tile-name {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.tile-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.home-footer {
+  margin-top: auto;
+  padding: 10px 32px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* ---------- Tool screens ---------- */
+
+.tool {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.back-button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.tool-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.tool-placeholder,
+.tool-loading {
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.tool-error {
+  max-width: 480px;
+}
+
+.tool-error-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tool-error-hint {
+  margin: 0;
+  color: var(--text-muted);
+}
