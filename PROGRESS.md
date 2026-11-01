@@ -2,9 +2,51 @@
 
 ## Current status
 
+**Prompt 2 (Image Converter) — checkpoint 2A done, awaiting user verification.**
+The tool's UI is complete and wired to real Rust commands for inspection,
+dialogs and a bridge probe. Actual conversion arrives in 2B/2C.
+
 **Prompt 1 (foundation) — complete.** The app shell, tool registry, square-tile
 home screen, 4 placeholder tools, Rust command skeleton, security baseline,
 docs, git and GitHub are all in place.
+
+## Prompt 2 — Image Converter
+
+### Checkpoint 2A (this commit) — UI + file intake + bridge
+
+- [x] Cleanups: `authors` = EhsanKarimiRX, unused `serde_json` removed,
+      vite IPv4 pin documented in DECISIONS.md
+- [x] Shared `DropZone` (Tauri `onDragDropEvent`, real paths; window-wide
+      drag highlight; disabled state) and shared `ProgressBar`
+- [x] Rust module `tools/image_convert/` split into `core` (pure,
+      unit-testable) + `commands` (thin Tauri layer)
+- [x] Content-sniffing inspection of every candidate file (format detected
+      from bytes, never the extension), with animated-GIF/WebP and
+      multi-page-TIFF detection at header level
+- [x] Native file dialog (multi-select, filtered) and folder dialog opened
+      from Rust — no new webview permissions
+- [x] File list: name/size/detected format/status, remove one, clear all,
+      duplicate skip with note, 200-file limit with overflow note,
+      unsupported/invalid files rejected with reasons, mixed formats,
+      Persian/Unicode names via Rust-side path handling
+- [x] Options panel: output format, JPEG quality slider (default 85),
+      background color for flattening (JPEG/BMP), output location
+      (same folder / chosen folder), metadata-removal note
+- [x] Convert button → `probe_conversion` command proving the JS → Rust
+      bridge with the real validated options payload
+- [x] Gates pass: `npm run build`, `cargo fmt --check`,
+      `cargo clippy -- -D warnings`
+
+### Checkpoint 2B (next) — conversion core with unit tests
+
+Decode/encode for all supported combinations, alpha flattening, EXIF
+orientation, naming/collision rules, limits, error cases, first-frame
+handling.
+
+### Checkpoint 2C (after that) — full wiring
+
+Ordered start with bounded parallel workers, progress reporting, per-file
+status, cancel, summary, Open output folder, polish, docs.
 
 ## Finished
 
@@ -48,9 +90,9 @@ docs, git and GitHub are all in place.
 
 ## Next steps
 
-1. **Prompt 2 — Image Converter**: real tool implementation; first user of
-   `ToolError` (remove its `#[allow(dead_code)]` then), file dialogs and
-   image encoding happen in Rust commands.
+1. **Prompt 2 — Image Converter**: 2A done (UI + intake + bridge). Next:
+   2B (conversion core + tests), then 2C (parallel pipeline, progress,
+   cancel, summary).
 2. Later tools: QR Code Generator, Folder Icon Changer, Encrypted Notes
    (needs Persian/RTL text support; secret state only in Rust).
 3. Installer work (separate prompts): NSIS x64 + ARM64, icons, versioning,

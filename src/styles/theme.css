@@ -10,6 +10,7 @@
   --border: #d5d5d5;
   --border-strong: #b5b5b5;
   --accent: #0067c0;
+  --on-accent: #ffffff;
   --focus-ring: #0067c0;
 }
 
@@ -24,6 +25,7 @@
     --border: #3f3f3f;
     --border-strong: #5a5a5a;
     --accent: #4cc2ff;
+    --on-accent: #052a42;
     --focus-ring: #4cc2ff;
   }
 }

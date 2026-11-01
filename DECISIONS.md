@@ -101,3 +101,34 @@ the bottom of their section.
   machine an OS-level setting makes Vite bind only to `[::1]` (IPv6), which
   the Tauri CLI's probe on `127.0.0.1` never sees, so `tauri dev` hangs until
   timeout. Pinning the host fixes it; do not "simplify" it away.
+
+## Image Converter (Prompt 2)
+
+- **Image decoding/encoding: `image` crate 0.25 with default features OFF**
+  and only the needed format features enabled (`bmp gif jpeg png tiff webp`).
+  Smaller binary and attack surface; all chosen codecs are pure Rust, so x64
+  and ARM64 builds stay trivial.
+- **WebP output is lossless-only in v1.** The pure-Rust WebP encoder
+  (`image`/`image-webp`) implements only VP8L lossless. Real lossy WebP
+  would require libwebp (C code) — extra build risk for ARM64 CI; deferred
+  by decision of the owner. The UI labels the format "WebP (lossless)".
+- **GIF output: skipped.** The pure-Rust GIF encoder is palette-based
+  (256 colors), giving poor photo quality. GIF remains a supported INPUT.
+- **Native file/folder dialogs via `tauri-plugin-dialog`, used only from
+  Rust commands** (`blocking_pick_files` / `blocking_pick_folder`). The
+  webview gets no dialog permission at all; capabilities stay
+  `core:default`. No JS dialog package is installed.
+- **Drag & drop uses Tauri's `onDragDropEvent`** (core webview API, covered
+  by `core:default`): real absolute paths reach the frontend, which passes
+  them to Rust for content-based inspection.
+- **File format detection is content-based** (`ImageReader::with_guessed_format`),
+  never extension-based; unsupported/damaged/oversized files are rejected
+  with friendly reasons before conversion.
+- **Limits (v1):** 200 files per batch (one `MAX_FILES` constant, UI and
+  behavior), 256 MB per input file, 80 megapixels per image
+  (decompression-bomb guard), enforced before decode; decoder limits
+  follow in 2B.
+- **Privacy by construction:** outputs are re-encoded from decoded pixels,
+  so no EXIF/GPS/metadata survives; EXIF orientation is applied during
+  conversion (2B) via `ImageDecoder::orientation()` +
+  `DynamicImage::apply_orientation()` (image 0.25.8+).

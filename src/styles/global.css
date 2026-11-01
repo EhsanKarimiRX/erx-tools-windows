@@ -177,3 +177,132 @@ button {
   margin: 0;
   color: var(--text-muted);
 }
+
+/* ---------- Shared: buttons ---------- */
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.button-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.button-primary:hover:enabled {
+  filter: brightness(1.08);
+}
+
+.button-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.button-secondary:hover:enabled {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.button-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---------- Shared: drop zone (DropZone component) ---------- */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 20px;
+  background: var(--surface);
+  border: 2px dashed var(--border-strong);
+  border-radius: 12px;
+  text-align: center;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+.dropzone-active {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+
+.dropzone-disabled {
+  opacity: 0.55;
+}
+
+.dropzone-label {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dropzone-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.dropzone-button {
+  margin-top: 6px;
+}
+
+/* ---------- Shared: progress bar (ProgressBar component) ---------- */
+
+.progress {
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.15s ease;
+}
+
+/* ---------- Shared: accessibility helpers ---------- */
+
+/* For text that sighted users don't need but screen readers do
+   (e.g. column headers of a mostly-iconic table). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

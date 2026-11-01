@@ -7,3 +7,6 @@
 
 pub mod app_info;
 pub mod error;
+pub mod image_convert;
+
+pub use error::ToolError;

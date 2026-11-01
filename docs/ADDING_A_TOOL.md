@@ -63,7 +63,10 @@ the file system directly.
 
 ### 2.1 Create the module
 
-Create `src-tauri/src/tools/my_tool.rs` (snake_case of the id):
+Create `src-tauri/src/tools/my_tool.rs` (snake_case of the id).
+For a bigger tool, make it a folder instead and keep pure logic separate
+from the Tauri layer, e.g. `image_convert/mod.rs` + `core.rs` (unit-testable,
+no Tauri types) + `commands.rs` (`#[tauri::command]`s only).
 
 ```rust
 use serde::Serialize;
