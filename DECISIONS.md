@@ -94,3 +94,10 @@ the bottom of their section.
   git):** after each, the app runs and is committed — safe stopping points.
 - **Checks gate:** `npm run build`, `cargo fmt --check`,
   `cargo clippy -- -D warnings` must pass before every commit.
+
+## Dev environment
+
+- **Vite dev server pinned to IPv4 `127.0.0.1`** (`vite.config.ts`). On this
+  machine an OS-level setting makes Vite bind only to `[::1]` (IPv6), which
+  the Tauri CLI's probe on `127.0.0.1` never sees, so `tauri dev` hangs until
+  timeout. Pinning the host fixes it; do not "simplify" it away.

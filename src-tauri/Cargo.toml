@@ -2,7 +2,7 @@
 name = "erx-tools"
 version = "0.1.0"
 description = "ERX Tools for Windows - a lightweight offline toolbox"
-authors = ["EhsanRX"]
+authors = ["EhsanKarimiRX"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -21,7 +21,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
