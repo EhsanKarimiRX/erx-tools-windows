@@ -77,6 +77,10 @@ docs, git and GitHub are all in place.
 - [x] UI states: Empty → Ready → Converting (options/list locked, Cancel) →
       Done (Convert more resets the list, Back stays in the header)
 - [x] Probe command from 2A removed (real conversion replaced it)
+- [x] Fix from owner review: rejected files (non-images renamed to .jpg/.png,
+      MP3/MP4/EXE, etc.) now show a red warning — "Supported formats: JPEG,
+      PNG, WebP, BMP, GIF, and TIFF." — in BOTH the empty and ready states
+      (previously a small gray note, invisible on the empty screen)
 - [x] Gates pass: `npm run build`, `cargo fmt --check`,
       `cargo clippy -- -D warnings`, `cargo test` (29 tests)
 

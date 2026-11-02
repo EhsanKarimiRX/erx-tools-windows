@@ -162,13 +162,30 @@
 }
 
 .ic-status-failed .ic-status-chip {
-  border-color: #d13438;
-  color: #d13438;
+  border-color: var(--error);
+  color: var(--error);
 }
 
 .ic-status-waiting .ic-status-chip,
 .ic-status-skipped .ic-status-chip {
   border-style: dashed;
+}
+
+/* Red warning for rejected files (non-images, unsupported formats). */
+.ic-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--error);
+  border-radius: 10px;
+  color: var(--error);
+  font-size: 12.5px;
+}
+
+.ic-warning p {
+  margin: 0;
 }
 
 .ic-remove {

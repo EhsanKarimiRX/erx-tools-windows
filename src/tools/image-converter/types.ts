@@ -4,6 +4,10 @@ export const MAX_FILES = 200;
 /** Short list of supported input formats, for hints. */
 export const SUPPORTED_INPUT = "JPEG, PNG, WebP, BMP, GIF, TIFF";
 
+/** Shown as a red warning when unsupported/non-image files are added. */
+export const SUPPORTED_FORMATS_MESSAGE =
+  "Supported formats: JPEG, PNG, WebP, BMP, GIF, and TIFF.";
+
 export type OutputFormat = "jpeg" | "png" | "webp" | "bmp" | "tiff";
 
 export interface ConvertOptions {

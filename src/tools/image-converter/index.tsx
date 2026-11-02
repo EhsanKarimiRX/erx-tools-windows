@@ -5,7 +5,7 @@ import ProgressBar from "../../shared/ProgressBar";
 import FileList from "./FileList";
 import OptionsPanel from "./OptionsPanel";
 import type { BatchSummary, ConvertOptions, FileEntry, InspectedFile, ProgressEvent } from "./types";
-import { MAX_FILES, SUPPORTED_INPUT, formatBytes } from "./types";
+import { MAX_FILES, SUPPORTED_FORMATS_MESSAGE, SUPPORTED_INPUT, formatBytes } from "./types";
 import "./image-converter.css";
 
 /** Phase of the tool screen. */
@@ -36,6 +36,8 @@ export default function ImageConverter() {
   const [phase, setPhase] = useState<Phase>("empty");
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
+  /** Red validation warnings from the last add (rejected files). */
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [options, setOptions] = useState<ConvertOptions>({
     format: "jpeg",
     jpegQuality: 85,
@@ -100,12 +102,16 @@ export default function ImageConverter() {
             `File limit is ${MAX_FILES}; ${overflow} more ${overflow === 1 ? "file was" : "files were"} ignored.`,
           );
         }
-        if (rejected.length > 0) {
-          newNotes.push(`Not added: ${summarize(rejected)}`);
-        }
 
         setEntries(next);
         setNotes(newNotes);
+        // Rejected files (non-images, unsupported formats, damaged files)
+        // get a red warning naming the supported formats.
+        setWarnings(
+          rejected.length > 0
+            ? [`Not added: ${summarize(rejected)}`, SUPPORTED_FORMATS_MESSAGE]
+            : [],
+        );
         setPhase(next.length > 0 ? "ready" : "empty");
       } catch (error) {
         setNotes([`Could not read the files: ${errorText(error)}`]);
@@ -132,12 +138,14 @@ export default function ImageConverter() {
     if (next.length === 0) {
       setPhase("empty");
       setNotes([]);
+      setWarnings([]);
     }
   };
 
   const clearAll = () => {
     setEntries([]);
     setNotes([]);
+    setWarnings([]);
     setSummary(null);
     setPhase("empty");
   };
@@ -245,6 +253,13 @@ export default function ImageConverter() {
             Mixed formats are fine — all files are converted to the one format
             you choose.
           </p>
+          {warnings.length > 0 && (
+            <div className="ic-warning" role="alert">
+              {warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="ic-layout">
@@ -257,6 +272,14 @@ export default function ImageConverter() {
               onBrowse={browse}
               disabled={locked}
             />
+
+            {warnings.length > 0 && (
+              <div className="ic-warning" role="alert">
+                {warnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            )}
 
             {notes.length > 0 && (
               <ul className="ic-notes" aria-live="polite">
