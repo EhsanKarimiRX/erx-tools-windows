@@ -246,3 +246,37 @@ the bottom of their section.
   host:port), `https://` added when missing, whitespace/control chars and
   empty hosts rejected. No URL crate — a full RFC parser adds binary size
   for zero scanning benefit; QR scanners just open the string.
+- **Logo loading reuses the Image Converter's hardening:** content-based
+  format detection (a renamed .exe still fails), 10 MB file limit, 80 MP
+  pixel guard, decoder allocation cap, EXIF orientation applied. SVG logos
+  are rejected in v1 (XML parsing is a whole attack surface; PNG/JPEG/WebP
+  cover the need).
+- **The logo is normalized to a 512×512 transparent PNG** (aspect kept,
+  centered, no cropping) exactly once, in Rust. The frontend only holds
+  this prepared PNG; every generate/save call re-validates it (base64 →
+  real PNG → exact canvas size) because the UI is never trusted.
+- **Logo area handling:** modules fully inside the logo rectangle plus one
+  module of padding are removed. No special background shape is needed:
+  with a background the cleared area shows it, with a transparent
+  background it stays transparent — both by construction. The logo is
+  embedded in the SVG as a `data:image/png;base64` URL (files stay
+  self-contained) and composited into the PNG at the same module
+  coordinates, so both exports match.
+- **Level H is forced with a logo** — twice: the UI locks the control at H
+  when a logo is present, and Rust force-upgrades regardless of what
+  arrives in the command. Removing the logo returns the level control to
+  the user (UI default Q).
+- **Logo size:** slider 10–20% of the QR width, default 15%; a
+  non-blocking "close to the maximum" warning appears from 18%. Rust
+  rejects fractions outside 5–20%.
+- **CSP change (smallest possible):** `img-src` gained `data:`. Needed so
+  the logo preview renders — the inline SVG references the logo by a
+  data URL, and the logo thumbnail is a data-URL `<img>`. Nothing else
+  widened: still no remote sources, no `unsafe-inline` for scripts/styles.
+- **`base64` crate 0.22** added for the data URLs (pure Rust, tiny,
+  ARM64-safe).
+- **tiny-skia placement gotcha (for the record):** `draw_pixmap` applies
+  its transform to the x/y position too; the logo position is therefore
+  baked into the transform (scale then translate, drawn at the origin).
+  The read-back test with a logo caught this — the misplaced logo covered
+  a finder pattern and detection failed.

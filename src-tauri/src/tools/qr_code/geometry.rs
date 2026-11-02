@@ -161,6 +161,19 @@ pub fn build_shapes(
     shapes
 }
 
+/// Where and how to draw the centered logo, in module coordinates of the
+/// total canvas. Both backends consume the same prepared PNG.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogoDraw {
+    /// Top-left corner in module coordinates.
+    pub x: f64,
+    pub y: f64,
+    /// Logo side in module coordinates.
+    pub size: f64,
+    /// Plain base64 of the prepared PNG (no data-URL prefix).
+    pub png_base64: String,
+}
+
 /// Top-left corners of the three 7x7 finder blocks.
 fn finder_origins(size: usize) -> [(usize, usize); 3] {
     [(0, 0), (size - 7, 0), (0, size - 7)]

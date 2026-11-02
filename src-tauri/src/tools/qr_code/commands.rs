@@ -39,6 +39,15 @@ pub struct QrOptionsDto {
     pub error_correction: String,
     pub margin: i32,
     pub png_size: i32,
+    pub logo: Option<LogoDto>,
+}
+
+/// The prepared logo as the UI holds it (came from `load_logo`).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogoDto {
+    pub png_base64: String,
+    pub fraction: f64,
 }
 
 /// Build result for the live preview.
@@ -82,6 +91,10 @@ fn to_build_request(options: QrOptionsDto) -> BuildRequest {
         error_correction: options.error_correction,
         margin: options.margin,
         png_size: options.png_size,
+        logo: options.logo.map(|logo| core::LogoInput {
+            png_base64: logo.png_base64,
+            fraction: logo.fraction,
+        }),
     }
 }
 
@@ -151,6 +164,7 @@ pub fn save_qr_png(app: AppHandle, options: QrOptionsDto) -> Result<Option<Strin
         built.foreground,
         built.background,
         built.png_pixels,
+        built.logo.as_ref(),
     )
     .map_err(ToolError::Internal)?;
 
@@ -173,6 +187,43 @@ pub fn save_qr_png(app: AppHandle, options: QrOptionsDto) -> Result<Option<Strin
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// Opens the native single-file dialog for a logo image (Rust side, so
+/// the webview needs no dialog permission). Returns the absolute path or
+/// null on cancel.
+#[tauri::command]
+pub fn pick_logo_file(app: AppHandle) -> Option<String> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Logo images", &["png", "jpg", "jpeg", "webp"])
+        .add_filter("All files", &["*"])
+        .blocking_pick_file();
+    picked
+        .and_then(|file| file.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+/// Loads and prepares a logo from the given path: safe decode, downscale
+/// into a square transparent canvas, re-encode as PNG. The frontend only
+/// ever holds this prepared PNG — never the original file.
+#[tauri::command]
+pub fn load_logo(path: String) -> Result<LogoPrepared, ToolError> {
+    super::logo::load_from_path(std::path::Path::new(&path))
+        .map(|data| LogoPrepared {
+            edge: data.edge,
+            png_base64: data.png_base64,
+        })
+        .map_err(ToolError::Internal)
+}
+
+/// The prepared logo returned to the UI.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogoPrepared {
+    pub edge: u32,
+    pub png_base64: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,7 +242,8 @@ mod tests {
                 "transparent": false,
                 "errorCorrection": "Q",
                 "margin": 4,
-                    "pngSize": 1024
+                    "pngSize": 1024,
+                    "logo": null
             }"##,
         )
         .expect("text shape must parse");
@@ -216,7 +268,8 @@ mod tests {
                 "transparent": false,
                 "errorCorrection": "H",
                 "margin": 4,
-                    "pngSize": 1024
+                    "pngSize": 1024,
+                    "logo": null
             }"##,
         )
         .expect("wifi shape must parse");
@@ -234,7 +287,8 @@ mod tests {
                 "transparent": false,
                 "errorCorrection": "M",
                 "margin": 4,
-                    "pngSize": 1024
+                    "pngSize": 1024,
+                    "logo": null
             }"##,
         )
         .expect("website shape must parse");
@@ -251,7 +305,8 @@ mod tests {
                     "transparent": false,
                     "errorCorrection": "Q",
                     "margin": 4,
-                    "pngSize": 1024
+                    "pngSize": 1024,
+                    "logo": null
                 }"##,
             )
             .unwrap(),

@@ -321,3 +321,49 @@
   font-size: 12.5px;
   color: var(--text-muted);
 }
+
+/* ---------- 3C additions: logo section ---------- */
+
+.qr-logo-dropzone {
+  padding: 18px 16px;
+}
+
+.qr-logo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.qr-logo-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.qr-logo-thumbnail {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  /* Checkerboard so transparent logos are visible. */
+  background:
+    conic-gradient(var(--border) 0 25%, transparent 0 50%, var(--border) 0 75%, transparent 0)
+      0 0 / 14px 14px,
+    var(--surface);
+}
+
+.qr-logo-info {
+  min-width: 0;
+}
+
+.qr-logo-name {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

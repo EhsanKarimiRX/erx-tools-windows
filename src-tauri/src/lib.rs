@@ -25,6 +25,8 @@ pub fn run() {
             tools::qr_code::commands::generate_qr,
             tools::qr_code::commands::save_qr_svg,
             tools::qr_code::commands::save_qr_png,
+            tools::qr_code::commands::pick_logo_file,
+            tools::qr_code::commands::load_logo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

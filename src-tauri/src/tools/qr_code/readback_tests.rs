@@ -20,6 +20,7 @@ fn roundtrip(request: &BuildRequest) -> String {
         built.foreground,
         built.background,
         768, // comfortable density for the decoder
+        None,
     )
     .expect("real renderer must work");
     decode_png_text(&png)
@@ -88,6 +89,7 @@ fn request(content: ContentInput) -> BuildRequest {
         error_correction: "Q".into(),
         margin: 4,
         png_size: 1024,
+        logo: None,
     }
 }
 
@@ -150,6 +152,7 @@ fn transparent_background_survives_composited_on_white() {
         built.foreground,
         built.background,
         768,
+        None,
     )
     .expect("renders");
     assert_eq!(decode_composited(&png, false), "clear");
@@ -170,9 +173,43 @@ fn inverted_code_survives_after_pixel_inversion() {
         built.foreground,
         built.background,
         768,
+        None,
     )
     .expect("renders");
     assert_eq!(decode_composited(&png, true), "dark mode");
+}
+
+#[test]
+fn logo_code_still_decodes_and_forces_h() {
+    // A centered logo at a middle size must not break scanning.
+    let img = image::RgbaImage::from_pixel(512, 512, image::Rgba([180, 30, 30, 255]));
+    let mut png_bytes = Vec::new();
+    image::DynamicImage::ImageRgba8(img)
+        .write_to(
+            &mut std::io::Cursor::new(&mut png_bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    let logo_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png_bytes);
+
+    let mut req = request(ContentInput::Website("https://example.com/logo".into()));
+    req.error_correction = "Q".into(); // must be forced up to H
+    req.logo = Some(core::LogoInput {
+        png_base64: logo_b64,
+        fraction: 0.15,
+    });
+    let built = core::build(&req).expect("builds");
+    assert_eq!(built.level_used, super::matrix::Ecc::High);
+    let png = super::raster::render_png(
+        &built.shapes,
+        built.total_modules,
+        built.foreground,
+        built.background,
+        768,
+        built.logo.as_ref(),
+    )
+    .expect("renders");
+    assert_eq!(decode_png_text(&png), "https://example.com/logo");
 }
 
 #[test]

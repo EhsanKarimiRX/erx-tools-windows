@@ -2,11 +2,11 @@
 
 ## Current status
 
-**Prompt 3 (QR Code Generator) — checkpoints 3A + 3B done, awaiting the
-owner's visual/scan verification.** Rust core with 91 passing tests incl.
-read-back of the real PNG renderer for both styles; UI has all three content
-tabs, styles, colors, error correction, margin, PNG size and Save PNG/SVG.
-Checkpoint 3C (logo, polish, docs) is next.
+**Prompt 3 (QR Code Generator) — code complete (3A–3C), awaiting the
+owner's manual checklist.** All three content types, both styles, custom
+colors, transparent background, error correction, margin, PNG/SVG export
+with size snapping, and centered logo support. 100 Rust tests including
+read-back of the real PNG renderer; all quality gates pass.
 
 **Prompt 2 (Image Converter) — checkpoints 2A–2C done; 2A/2B verified, 2C
 awaiting the owner's manual checklist.** The tool is fully functional: mixed
@@ -85,12 +85,74 @@ docs, git and GitHub are all in place.
 - [ ] Owner verification: scan PNG exports with a phone (both styles, all
       tab types), check size snapping display, Wi-Fi password flow
 
-### Checkpoint 3C (planned) — logo + polish + docs
+### Checkpoint 3C (this commit) — logo + polish + docs
 
-Safe logo decoding (same hardening as Image Converter), center clearing,
-automatic level H with locked control, size limits + warnings, smallest
-possible CSP addition (`img-src data:` for the embedded logo preview),
-PROGRESS/DECISIONS/ADDING_A_TOOL updates, owner manual checklist.
+- [x] `logo.rs`: safe logo loading with the Image Converter's hardening
+      (content-based format detection — no SVG logos in v1, 10 MB file
+      limit, 80 MP decompression-bomb guard, decoder allocation cap),
+      EXIF orientation applied, downscaled into a 512×512 transparent
+      square canvas (aspect preserved, centered) and re-encoded as PNG
+- [x] `pick_logo_file` / `load_logo` commands (native dialog from Rust,
+      no new webview permissions); the frontend only ever holds the
+      prepared PNG, never the original file
+- [x] Logo integration: modules under (and one module around) the logo
+      are cleared; with a background the area shows the background color,
+      with transparency it stays transparent; logo embedded in the SVG as
+      a base64 data URL (self-contained files) and composited into the
+      PNG at the exact same position/size
+- [x] Error correction forced to H whenever a logo is present — the UI
+      locks the level control with a hint, and Rust force-upgrades
+      regardless of what the UI sends
+- [x] Logo size slider 10–20% of the QR width (default 15%), with a
+      "close to the maximum — test scanning" warning from 18%; Rust
+      validates the fraction and re-validates the PNG (never trusts the UI)
+- [x] CSP: `img-src` gained `data:` — the smallest possible change, needed
+      so the logo preview (inline SVG data-URL image + thumbnail) renders;
+      still no remote sources, no unsafe-inline (see DECISIONS.md)
+- [x] `base64` crate added (pure Rust, tiny) for the data URLs
+- [x] Shared `DropZone` reused for logo intake (drag & drop + native
+      browse button)
+- [x] Gates pass: `cargo test` (100), `cargo fmt --check`,
+      `cargo clippy --all-targets -- -D warnings`, `npm run build`
+- [x] docs/ADDING_A_TOOL.md re-checked — the recipe was followed exactly
+      (module layout, central command list, narrow permissions), no
+      changes needed
+
+### Owner manual checklist — QR Code Generator (Prompt 3)
+
+Scan with a phone camera. If something fails, note the content type, style
+and colors.
+
+| # | Check | Notes |
+|---|-------|-------|
+| 1 | Text: plain English text, sharp style | scans, right text |
+| 2 | Text: Persian text (`سلام`) | scans, phone shows it correctly |
+| 3 | Text: multi-line text | line breaks preserved |
+| 4 | Website: `example.com` (no scheme typed) | hint shows https://, phone opens the right address |
+| 5 | Website: full https URL | scans |
+| 6 | Wi-Fi: join network | phone offers to join |
+| 7 | Wi-Fi: password with `; , : "` and a `\` | joins with that exact password |
+| 8 | Wi-Fi: No password network | joins without password |
+| 9 | Wi-Fi: leave tab, come back | password field empty again |
+| 10 | Sharp style | scans |
+| 11 | Rounded style | scans, looks rounded incl. the eyes |
+| 12 | Black on white (default) | scans |
+| 13 | White on black | note which scanner apps fail (inverted) |
+| 14 | Custom colors (e.g. dark blue on cream) | scans |
+| 15 | Transparent background: printed/shown on WHITE page | scans |
+| 16 | Transparent background on a DARK page | expect problems — that is what the warning is for |
+| 17 | Small logo (10%) | scans |
+| 18 | Large logo (20%) + warning shown | check the warning appears; test scanning carefully |
+| 19 | Logo with transparency (PNG with alpha) | looks right on the checkerboard and on white |
+| 20 | Empty input | Save buttons disabled, hint shown |
+| 21 | Very long text | red message with the max character count |
+| 22 | Save PNG, open in Photos, scan | scans; size matches the shown "saves at N × N px" |
+| 23 | Save SVG, open in Chrome, scan | scans; contains the logo if one was set |
+| 24 | Save path with Persian characters | file written correctly |
+| 25 | Change options quickly | no flicker, no freezing, preview stays current |
+| 26 | Light and dark Windows theme | readable, no broken colors |
+| 27 | Error correction levels L→H (no logo) | switchable; denser code at H |
+| 28 | Margin slider 1 → 10 | quiet zone grows/shrinks |
 
 ## Prompt 2 — Image Converter
 

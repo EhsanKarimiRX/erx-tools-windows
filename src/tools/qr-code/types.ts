@@ -18,6 +18,19 @@ export type QrContent =
 /** Which content tab is active. */
 export type ContentTab = "text" | "website" | "wifi";
 
+/** The prepared logo the UI holds (came from Rust's load_logo command). */
+export interface PreparedLogo {
+  edge: number;
+  pngBase64: string;
+  fileName: string;
+}
+
+/** Logo options sent to Rust; fraction = logo side as fraction of width. */
+export interface QrLogo {
+  pngBase64: string;
+  fraction: number;
+}
+
 /** All generate/save options (Rust validates everything again). */
 export interface QrOptions {
   content: QrContent;
@@ -28,6 +41,7 @@ export interface QrOptions {
   errorCorrection: "L" | "M" | "Q" | "H";
   margin: number;
   pngSize: number;
+  logo: QrLogo | null;
 }
 
 /** Successful generate_qr result. */
@@ -64,3 +78,7 @@ export const DEFAULT_MARGIN = 4;
 export const MIN_PNG_SIZE = 256;
 export const MAX_PNG_SIZE = 4096;
 export const DEFAULT_PNG_SIZE = 1024;
+/** Logo size slider range (percent of the QR width) and default. */
+export const MIN_LOGO_PERCENT = 10;
+export const MAX_LOGO_PERCENT = 20;
+export const DEFAULT_LOGO_PERCENT = 15;

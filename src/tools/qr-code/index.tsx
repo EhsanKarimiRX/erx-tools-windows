@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ContentTabs from "./ContentTabs";
+import LogoSection from "./LogoSection";
 import OptionsPanel from "./OptionsPanel";
 import type {
   ContentTab,
+  PreparedLogo,
   QrContent,
   QrOptions,
   QrSvgResult,
   WifiSecurity,
 } from "./types";
 import {
+  DEFAULT_LOGO_PERCENT,
   DEFAULT_MARGIN,
   DEFAULT_PNG_SIZE,
   isHexColor,
@@ -54,6 +57,9 @@ export default function QrCodeGenerator() {
     useState<QrOptions["errorCorrection"]>("Q");
   const [margin, setMargin] = useState(DEFAULT_MARGIN);
   const [pngSize, setPngSize] = useState(DEFAULT_PNG_SIZE);
+  const [logo, setLogo] = useState<PreparedLogo | null>(null);
+  const [logoPercent, setLogoPercent] = useState(DEFAULT_LOGO_PERCENT);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   // --- preview + save ---
   const [preview, setPreview] = useState<PreviewState>({ status: "empty" });
@@ -67,6 +73,14 @@ export default function QrCodeGenerator() {
     if (next !== "wifi") setPassword("");
     setSavedNote(null);
     setTab(next);
+  }
+
+  /** Adding a logo switches error correction to H (locked while the logo
+   * is present); removing it goes back to Q. */
+  function setLogoAndLevel(next: PreparedLogo | null) {
+    setLogo(next);
+    setErrorCorrection(next ? "H" : "Q");
+    setLogoError(null);
   }
 
   const content: QrContent =
@@ -101,6 +115,9 @@ export default function QrCodeGenerator() {
       errorCorrection,
       margin,
       pngSize,
+      logo: logo
+        ? { pngBase64: logo.pngBase64, fraction: logoPercent / 100 }
+        : null,
     };
     const request = ++requestRef.current;
     const timer = window.setTimeout(() => {
@@ -129,6 +146,8 @@ export default function QrCodeGenerator() {
     errorCorrection,
     margin,
     pngSize,
+    logo,
+    logoPercent,
     canGenerate,
   ]);
 
@@ -146,6 +165,9 @@ export default function QrCodeGenerator() {
         errorCorrection,
         margin,
         pngSize,
+        logo: logo
+          ? { pngBase64: logo.pngBase64, fraction: logoPercent / 100 }
+          : null,
       };
       const command = kind === "svg" ? "save_qr_svg" : "save_qr_png";
       const savedPath = await invoke<string | null>(command, { options });
@@ -187,6 +209,10 @@ export default function QrCodeGenerator() {
   })();
 
   const result = preview.status === "ok" ? preview.result : null;
+  const nearMaxWarning =
+    result?.warnings.find((w) => w.includes("close to the maximum")) ?? null;
+  const otherWarnings =
+    result?.warnings.filter((w) => !w.includes("close to the maximum")) ?? [];
 
   return (
     <div className="qr-layout">
@@ -234,8 +260,23 @@ export default function QrCodeGenerator() {
           onPngSize={setPngSize}
           pngPixels={result?.pngPixels ?? null}
           pngPixelsPerModule={result?.pngPixelsPerModule ?? null}
-          levelLocked={false}
+          levelLocked={logo !== null}
         />
+
+        <LogoSection
+          logo={logo}
+          onLogo={setLogoAndLevel}
+          percent={logoPercent}
+          onPercent={setLogoPercent}
+          nearMaxWarning={nearMaxWarning}
+          onLogoForcesLevelH={() => setErrorCorrection("H")}
+          onError={setLogoError}
+        />
+        {logoError && (
+          <p className="qr-error" role="alert">
+            {logoError}
+          </p>
+        )}
       </section>
 
       {/* ----- right: preview + export ----- */}
@@ -244,9 +285,9 @@ export default function QrCodeGenerator() {
           {previewArea}
         </div>
 
-        {result && result.warnings.length > 0 && (
+        {result && otherWarnings.length > 0 && (
           <ul className="qr-warnings">
-            {result.warnings.map((warning) => (
+            {otherWarnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
           </ul>

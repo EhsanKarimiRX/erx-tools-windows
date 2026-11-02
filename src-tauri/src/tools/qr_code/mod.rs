@@ -9,6 +9,7 @@ pub mod colors;
 pub mod commands;
 pub mod core;
 pub mod geometry;
+pub mod logo;
 pub mod matrix;
 pub mod payload;
 pub mod raster;

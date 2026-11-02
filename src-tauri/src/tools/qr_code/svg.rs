@@ -6,7 +6,7 @@
 //! pattern), so no user string can break out of the markup.
 
 use super::colors::Rgb;
-use super::geometry::{FillRule, Segment, Shape};
+use super::geometry::{FillRule, LogoDraw, Segment, Shape};
 
 /// Renders the complete SVG document for the given shapes.
 ///
@@ -14,7 +14,13 @@ use super::geometry::{FillRule, Segment, Shape};
 /// document has a `viewBox` but no fixed width/height, so it scales to any
 /// display size (preview) and file size (export). `background` is omitted
 /// entirely when transparent.
-pub fn render(shapes: &[Shape], total: f64, foreground: Rgb, background: Option<Rgb>) -> String {
+pub fn render(
+    shapes: &[Shape],
+    total: f64,
+    foreground: Rgb,
+    background: Option<Rgb>,
+    logo: Option<&LogoDraw>,
+) -> String {
     let mut svg = String::with_capacity(2048 + shapes.len() * 256);
     svg.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {} {}\" role=\"img\" aria-label=\"QR code\">",
@@ -51,6 +57,20 @@ pub fn render(shapes: &[Shape], total: f64, foreground: Rgb, background: Option<
         svg.push_str(&format!("\" fill=\"{}\"{}/>", foreground.hex(), rule));
     }
 
+    if let Some(logo) = logo {
+        // The prepared PNG as a data URL keeps exported SVG files fully
+        // self-contained. The href content is our own re-encoded PNG, so
+        // no user string can break out of the attribute.
+        svg.push_str(&format!(
+            "<image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" href=\"{}\"/>",
+            num(logo.x),
+            num(logo.y),
+            num(logo.size),
+            num(logo.size),
+            super::logo::data_url(&logo.png_base64)
+        ));
+    }
+
     svg.push_str("</svg>");
     svg
 }
@@ -77,7 +97,13 @@ mod tests {
     fn sample_svg(background: Option<Rgb>) -> String {
         let matrix = Matrix::from_text("X", Ecc::Low).expect("fits");
         let shapes = build_shapes(&matrix, QrStyle::Sharp, 4, None);
-        render(&shapes, 29.0, Rgb::parse("#112233").unwrap(), background)
+        render(
+            &shapes,
+            29.0,
+            Rgb::parse("#112233").unwrap(),
+            background,
+            None,
+        )
     }
 
     #[test]
@@ -102,7 +128,7 @@ mod tests {
         let secret = "SUPER-SECRET-payload-123";
         let matrix = Matrix::from_text(secret, Ecc::Low).expect("fits");
         let shapes = build_shapes(&matrix, QrStyle::Sharp, 4, None);
-        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None);
+        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None, None);
         assert!(!svg.contains(secret));
         // Even escaped fragments of it must not appear.
         assert!(!svg.contains("SECRET"));
@@ -112,7 +138,7 @@ mod tests {
     fn evenodd_gets_attribute_nonzero_does_not() {
         let matrix = Matrix::from_text("ab", Ecc::Low).expect("fits");
         let shapes = build_shapes(&matrix, QrStyle::Round, 4, None);
-        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None);
+        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None, None);
         assert_eq!(svg.matches("fill-rule=\"evenodd\"").count(), 3); // 3 rings
         assert_eq!(svg.matches("fill=\"#000000\"").count(), 7); // all shapes
     }
@@ -131,7 +157,7 @@ mod tests {
     fn rounded_geometry_produces_quadratic_curves() {
         let matrix = Matrix::from_text("a", Ecc::Low).expect("fits");
         let shapes = build_shapes(&matrix, QrStyle::Round, 4, None);
-        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None);
+        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None, None);
         assert!(svg.contains('Q'), "rounded style must contain quad curves");
     }
 }
