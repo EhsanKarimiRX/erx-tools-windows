@@ -8,5 +8,6 @@
 pub mod app_info;
 pub mod error;
 pub mod image_convert;
+pub mod qr_code;
 
 pub use error::ToolError;

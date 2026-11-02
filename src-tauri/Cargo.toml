@@ -24,6 +24,14 @@ serde = { version = "1", features = ["derive"] }
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
 tauri-plugin-dialog = "2.8.4"
 tauri-plugin-opener = "2.7.2"
+# QR Code Generator: QR matrix generation (pure Rust, zero dependencies).
+qrcodegen = "1.8"
+
+[dev-dependencies]
+# QR read-back tests only — never ships in the app binary.
+rqrr = "0.11"
+# DTO shape tests only (already in the lockfile via Tauri).
+serde_json = "1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

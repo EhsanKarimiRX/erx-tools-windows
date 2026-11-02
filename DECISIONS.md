@@ -162,3 +162,63 @@ the bottom of their section.
   (`reveal_item_in_dir`, showing the output files selected in Explorer).
   Like the dialog plugin, the webview receives no opener permission;
   capabilities stay `core:default`.
+
+## QR Code Generator (Prompt 3, so far)
+
+- **QR matrix: `qrcodegen` 1.8** (Project Nayuki, MIT). The reference QR
+  implementation: all 40 versions, all 4 EC levels, strict spec conformance,
+  UTF-8 byte mode out of the box. Zero dependencies and pure Rust, so x64
+  and ARM64 stay trivial. Last published 2022, but the library is the
+  companion of the widely used multi-language QR-Code-generator project and
+  is feature-complete for our needs.
+- **Read-back decoder: `rqrr` 0.11 as a dev-dependency only.** An
+  independent pure-Rust decoder proves the generated codes actually scan:
+  tests render a PNG and assert the decoded text equals the input. It never
+  enters the release binary. It reuses our exact `image` 0.25 — no version
+  conflict.
+- **PNG rendering will use `tiny-skia` 0.12** (checkpoint 3B): a pure-Rust
+  2D rasterizer (~few hundred KB, ARM64-safe). We rasterize from the SAME
+  geometry the SVG writer consumes, which avoids pulling in `resvg`
+  (multi-MB SVG parser) while guaranteeing PNG and SVG match.
+- **One SVG document is the single source of truth.** `generate_qr` returns
+  the exact string `save_qr_svg` writes. The preview injects it into the
+  DOM (`dangerouslySetInnerHTML`): safe because the markup is generated
+  entirely in Rust from validated `#RRGGBB` colors and our own geometry —
+  QR content never appears as text in the SVG (it lives in the module
+  pattern; a test asserts the payload string is absent). CSP is unaffected:
+  inline SVG elements are not affected by `script-src`, and the SVG uses
+  presentation attributes, not inline styles. A one-word CSP addition
+  (`img-src data:`) is only needed in 3C for the embedded logo preview.
+- **The SVG has a `viewBox` but no width/height**, so it scales to the
+  preview panel and to any viewer size; no size option applies to SVG
+  export (PNG snapping comes in 3B).
+- **No hairline seams:** sharp style merges every dark module into ONE path
+  filled with the nonzero rule — a single fill region, so adjacent squares
+  can never show AA gaps at any zoom. Rounded style reuses the same corner
+  walker with per-corner radii: a corner is rounded only when BOTH
+  orthogonal neighbors touching it are light, so touching dark modules keep
+  straight shared edges and stay seamless.
+- **Rounded finder eyes preserve scanability:** each 7×7 finder is drawn as
+  a rounded outer ring (even-odd fill, 1-module stroke) plus a rounded 3×3
+  center — the proportions scanners rely on are untouched; the read-back
+  tests verify decoding.
+- **Contrast threshold: 3.0:1** (WCAG contrast ratio). Below that, a
+  non-blocking "hard to scan" warning appears. Additionally: a warning when
+  the code is lighter than the background (inverted; some scanner apps
+  refuse those) and when the background is transparent (result depends on
+  the surface behind). All choices are unit-tested.
+- **Colors are strictly `#RRGGBB`** (leading `#` required) — the same rule
+  that keeps the SVG injection safe. The frontend adds a missing `#` on
+  blur for convenience; Rust remains the authority.
+- **Payload building lives in Rust**, not the frontend: the UI sends raw
+  fields (`{kind: "text"|"website"|"wifi", ...}`) and Rust builds, escapes
+  (Wi-Fi `\ ; , : "`), normalizes (`https://` added, http/https only) and
+  validates. DTO shape tests pin the JSON contract so renames fail at test
+  time, not at runtime.
+- **"Too long" reports a real limit:** the longest prefix (in characters,
+  multibyte-safe) that still fits at the selected level is computed by
+  binary search and shown in the error and in the live counter.
+- **Dialogs stay Rust-side** (`tauri-plugin-dialog`, already initialized):
+  `save_qr_svg` opens the native Save As dialog with default name
+  `qr-code.svg`; the webview gains no new permissions (capabilities remain
+  `core:default`). Overwrite confirmation is the dialog's own, per spec.

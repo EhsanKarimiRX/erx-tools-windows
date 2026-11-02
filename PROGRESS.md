@@ -2,6 +2,12 @@
 
 ## Current status
 
+**Prompt 3 (QR Code Generator) — checkpoint 3A done, awaiting the owner's
+visual/scan verification.** Rust core complete with 82 passing tests
+including QR read-back tests; minimal UI (Text tab, styles, colors, live
+preview, Save SVG) ready in `npm run tauri dev`. Checkpoints 3B (PNG export,
+Website/Wi-Fi tabs, options) and 3C (logo, polish, docs) are next.
+
 **Prompt 2 (Image Converter) — checkpoints 2A–2C done; 2A/2B verified, 2C
 awaiting the owner's manual checklist.** The tool is fully functional: mixed
 batches up to 200 files convert with live per-file progress, cancel, summary
@@ -10,6 +16,60 @@ and folder reveal.
 **Prompt 1 (foundation) — complete.** The app shell, tool registry, square-tile
 home screen, 4 placeholder tools, Rust command skeleton, security baseline,
 docs, git and GitHub are all in place.
+
+## Prompt 3 — QR Code Generator
+
+### Checkpoint 3A (this commit) — Rust core + minimal UI
+
+- [x] Crates: `qrcodegen` 1.8 (QR matrix; Nayuki reference implementation,
+      MIT, pure Rust, zero deps) and dev-only `rqrr` 0.11 (independent QR
+      decoder for read-back tests, never ships; reuses our `image` 0.25)
+- [x] Rust module `tools/qr_code/` split into pure, unit-tested files:
+      `payload` (text/website/Wi-Fi builders, URL normalization, Wi-Fi
+      escaping of `\ ; , : "`), `colors` (strict `#RRGGBB`, WCAG luminance
+      + contrast, warnings), `matrix` (qrcodegen wrapper, multibyte-safe
+      "max N characters fit" computation), `geometry` (both styles from one
+      segment list), `svg` (renderer), `core` (validation pipeline), plus
+      thin `commands`
+- [x] Sharp style: all dark modules merged into ONE nonzero fill path —
+      no hairline seams at any scale. Rounded style: module corners rounded
+      only where BOTH orthogonal neighbors are light (touching modules stay
+      joined); finder patterns drawn as rounded ring (even-odd) + center
+      block keeping the 1:1:3:1:1 scan proportions
+- [x] SVG is the single source: preview shows the exact document Save SVG
+      writes (no width/height, viewBox only). No user text ever enters the
+      SVG — only validated colors and geometry (asserted by tests)
+- [x] Commands `generate_qr` and `save_qr_svg` (native Save As from Rust,
+      default name `qr-code.svg`, no new webview permissions); DTO shape
+      tests pin the frontend JSON contract
+- [x] Read-back tests: generated matrix → PNG → decoded with rqrr →
+      byte-identical text, for a URL at every EC level, Persian UTF-8,
+      multiline text, a Wi-Fi payload with all special characters, and
+      dense near-limit content (3B moves these onto the real PNG renderer
+      to cover rounded geometry + colors too)
+- [x] Minimal UI: Text tab (dir="auto" for Persian), live debounced preview
+      (200 ms) on checkerboard, Sharp/Rounded segmented control, color
+      pickers + hex fields + presets + transparent checkbox, character
+      counter, warnings list, friendly too-long/invalid errors, Save SVG
+- [x] Gates pass: `cargo test` (82), `cargo fmt --check`,
+      `cargo clippy --all-targets -- -D warnings`, `npm run build`
+- [ ] Owner verification: scan the preview with a phone (sharp + rounded,
+      Persian text, black-on-white and white-on-black), save an SVG and
+      open it in Chrome
+
+### Checkpoint 3B (planned) — PNG export + all tabs + options
+
+PNG rendering with `tiny-skia` 0.12 (pure Rust, ARM64-safe), size snapping,
+Save PNG, Website + Wi-Fi tabs with validation and password rules, error
+correction and margin controls, contrast/inverted/transparent warnings
+wiring, too-long messages.
+
+### Checkpoint 3C (planned) — logo + polish + docs
+
+Safe logo decoding (same hardening as Image Converter), center clearing,
+automatic level H with locked control, size limits + warnings, smallest
+possible CSP addition (`img-src data:` for the embedded logo preview),
+PROGRESS/DECISIONS/ADDING_A_TOOL updates, owner manual checklist.
 
 ## Prompt 2 — Image Converter
 
@@ -135,11 +195,14 @@ app mid-batch, light/dark theme.
 
 ## Next steps
 
-1. **Prompt 2 — Image Converter**: code complete (2A–2C). Owner runs the
-   manual checklist; any findings go here.
-2. Later tools: QR Code Generator, Folder Icon Changer, Encrypted Notes
-   (needs Persian/RTL text support; secret state only in Rust).
-3. Installer work (separate prompts): NSIS x64 + ARM64, icons, versioning,
+1. **Prompt 3 — QR Code Generator**: 3A done. Owner verifies the preview
+   (scan with phone); then 3B (PNG export, Website/Wi-Fi tabs, options)
+   and 3C (logo, polish, docs, manual checklist).
+2. Prompt 2 — Image Converter: owner runs the manual checklist; any
+   findings go here.
+3. Later tools: Folder Icon Changer, Encrypted Notes (needs Persian/RTL
+   text support; secret state only in Rust).
+4. Installer work (separate prompts): NSIS x64 + ARM64, icons, versioning,
    optional code signing and CI.
 
 ## Open questions
