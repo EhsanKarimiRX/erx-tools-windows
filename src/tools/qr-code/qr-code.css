@@ -253,3 +253,71 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- 3B additions: tabs block, inputs, sliders ---------- */
+
+.qr-tabs-block {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.qr-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.qr-input:disabled {
+  opacity: 0.45;
+}
+
+.qr-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.qr-hint-warning {
+  color: var(--text);
+  padding: 8px 10px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid #e0a000;
+  border-radius: 8px;
+}
+
+.qr-password-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.qr-password-row .qr-input {
+  flex: 1;
+}
+
+.qr-show-button {
+  padding: 6px 10px;
+}
+
+.qr-value {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.qr-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.qr-counter {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}

@@ -38,6 +38,7 @@ pub struct QrOptionsDto {
     pub transparent: bool,
     pub error_correction: String,
     pub margin: i32,
+    pub png_size: i32,
 }
 
 /// Build result for the live preview.
@@ -50,6 +51,9 @@ pub struct QrSvg {
     pub level_used: String,
     pub char_count: usize,
     pub max_chars: usize,
+    /// Exact PNG side length after snapping to whole pixels per module.
+    pub png_pixels: u32,
+    pub png_pixels_per_module: u32,
     pub warnings: Vec<String>,
 }
 
@@ -77,6 +81,7 @@ fn to_build_request(options: QrOptionsDto) -> BuildRequest {
         transparent: options.transparent,
         error_correction: options.error_correction,
         margin: options.margin,
+        png_size: options.png_size,
     }
 }
 
@@ -88,6 +93,8 @@ fn to_qr_svg(built: core::BuiltQr) -> QrSvg {
         level_used: built.level_used.label().to_string(),
         char_count: built.char_count,
         max_chars: built.max_chars,
+        png_pixels: built.png_pixels,
+        png_pixels_per_module: built.png_pixels_per_module,
         warnings: built.warnings,
     }
 }
@@ -130,6 +137,42 @@ pub fn save_qr_svg(app: AppHandle, options: QrOptionsDto) -> Result<Option<Strin
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// Builds the QR code, rasterizes it at the snapped size and lets the user
+/// pick a save location in the native Save As dialog, then writes the PNG.
+/// Returns the written path, or `None` when the dialog was cancelled.
+#[tauri::command]
+pub fn save_qr_png(app: AppHandle, options: QrOptionsDto) -> Result<Option<String>, ToolError> {
+    let request = to_build_request(options);
+    let built = core::build(&request).map_err(ToolError::Internal)?;
+
+    let png = super::raster::render_png(
+        &built.shapes,
+        built.total_modules,
+        built.foreground,
+        built.background,
+        built.png_pixels,
+    )
+    .map_err(ToolError::Internal)?;
+
+    let target = app
+        .dialog()
+        .file()
+        .add_filter("PNG image", &["png"])
+        .set_file_name("qr-code.png")
+        .blocking_pick_file();
+    let Some(path) = target else {
+        return Ok(None); // cancelled — nothing written
+    };
+    let path = path
+        .into_path()
+        .map_err(|_| ToolError::Internal("The chosen save location is not valid.".into()))?;
+
+    std::fs::write(&path, png).map_err(|_| {
+        ToolError::Internal("Windows refused to write the PNG file. Check the folder.".into())
+    })?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,7 +190,8 @@ mod tests {
                 "background": "#ffffff",
                 "transparent": false,
                 "errorCorrection": "Q",
-                "margin": 4
+                "margin": 4,
+                    "pngSize": 1024
             }"##,
         )
         .expect("text shape must parse");
@@ -171,7 +215,8 @@ mod tests {
                 "background": "#ffffff",
                 "transparent": false,
                 "errorCorrection": "H",
-                "margin": 4
+                "margin": 4,
+                    "pngSize": 1024
             }"##,
         )
         .expect("wifi shape must parse");
@@ -188,7 +233,8 @@ mod tests {
                 "background": "#ffffff",
                 "transparent": false,
                 "errorCorrection": "M",
-                "margin": 4
+                "margin": 4,
+                    "pngSize": 1024
             }"##,
         )
         .expect("website shape must parse");
@@ -204,7 +250,8 @@ mod tests {
                     "background": "#ffffff",
                     "transparent": false,
                     "errorCorrection": "Q",
-                    "margin": 4
+                    "margin": 4,
+                    "pngSize": 1024
                 }"##,
             )
             .unwrap(),

@@ -3,15 +3,21 @@
 //! No Tauri types here, so the whole pipeline is unit testable.
 
 use super::colors::{self, Rgb};
-use super::geometry::{self, ClearRect, QrStyle};
+use super::geometry::{self, ClearRect, QrStyle, Shape};
 use super::matrix::{self, Ecc, Matrix};
 use super::payload::{self, WifiOptions, WifiSecurity};
+use super::raster;
 use super::svg;
 
 /// Quiet-zone margin in modules: the allowed range (the default of 4 is
 /// the frontend's concern; Rust only validates the range).
 pub const MIN_MARGIN: usize = 1;
 pub const MAX_MARGIN: usize = 10;
+
+/// Requested PNG export sizes: the allowed range (default 1024 lives in
+/// the UI).
+pub const MIN_PNG_SIZE: i32 = raster::MIN_PNG_SIZE as i32;
+pub const MAX_PNG_SIZE: i32 = raster::MAX_PNG_SIZE as i32;
 
 /// What the user wants to encode, as raw (unvalidated) UI input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +75,8 @@ pub struct BuildRequest {
     /// "L", "M", "Q" or "H".
     pub error_correction: String,
     pub margin: i32,
+    /// Requested PNG side length in pixels (snapped down to whole modules).
+    pub png_size: i32,
 }
 
 /// The result of one successful build.
@@ -76,10 +84,18 @@ pub struct BuildRequest {
 pub struct BuiltQr {
     /// Complete SVG document (also used verbatim for the .svg export).
     pub svg: String,
+    /// The fill shapes behind that SVG — the PNG rasterizer draws exactly
+    /// these, so both exports always match.
+    pub shapes: Vec<Shape>,
+    pub foreground: Rgb,
+    pub background: Option<Rgb>,
     /// QR side length in modules (without the quiet zone).
     pub size_modules: usize,
     /// QR side length including both margins.
     pub total_modules: usize,
+    /// Exact PNG side length after snapping to whole pixels per module.
+    pub png_pixels: u32,
+    pub png_pixels_per_module: u32,
     /// Level actually used (differs from the request when a logo forced H).
     pub level_used: Ecc,
     /// Payload length in characters, for the live counter.
@@ -110,6 +126,7 @@ pub fn build_with_clear(
     };
     let ecc = Ecc::from_ui(&request.error_correction)?;
     let margin = validate_margin(request.margin)?;
+    let png_size = validate_png_size(request.png_size)?;
     if payload_text.is_empty() {
         return Err("Enter some content first.".into());
     }
@@ -119,13 +136,19 @@ pub fn build_with_clear(
     let shapes = geometry::build_shapes(&matrix, style, margin, clear);
     let total_modules = matrix.size() + 2 * margin;
     let svg_text = svg::render(&shapes, total_modules as f64, foreground, background);
+    let snapped = raster::snap_size(total_modules, png_size);
 
     Ok(BuiltQr {
         char_count: payload_text.chars().count(),
         max_chars: matrix::max_fitting_chars(&payload_text, ecc),
         svg: svg_text,
+        shapes,
+        foreground,
+        background,
         size_modules: matrix.size(),
         total_modules,
+        png_pixels: snapped.pixels,
+        png_pixels_per_module: snapped.pixels_per_module,
         level_used: ecc,
         warnings: colors::color_warnings(foreground, background),
     })
@@ -141,6 +164,16 @@ pub fn validate_margin(margin: i32) -> Result<usize, String> {
     Ok(margin as usize)
 }
 
+/// Validates the requested PNG export size.
+pub fn validate_png_size(size: i32) -> Result<u32, String> {
+    if !(MIN_PNG_SIZE..=MAX_PNG_SIZE).contains(&size) {
+        return Err(format!(
+            "The PNG size must be between {MIN_PNG_SIZE} and {MAX_PNG_SIZE} pixels."
+        ));
+    }
+    Ok(size as u32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +187,7 @@ mod tests {
             transparent: false,
             error_correction: "Q".into(),
             margin: 4,
+            png_size: 1024,
         }
     }
 
@@ -249,5 +283,19 @@ mod tests {
     fn margin_range_is_enforced() {
         assert_eq!(validate_margin(1), Ok(1));
         assert_eq!(validate_margin(10), Ok(10));
+    }
+
+    #[test]
+    fn png_size_range_is_enforced_and_snapped() {
+        assert_eq!(validate_png_size(256), Ok(256));
+        assert_eq!(validate_png_size(4096), Ok(4096));
+        assert!(validate_png_size(255).is_err());
+        assert!(validate_png_size(4097).is_err());
+
+        // The build reports the exact snapped size (29 modules at 1024 ->
+        // 35 px per module -> 1015).
+        let built = build(&text_request("Hello")).expect("builds");
+        assert_eq!(built.png_pixels as usize, built.total_modules * 35);
+        assert_eq!(built.png_pixels_per_module, 35);
     }
 }

@@ -1,10 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { QrContent, QrOptions, QrSvgResult } from "./types";
-import { isHexColor } from "./types";
+import ContentTabs from "./ContentTabs";
+import OptionsPanel from "./OptionsPanel";
+import type {
+  ContentTab,
+  QrContent,
+  QrOptions,
+  QrSvgResult,
+  WifiSecurity,
+} from "./types";
+import {
+  DEFAULT_MARGIN,
+  DEFAULT_PNG_SIZE,
+  isHexColor,
+  previewUrl,
+} from "./types";
 import "./qr-code.css";
 
-/** Preview refresh delay: typing pauses of under this don't re-render. */
+/** Preview refresh delay: typing pauses under this don't re-render. */
 const DEBOUNCE_MS = 200;
 
 /** Turns anything thrown by invoke into a short display string. */
@@ -20,27 +33,56 @@ type PreviewState =
   | { status: "error"; message: string };
 
 /** QR Code Generator: content on the left, live preview and export on the
- * right. The preview SVG is the exact document Save SVG writes, so what
- * you scan is what you get. */
+ * right. The preview SVG is the exact document Save SVG writes and the PNG
+ * is rasterized from the same geometry, so what you scan is what you get. */
 export default function QrCodeGenerator() {
-  // --- content (Text tab only in 3A) ---
+  // --- content state ---
+  const [tab, setTab] = useState<ContentTab>("text");
   const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
+  const [ssid, setSsid] = useState("");
+  const [password, setPassword] = useState("");
+  const [security, setSecurity] = useState<WifiSecurity>("wpa");
+  const [hidden, setHidden] = useState(false);
 
-  // --- options ---
+  // --- options state ---
   const [style, setStyle] = useState<QrOptions["style"]>("sharp");
   const [foreground, setForeground] = useState("#000000");
   const [background, setBackground] = useState("#ffffff");
   const [transparent, setTransparent] = useState(false);
+  const [errorCorrection, setErrorCorrection] =
+    useState<QrOptions["errorCorrection"]>("Q");
+  const [margin, setMargin] = useState(DEFAULT_MARGIN);
+  const [pngSize, setPngSize] = useState(DEFAULT_PNG_SIZE);
 
   // --- preview + save ---
   const [preview, setPreview] = useState<PreviewState>({ status: "empty" });
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<"svg" | "png" | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const requestRef = useRef(0);
 
-  const content: QrContent = { kind: "text", value: text };
+  // Leaving the Wi-Fi tab clears the password immediately; it must never
+  // linger anywhere but its own tab (unmount clears everything anyway).
+  function switchTab(next: ContentTab) {
+    if (next !== "wifi") setPassword("");
+    setSavedNote(null);
+    setTab(next);
+  }
+
+  const content: QrContent =
+    tab === "text"
+      ? { kind: "text", value: text }
+      : tab === "website"
+        ? { kind: "website", url }
+        : { kind: "wifi", ssid, password, security, hidden };
+
   const colorsValid = isHexColor(foreground) && isHexColor(background);
-  const hasContent = text.trim().length > 0;
+  const hasContent =
+    tab === "text"
+      ? text.trim().length > 0
+      : tab === "website"
+        ? previewUrl(url).length > 0
+        : ssid.trim().length > 0;
   const canGenerate = hasContent && colorsValid;
 
   // Live preview: regenerate (debounced) whenever content or options
@@ -56,29 +98,43 @@ export default function QrCodeGenerator() {
       foreground,
       background,
       transparent,
-      errorCorrection: "Q",
-      margin: 4,
+      errorCorrection,
+      margin,
+      pngSize,
     };
     const request = ++requestRef.current;
     const timer = window.setTimeout(() => {
       invoke<QrSvgResult>("generate_qr", { options })
         .then((result) => {
-          if (requestRef.current === request) {
-            setPreview({ status: "ok", result });
-          }
+          if (requestRef.current === request) setPreview({ status: "ok", result });
         })
         .catch((error) => {
-          if (requestRef.current === request) {
+          if (requestRef.current === request)
             setPreview({ status: "error", message: errorText(error) });
-          }
         });
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [text, style, foreground, background, transparent, canGenerate]);
+  }, [
+    text,
+    url,
+    ssid,
+    password,
+    security,
+    hidden,
+    tab,
+    style,
+    foreground,
+    background,
+    transparent,
+    errorCorrection,
+    margin,
+    pngSize,
+    canGenerate,
+  ]);
 
   /** Shared save path: same options as the preview, native Save As. */
-  async function saveSvg() {
-    setSaving(true);
+  async function save(kind: "svg" | "png") {
+    setSaving(kind);
     setSavedNote(null);
     try {
       const options: QrOptions = {
@@ -87,21 +143,31 @@ export default function QrCodeGenerator() {
         foreground,
         background,
         transparent,
-        errorCorrection: "Q",
-        margin: 4,
+        errorCorrection,
+        margin,
+        pngSize,
       };
-      const savedPath = await invoke<string | null>("save_qr_svg", { options });
+      const command = kind === "svg" ? "save_qr_svg" : "save_qr_png";
+      const savedPath = await invoke<string | null>(command, { options });
       if (savedPath) setSavedNote(`Saved: ${savedPath}`);
     } catch (error) {
       setSavedNote(errorText(error));
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   }
 
   const previewArea = (() => {
     if (preview.status === "empty") {
-      return <p className="qr-preview-hint">Enter some text to see the QR code.</p>;
+      return (
+        <p className="qr-preview-hint">
+          {tab === "wifi"
+            ? "Enter the network name to see the QR code."
+            : tab === "website"
+              ? "Enter a website address to see the QR code."
+              : "Enter some text to see the QR code."}
+        </p>
+      );
     }
     if (preview.status === "error") {
       return (
@@ -120,173 +186,56 @@ export default function QrCodeGenerator() {
     );
   })();
 
+  const result = preview.status === "ok" ? preview.result : null;
+
   return (
     <div className="qr-layout">
       {/* ----- left: content + options ----- */}
       <section className="qr-main" aria-label="Content and options">
-        <div className="qr-tabs" role="tablist" aria-label="Content type">
-          <button
-            type="button"
-            role="tab"
-            aria-selected="true"
-            className="qr-tab qr-tab-active"
-          >
-            Text
-          </button>
-          {/* Website and Wi-Fi tabs arrive in checkpoint 3B. */}
-        </div>
+        <ContentTabs
+          tab={tab}
+          onTab={switchTab}
+          text={text}
+          onText={setText}
+          url={url}
+          onUrl={setUrl}
+          ssid={ssid}
+          onSsid={setSsid}
+          password={password}
+          onPassword={setPassword}
+          security={security}
+          onSecurity={setSecurity}
+          hidden={hidden}
+          onHidden={setHidden}
+        />
 
-        <div className="qr-fieldset">
-          <label className="qr-label" htmlFor="qr-text">
-            Text
-          </label>
-          <textarea
-            id="qr-text"
-            className="qr-textarea"
-            dir="auto"
-            rows={5}
-            placeholder="Any text — links, notes, Persian, anything"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            spellCheck={false}
-          />
-          {preview.status === "ok" && (
+        {result && (
+          <div className="qr-fieldset">
             <p className="qr-counter">
-              {preview.result.charCount} / {preview.result.maxChars} characters
+              {result.charCount} / {result.maxChars} characters encoded
             </p>
-          )}
-        </div>
-
-        <div className="qr-fieldset">
-          <span className="qr-label">Style</span>
-          <div className="qr-segmented" role="radiogroup" aria-label="Style">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={style === "sharp"}
-              className={style === "sharp" ? "qr-seg qr-seg-active" : "qr-seg"}
-              onClick={() => setStyle("sharp")}
-            >
-              Sharp
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={style === "round"}
-              className={style === "round" ? "qr-seg qr-seg-active" : "qr-seg"}
-              onClick={() => setStyle("round")}
-            >
-              Rounded
-            </button>
           </div>
-        </div>
+        )}
 
-        <div className="qr-fieldset">
-          <div className="qr-color-row">
-            <label className="qr-label" htmlFor="qr-fg-color">
-              Code color
-            </label>
-            <div className="qr-color-controls">
-              <input
-                id="qr-fg-color"
-                type="color"
-                className="qr-color-picker"
-                value={isHexColor(foreground) ? foreground : "#000000"}
-                onChange={(event) => setForeground(event.target.value)}
-                aria-label="Pick the code color"
-              />
-              <input
-                type="text"
-                className={
-                  isHexColor(foreground)
-                    ? "qr-hex-input"
-                    : "qr-hex-input qr-hex-invalid"
-                }
-                value={foreground}
-                onChange={(event) => setForeground(event.target.value)}
-                onBlur={() => {
-                  // Common paste: hex without the #. Add it automatically.
-                  if (/^[0-9a-fA-F]{6}$/.test(foreground)) {
-                    setForeground(`#${foreground}`);
-                  }
-                }}
-                maxLength={7}
-                spellCheck={false}
-                aria-label="Code color as #RRGGBB"
-              />
-            </div>
-          </div>
-
-          <div className="qr-color-row">
-            <label className="qr-label" htmlFor="qr-bg-color">
-              Background
-            </label>
-            <div className="qr-color-controls">
-              <input
-                id="qr-bg-color"
-                type="color"
-                className="qr-color-picker"
-                value={isHexColor(background) ? background : "#ffffff"}
-                onChange={(event) => setBackground(event.target.value)}
-                disabled={transparent}
-                aria-label="Pick the background color"
-              />
-              <input
-                type="text"
-                className={
-                  transparent || isHexColor(background)
-                    ? "qr-hex-input"
-                    : "qr-hex-input qr-hex-invalid"
-                }
-                value={background}
-                onChange={(event) => setBackground(event.target.value)}
-                onBlur={() => {
-                  if (/^[0-9a-fA-F]{6}$/.test(background)) {
-                    setBackground(`#${background}`);
-                  }
-                }}
-                maxLength={7}
-                spellCheck={false}
-                disabled={transparent}
-                aria-label="Background color as #RRGGBB"
-              />
-            </div>
-          </div>
-
-          <div className="qr-presets">
-            <button
-              type="button"
-              className="button-secondary qr-preset"
-              onClick={() => {
-                setForeground("#000000");
-                setBackground("#ffffff");
-                setTransparent(false);
-              }}
-            >
-              Black on white
-            </button>
-            <button
-              type="button"
-              className="button-secondary qr-preset"
-              onClick={() => {
-                setForeground("#ffffff");
-                setBackground("#000000");
-                setTransparent(false);
-              }}
-            >
-              White on black
-            </button>
-          </div>
-
-          <label className="qr-checkbox">
-            <input
-              type="checkbox"
-              checked={transparent}
-              onChange={(event) => setTransparent(event.target.checked)}
-            />
-            Transparent background
-          </label>
-        </div>
+        <OptionsPanel
+          style={style}
+          onStyle={setStyle}
+          foreground={foreground}
+          onForeground={setForeground}
+          background={background}
+          onBackground={setBackground}
+          transparent={transparent}
+          onTransparent={setTransparent}
+          errorCorrection={errorCorrection}
+          onErrorCorrection={setErrorCorrection}
+          margin={margin}
+          onMargin={setMargin}
+          pngSize={pngSize}
+          onPngSize={setPngSize}
+          pngPixels={result?.pngPixels ?? null}
+          pngPixelsPerModule={result?.pngPixelsPerModule ?? null}
+          levelLocked={false}
+        />
       </section>
 
       {/* ----- right: preview + export ----- */}
@@ -295,18 +244,18 @@ export default function QrCodeGenerator() {
           {previewArea}
         </div>
 
-        {preview.status === "ok" && preview.result.warnings.length > 0 && (
+        {result && result.warnings.length > 0 && (
           <ul className="qr-warnings">
-            {preview.result.warnings.map((warning) => (
+            {result.warnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
           </ul>
         )}
 
-        {preview.status === "ok" && (
+        {result && (
           <p className="qr-meta">
-            {preview.result.totalModules} × {preview.result.totalModules} modules ·
-            error correction {preview.result.levelUsed}
+            {result.totalModules} × {result.totalModules} modules · error
+            correction {result.levelUsed}
           </p>
         )}
 
@@ -314,13 +263,21 @@ export default function QrCodeGenerator() {
           <button
             type="button"
             className="button-primary"
-            onClick={saveSvg}
-            disabled={!canGenerate || preview.status !== "ok" || saving}
-            title={canGenerate ? undefined : "Enter some text first"}
+            onClick={() => save("png")}
+            disabled={!canGenerate || preview.status !== "ok" || saving !== null}
+            title={canGenerate ? undefined : "Enter some content first"}
           >
-            {saving ? "Saving…" : "Save SVG"}
+            {saving === "png" ? "Saving…" : "Save PNG"}
           </button>
-          {/* Save PNG arrives in checkpoint 3B. */}
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => save("svg")}
+            disabled={!canGenerate || preview.status !== "ok" || saving !== null}
+            title={canGenerate ? undefined : "Enter some content first"}
+          >
+            {saving === "svg" ? "Saving…" : "Save SVG"}
+          </button>
         </div>
         {!canGenerate && hasContent && !colorsValid && (
           <p className="qr-error" role="alert">

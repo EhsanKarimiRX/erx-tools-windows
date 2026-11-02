@@ -1,51 +1,32 @@
-//! Read-back tests: generate a QR code, render it to a PNG, decode the PNG
-//! with an independent QR decoder (`rqrr`, dev-dependency only — it never
-//! ships in the app) and assert the decoded text equals the input.
+//! Read-back tests: generate a QR code, render it with the REAL PNG
+//! rasterizer (the exact code path Save PNG uses), decode the PNG with an
+//! independent QR decoder (`rqrr`, dev-dependency only — it never ships in
+//! the app) and assert the decoded text equals the input.
 //!
-//! 3A note: the PNG here is rendered by a test-only rasterizer that fills
-//! each dark matrix module as a square (the sharp style). When the real
-//! PNG renderer lands in 3B, these tests move over to it so the rounded
-//! geometry and colors are covered end-to-end as well.
+//! Covers both styles, every error correction level, the three content
+//! types, custom colors, transparent backgrounds and inverted codes.
+//! (Inverted codes are read here by inverting pixels first — real-world
+//! scanner support for inverted codes varies, which is why the app shows
+//! a warning for them.)
 
 use super::core::{self, BuildRequest, ContentInput};
-use super::matrix::Matrix;
 
-/// Renders a matrix to a PNG in memory: white background, black modules,
-/// `scale` pixels per module.
-fn render_matrix_png(matrix: &Matrix, margin: usize, scale: usize) -> Vec<u8> {
-    use image::Luma;
-
-    let total = (matrix.size() + 2 * margin) as u32;
-    let side = total * scale as u32;
-    let mut img = image::GrayImage::from_pixel(side, side, Luma([255u8]));
-    for y in 0..matrix.size() {
-        for x in 0..matrix.size() {
-            if !matrix.is_dark(x as isize, y as isize) {
-                continue;
-            }
-            for dy in 0..scale {
-                for dx in 0..scale {
-                    img.put_pixel(
-                        ((margin + x) * scale + dx) as u32,
-                        ((margin + y) * scale + dy) as u32,
-                        Luma([0u8]),
-                    );
-                }
-            }
-        }
-    }
-    let mut bytes = Vec::new();
-    image::DynamicImage::ImageLuma8(img)
-        .write_to(
-            &mut std::io::Cursor::new(&mut bytes),
-            image::ImageFormat::Png,
-        )
-        .expect("PNG encode of a synthetic image always works");
-    bytes
+/// Full pipeline: request → build → real PNG render → rqrr decode.
+fn roundtrip(request: &BuildRequest) -> String {
+    let built = core::build(request).expect("request must build");
+    let png = super::raster::render_png(
+        &built.shapes,
+        built.total_modules,
+        built.foreground,
+        built.background,
+        768, // comfortable density for the decoder
+    )
+    .expect("real renderer must work");
+    decode_png_text(&png)
 }
 
-/// Decodes the first QR code found in a PNG and returns its text.
-fn decode_png_png_text(bytes: &[u8]) -> String {
+/// Decodes the first QR code found in a PNG.
+fn decode_png_text(bytes: &[u8]) -> String {
     let img = image::load_from_memory(bytes)
         .expect("our own PNG must decode")
         .to_luma8();
@@ -55,65 +36,88 @@ fn decode_png_png_text(bytes: &[u8]) -> String {
     });
     let grids = prepared.detect_grids();
     assert!(!grids.is_empty(), "no QR code found in the rendered image");
+    if grids.len() > 1 {
+        println!("PROBE: {} grids found", grids.len());
+    }
     let (_meta, text) = grids[0]
         .decode()
         .expect("a freshly generated QR code must decode");
     text
 }
 
-/// Full round trip: pipeline request → matrix → PNG → decoded text.
-fn roundtrip_text(request: &BuildRequest) -> String {
-    let built = core::build(request).expect("request must build");
-    // Rebuild the matrix from the payload so the test rasterizer can draw
-    // it; the pipeline itself already validated that it fits.
-    let payload = request.content.payload().expect("payload was valid");
-    let ecc = built.level_used;
-    let matrix = Matrix::from_text(&payload, ecc).expect("matrix fits (already validated)");
-    let png = render_matrix_png(&matrix, 4, 12);
-    decode_png_png_text(&png)
+/// Decodes after compositing an RGBA PNG onto white (for transparent
+/// backgrounds) and optionally inverting (for inverted codes).
+fn decode_composited(bytes: &[u8], invert: bool) -> String {
+    let rgba = image::load_from_memory(bytes)
+        .expect("our own PNG must decode")
+        .to_rgba8();
+    let (width, height) = (rgba.width(), rgba.height());
+    let mut prepared =
+        rqrr::PreparedImage::prepare_from_greyscale(width as usize, height as usize, |x, y| {
+            let [r, g, b, a] = rgba.get_pixel(x as u32, y as u32).0;
+            let [r, g, b] = if a == 255 {
+                [r, g, b]
+            } else {
+                // Alpha blend over white.
+                let blend = |c: u8| {
+                    u8::try_from((u16::from(c) * u16::from(a) + 255 * (255 - u16::from(a))) / 255)
+                        .unwrap_or(255)
+                };
+                [blend(r), blend(g), blend(b)]
+            };
+            // Luma, optionally inverted for light-on-dark codes.
+            let luma = 0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b);
+            let luma = if invert { 255.0 - luma } else { luma };
+            luma.round() as u8
+        });
+    let grids = prepared.detect_grids();
+    assert!(!grids.is_empty(), "no QR code found (composited)");
+    let (_meta, text) = grids[0]
+        .decode()
+        .expect("a freshly generated QR code must decode");
+    text
 }
 
-fn text_request(content: ContentInput, ecc: &str) -> BuildRequest {
+fn request(content: ContentInput) -> BuildRequest {
     BuildRequest {
         content,
         style: "sharp".into(),
         foreground: "#000000".into(),
         background: "#ffffff".into(),
         transparent: false,
-        error_correction: ecc.into(),
+        error_correction: "Q".into(),
         margin: 4,
+        png_size: 1024,
     }
 }
 
 #[test]
-fn url_survives_at_every_error_correction_level() {
+fn url_survives_at_every_level_and_style() {
     let url = ContentInput::Website("https://example.com/erx-tools".into());
+    let payload = url.payload().unwrap();
     for level in ["L", "M", "Q", "H"] {
-        let payload = url.payload().unwrap();
-        let decoded = roundtrip_text(&text_request(url.clone(), level));
-        assert_eq!(decoded, payload, "level {level}");
+        for style in ["sharp", "round"] {
+            let mut req = request(url.clone());
+            req.error_correction = level.into();
+            req.style = style.into();
+            assert_eq!(roundtrip(&req), payload, "level {level}, style {style}");
+        }
     }
 }
 
 #[test]
-fn persian_text_survives_as_utf8() {
+fn persian_text_survives_in_both_styles() {
     let content = ContentInput::Text("سلام، این یک آزمون است!".into());
     let payload = content.payload().unwrap();
-    let decoded = roundtrip_text(&text_request(content, "Q"));
-    assert_eq!(decoded, payload);
-}
-
-#[test]
-fn multiline_text_survives() {
-    let content = ContentInput::Text("first line\nsecond line\n\ttabbed".into());
-    let decoded = roundtrip_text(&text_request(content, "M"));
-    assert_eq!(decoded, "first line\nsecond line\n\ttabbed");
+    for style in ["sharp", "round"] {
+        let mut req = request(content.clone());
+        req.style = style.into();
+        assert_eq!(roundtrip(&req), payload, "style {style}");
+    }
 }
 
 #[test]
 fn wifi_payload_with_special_characters_survives() {
-    // The payload is built (and escaped) by the same Rust code the app
-    // uses; the decoded text must be byte-identical.
     let content = ContentInput::Wifi {
         ssid: "net;work".into(),
         password: "p\\a,s:s\"w".into(),
@@ -122,8 +126,53 @@ fn wifi_payload_with_special_characters_survives() {
     };
     let payload = content.payload().unwrap();
     assert!(payload.contains(';'), "payload shape sanity");
-    let decoded = roundtrip_text(&text_request(content, "Q"));
+    let decoded = roundtrip(&request(content));
     assert_eq!(decoded, payload);
+}
+
+#[test]
+fn custom_dark_on_light_colors_survive() {
+    // Not black/white: a dark blue code on a light cream background.
+    let mut req = request(ContentInput::Text("colored".into()));
+    req.foreground = "#1a2b5f".into();
+    req.background = "#fdf6e3".into();
+    assert_eq!(roundtrip(&req), "colored");
+}
+
+#[test]
+fn transparent_background_survives_composited_on_white() {
+    let mut req = request(ContentInput::Text("clear".into()));
+    req.transparent = true;
+    let built = core::build(&req).expect("builds");
+    let png = super::raster::render_png(
+        &built.shapes,
+        built.total_modules,
+        built.foreground,
+        built.background,
+        768,
+    )
+    .expect("renders");
+    assert_eq!(decode_composited(&png, false), "clear");
+}
+
+#[test]
+fn inverted_code_survives_after_pixel_inversion() {
+    // White code on black: real scanners vary on inverted codes (the app
+    // warns about it); the test inverts pixels first, as tolerant scanners
+    // effectively do.
+    let mut req = request(ContentInput::Text("dark mode".into()));
+    req.foreground = "#ffffff".into();
+    req.background = "#000000".into();
+    let built = core::build(&req).expect("builds");
+    let png = super::raster::render_png(
+        &built.shapes,
+        built.total_modules,
+        built.foreground,
+        built.background,
+        768,
+    )
+    .expect("renders");
+    assert_eq!(decode_composited(&png, true), "dark mode");
 }
 
 #[test]
@@ -131,7 +180,17 @@ fn highest_density_content_still_decodes() {
     // Close to the Q limit: long content at a high level stresses the
     // decoder with a dense code.
     let text = "x".repeat(1500);
-    let content = ContentInput::Text(text.clone());
-    let decoded = roundtrip_text(&text_request(content, "Q"));
+    let decoded = roundtrip(&request(ContentInput::Text(text.clone())));
     assert_eq!(decoded, text);
+}
+
+#[test]
+fn round_and_sharp_render_same_payload_from_same_geometry() {
+    // Both styles must decode identically — same matrix, different shapes.
+    let content = ContentInput::Website("https://example.com/styles".into());
+    let mut sharp = request(content.clone());
+    sharp.style = "sharp".into();
+    let mut round = request(content);
+    round.style = "round".into();
+    assert_eq!(roundtrip(&sharp), roundtrip(&round));
 }

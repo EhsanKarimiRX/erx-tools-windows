@@ -11,6 +11,7 @@ pub mod core;
 pub mod geometry;
 pub mod matrix;
 pub mod payload;
+pub mod raster;
 pub mod svg;
 
 #[cfg(test)]

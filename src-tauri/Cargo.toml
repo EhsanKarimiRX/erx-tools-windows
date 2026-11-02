@@ -26,6 +26,8 @@ tauri-plugin-dialog = "2.8.4"
 tauri-plugin-opener = "2.7.2"
 # QR Code Generator: QR matrix generation (pure Rust, zero dependencies).
 qrcodegen = "1.8"
+# QR Code Generator: PNG rasterization of the shared QR geometry (pure Rust).
+tiny-skia = "0.12"
 
 [dev-dependencies]
 # QR read-back tests only — never ships in the app binary.

@@ -2,11 +2,11 @@
 
 ## Current status
 
-**Prompt 3 (QR Code Generator) — checkpoint 3A done, awaiting the owner's
-visual/scan verification.** Rust core complete with 82 passing tests
-including QR read-back tests; minimal UI (Text tab, styles, colors, live
-preview, Save SVG) ready in `npm run tauri dev`. Checkpoints 3B (PNG export,
-Website/Wi-Fi tabs, options) and 3C (logo, polish, docs) are next.
+**Prompt 3 (QR Code Generator) — checkpoints 3A + 3B done, awaiting the
+owner's visual/scan verification.** Rust core with 91 passing tests incl.
+read-back of the real PNG renderer for both styles; UI has all three content
+tabs, styles, colors, error correction, margin, PNG size and Save PNG/SVG.
+Checkpoint 3C (logo, polish, docs) is next.
 
 **Prompt 2 (Image Converter) — checkpoints 2A–2C done; 2A/2B verified, 2C
 awaiting the owner's manual checklist.** The tool is fully functional: mixed
@@ -57,12 +57,33 @@ docs, git and GitHub are all in place.
       Persian text, black-on-white and white-on-black), save an SVG and
       open it in Chrome
 
-### Checkpoint 3B (planned) — PNG export + all tabs + options
+### Checkpoint 3B (this commit) — PNG export + all tabs + options
 
-PNG rendering with `tiny-skia` 0.12 (pure Rust, ARM64-safe), size snapping,
-Save PNG, Website + Wi-Fi tabs with validation and password rules, error
-correction and margin controls, contrast/inverted/transparent warnings
-wiring, too-long messages.
+- [x] `raster.rs`: PNG rendering via `tiny-skia` 0.12 (pure Rust,
+      ARM64-safe) from the SAME geometry the SVG writer consumes — the PNG
+      file, SVG file and preview always match
+- [x] Size snapping: requested 256–4096 px snapped down to a whole number
+      of pixels per module; the UI shows the exact result ("saves at
+      1008 × 1008 px (35 px/module)")
+- [x] `save_qr_png` command (native Save As from Rust, default
+      `qr-code.png`, no new webview permissions)
+- [x] Scan-tested the rounded finder eyes with the independent decoder:
+      outer radius ≥ 1.5 made level-L codes misread (format info around
+      the eyes) at some sizes; landed on outer 1.25 / hole 0.25 / center
+      1.0, which decodes at every level and size tested (see DECISIONS)
+- [x] Read-back tests now drive the REAL renderer: both styles × all four
+      EC levels × (URL, Persian UTF-8, Wi-Fi specials), custom colors,
+      transparent composited on white, inverted codes (pixels inverted
+      first; real scanners vary — the app warns), dense near-limit content
+- [x] UI: Website tab (https:// added, final link shown, http/https only)
+      and Wi-Fi tab (SSID, show/hide password, WPA/WEP/none, hidden
+      checkbox, plain-text password warning; password cleared when leaving
+      the tab or the tool), error correction L/M/Q/H, margin slider with
+      hint, PNG size slider, Save PNG + Save SVG
+- [x] Gates pass: `cargo test` (91), `cargo fmt --check`,
+      `cargo clippy --all-targets -- -D warnings`, `npm run build`
+- [ ] Owner verification: scan PNG exports with a phone (both styles, all
+      tab types), check size snapping display, Wi-Fi password flow
 
 ### Checkpoint 3C (planned) — logo + polish + docs
 

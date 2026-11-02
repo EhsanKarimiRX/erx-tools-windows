@@ -129,13 +129,17 @@ pub fn build_shapes(
             // (even-odd), plus the solid center block. The ring keeps the
             // 1-module stroke width and the 3x3 center intact, so the
             // finder proportions the scanners rely on stay unchanged.
-            let mut ring = rounded_rect(fx as f64 + offset, fy as f64 + offset, 7.0, 7.0, 2.5);
+            // Radii are scan-tested (see read-back tests): the outer
+            // radius must stay small — 1.5 already makes some decoders
+            // misread the format info around the eyes at some sizes, while
+            // 1.25 passes every level and size we test.
+            let mut ring = rounded_rect(fx as f64 + offset, fy as f64 + offset, 7.0, 7.0, 1.25);
             ring.extend(rounded_rect(
                 fx as f64 + offset + 1.0,
                 fy as f64 + offset + 1.0,
                 5.0,
                 5.0,
-                1.5,
+                0.25,
             ));
             shapes.push(Shape {
                 segments: ring,

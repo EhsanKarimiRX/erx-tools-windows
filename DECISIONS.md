@@ -222,3 +222,27 @@ the bottom of their section.
   `save_qr_svg` opens the native Save As dialog with default name
   `qr-code.svg`; the webview gains no new permissions (capabilities remain
   `core:default`). Overwrite confirmation is the dialog's own, per spec.
+
+- **PNG rendering: `tiny-skia` 0.12** (checkpoint 3B): pure-Rust rasterizer
+  with anti-aliased path filling; ~1 MB of binary size, no system deps, so
+  x64/ARM64 stay trivial. We rasterize from the same `Shape` list the SVG
+  writer consumes — not from the SVG markup — guaranteeing both exports
+  match without pulling in `resvg`.
+- **PNG size snapping:** requested 256–4096 px is snapped DOWN to a whole
+  number of pixels per module (`floor(requested/total) × total`), so every
+  edge lands on exact pixel boundaries; the UI shows the exact size.
+- **Rounded finder eyes are scan-tested, not just aesthetic:** with an
+  independent decoder (rqrr) the outer-eye radius 1.5+ made LEVEL-L codes
+  fail (format info around the eyes misread) at some render sizes, while
+  other levels passed — a silent real-world scanning risk. Landed on outer
+  1.25 / hole 0.25 / center 1.0, which decodes at every level × size ×
+  content tested. The read-back suite now guards this permanently.
+- **Wi-Fi password handling:** the password exists only in React state and
+  in the Rust command's RAM (never logged, never written); it is cleared
+  the moment the user leaves the Wi-Fi tab and when the tool unmounts. The
+  payload is built and escaped entirely in Rust.
+- **Website validation is deliberately permissive:** scheme detection via a
+  letters-only prefix before the first `:` (so `example.com:8080/x` stays
+  host:port), `https://` added when missing, whitespace/control chars and
+  empty hosts rejected. No URL crate — a full RFC parser adds binary size
+  for zero scanning benefit; QR scanners just open the string.
