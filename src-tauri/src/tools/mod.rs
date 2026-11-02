@@ -7,10 +7,6 @@
 
 pub mod app_info;
 pub mod error;
-// TEMPORARY (checkpoint 2B): the conversion engine is exercised by unit
-// tests only until checkpoint 2C wires the Tauri commands to it. Remove
-// this attribute then.
-#[allow(dead_code)]
 pub mod image_convert;
 
 pub use error::ToolError;

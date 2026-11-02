@@ -2,9 +2,10 @@
 
 ## Current status
 
-**Prompt 2 (Image Converter) — checkpoint 2B done.** The conversion engine is
-complete and unit-tested (29 tests). UI wiring (progress, cancel, summary)
-arrives in 2C. 2A was verified by the owner with real files.
+**Prompt 2 (Image Converter) — checkpoints 2A–2C done; 2A/2B verified, 2C
+awaiting the owner's manual checklist.** The tool is fully functional: mixed
+batches up to 200 files convert with live per-file progress, cancel, summary
+and folder reveal.
 
 **Prompt 1 (foundation) — complete.** The app shell, tool registry, square-tile
 home screen, 4 placeholder tools, Rust command skeleton, security baseline,
@@ -60,10 +61,33 @@ docs, git and GitHub are all in place.
 - [x] Gates pass: `cargo test`, `cargo fmt --check`,
       `cargo clippy -- -D warnings`, `npm run build`
 
-### Checkpoint 2C (next) — full wiring
+### Checkpoint 2C (this commit) — full wiring
 
-Ordered start with bounded parallel workers, progress reporting, per-file
-status, cancel, summary, Open output folder, polish, docs.
+- [x] `convert_files` command: bounded worker pool (CPU cores, capped at 4),
+      files START in list order (shared index), one failing file never stops
+      the batch
+- [x] Progress via a Tauri 2 `Channel`: per-file `converting`/`done`/
+      `failed`/`skipped` events in list order; overall progress bar in the UI
+- [x] `cancel_conversion` command: stops starting new files, running ones
+      finish, unstarted files are marked Skipped ("cancelled")
+- [x] Final summary: converted / failed / skipped counts, total size before
+      → after
+- [x] "Open output folder" via `reveal_outputs` (Explorer shows the output
+      files selected); button only shown when all outputs share one folder
+- [x] UI states: Empty → Ready → Converting (options/list locked, Cancel) →
+      Done (Convert more resets the list, Back stays in the header)
+- [x] Probe command from 2A removed (real conversion replaced it)
+- [x] Gates pass: `npm run build`, `cargo fmt --check`,
+      `cargo clippy -- -D warnings`, `cargo test` (29 tests)
+
+### Manual checklist (owner)
+
+Covered in the Prompt 2 hand-off message: 1 file, 10 files, 100 mixed files,
+over-the-limit message, corrupted file, non-image renamed to .jpg, very large
+image, transparent PNG → JPEG with background, rotated phone photo, Persian
+name, path with spaces, missing/read-only output folder, name collisions,
+same-format re-compression, animated GIF note, cancel mid-batch, closing the
+app mid-batch, light/dark theme.
 
 ## Finished
 
@@ -107,8 +131,8 @@ status, cancel, summary, Open output folder, polish, docs.
 
 ## Next steps
 
-1. **Prompt 2 — Image Converter**: 2A + 2B done. Next: 2C (parallel
-   pipeline, progress, cancel, summary, docs polish).
+1. **Prompt 2 — Image Converter**: code complete (2A–2C). Owner runs the
+   manual checklist; any findings go here.
 2. Later tools: QR Code Generator, Folder Icon Changer, Encrypted Notes
    (needs Persian/RTL text support; secret state only in Rust).
 3. Installer work (separate prompts): NSIS x64 + ARM64, icons, versioning,

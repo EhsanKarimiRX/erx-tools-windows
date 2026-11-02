@@ -1,14 +1,15 @@
 import { useCallback, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import DropZone from "../../shared/DropZone";
+import ProgressBar from "../../shared/ProgressBar";
 import FileList from "./FileList";
 import OptionsPanel from "./OptionsPanel";
-import type { ConvertOptions, FileEntry, InspectedFile } from "./types";
-import { MAX_FILES, SUPPORTED_INPUT } from "./types";
+import type { BatchSummary, ConvertOptions, FileEntry, InspectedFile, ProgressEvent } from "./types";
+import { MAX_FILES, SUPPORTED_INPUT, formatBytes } from "./types";
 import "./image-converter.css";
 
-/** Phase of the tool; 2A covers empty + ready, 2C adds converting + done. */
-type Phase = "empty" | "ready";
+/** Phase of the tool screen. */
+type Phase = "empty" | "ready" | "converting" | "done";
 
 /** Turns anything thrown by invoke into a short display string. */
 function errorText(error: unknown): string {
@@ -23,7 +24,14 @@ function summarize(items: string[]): string {
   return items.length > 3 ? `${shown} — and ${items.length - 3} more` : shown;
 }
 
-/** Image Converter: drop or pick files, review the list, choose options. */
+/** The folder part of an absolute path (Windows or POSIX separators). */
+function parentFolder(path: string): string | null {
+  const index = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  return index > 0 ? path.slice(0, index) : null;
+}
+
+/** Image Converter: drop or pick files, review the list, choose options,
+ * convert with live progress, cancel, open the results. */
 export default function ImageConverter() {
   const [phase, setPhase] = useState<Phase>("empty");
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -35,12 +43,16 @@ export default function ImageConverter() {
     outputFolder: null,
   });
   const [busy, setBusy] = useState(false);
-  const [probeResult, setProbeResult] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [summary, setSummary] = useState<BatchSummary | null>(null);
+
+  const converting = phase === "converting";
+  const locked = busy; // list edits + options are locked while a batch runs
 
   /** Classifies dropped/picked paths in Rust and merges them into the list. */
   const addFiles = useCallback(
     async (paths: string[]) => {
-      if (paths.length === 0 || busy) return;
+      if (paths.length === 0 || locked) return;
       setBusy(true);
       try {
         const inspected = await invoke<InspectedFile[]>("inspect_files", { paths });
@@ -101,18 +113,18 @@ export default function ImageConverter() {
         setBusy(false);
       }
     },
-    [busy, entries],
+    [entries, locked],
   );
 
   const browse = useCallback(async () => {
-    if (busy) return;
+    if (locked) return;
     try {
       const picked = await invoke<string[] | null>("pick_image_files");
       if (picked) await addFiles(picked);
     } catch (error) {
       setNotes([`Could not open the file dialog: ${errorText(error)}`]);
     }
-  }, [addFiles, busy]);
+  }, [addFiles, locked]);
 
   const removeFile = (path: string) => {
     const next = entries.filter((entry) => entry.path !== path);
@@ -126,33 +138,97 @@ export default function ImageConverter() {
   const clearAll = () => {
     setEntries([]);
     setNotes([]);
-    setProbeResult(null);
+    setSummary(null);
     setPhase("empty");
   };
 
-  /** 2A: proves the JS → Rust bridge with the real options payload. The
-   * actual conversion pipeline replaces this in checkpoint 2C. */
+  /** Runs the batch: every status change arrives in list order through the
+   * channel; the invoke resolves with the final summary. */
   const convert = async () => {
     if (entries.length === 0 || busy) return;
     setBusy(true);
-    setProbeResult(null);
+    setCancelling(false);
+    setSummary(null);
+    setPhase("converting");
+    setEntries((prev) =>
+      prev.map((entry) => ({ ...entry, status: "waiting", outputPath: undefined, outputSize: undefined })),
+    );
     try {
-      const result = await invoke<string>("probe_conversion", {
-        count: entries.length,
+      const channel = new Channel<ProgressEvent>();
+      channel.onmessage = (event) => {
+        setEntries((prev) =>
+          prev.map((entry, index) => {
+            if (index !== event.index) return entry;
+            return {
+              ...entry,
+              status: event.status,
+              note: event.reason ?? entry.note,
+              outputPath: event.outputPath ?? undefined,
+              outputSize: event.outputSize ?? undefined,
+            };
+          }),
+        );
+      };
+      const result = await invoke<BatchSummary>("convert_files", {
+        paths: entries.map((entry) => entry.path),
         options: {
           format: options.format,
           jpegQuality: options.jpegQuality,
           background: options.background,
           outputFolder: options.outputFolder,
         },
+        onProgress: channel,
       });
-      setProbeResult(result);
+      setSummary(result);
+      setPhase("done");
     } catch (error) {
-      setProbeResult(`Error: ${errorText(error)}`);
+      setNotes([`Conversion could not start: ${errorText(error)}`]);
+      setEntries((prev) => prev.map((entry) => ({ ...entry, status: "ready" })));
+      setPhase("ready");
     } finally {
       setBusy(false);
+      setCancelling(false);
     }
   };
+
+  const cancel = async () => {
+    if (!converting) return;
+    setCancelling(true);
+    try {
+      await invoke("cancel_conversion");
+    } catch (error) {
+      setNotes([`Could not cancel: ${errorText(error)}`]);
+    }
+  };
+
+  /** Back to the ready state, keeping the file list for another round. */
+  const convertMore = () => {
+    setSummary(null);
+    setEntries((prev) => prev.map((entry) => ({ ...entry, status: "ready" })));
+    setPhase("ready");
+  };
+
+  const outputPaths = entries
+    .map((entry) => entry.outputPath)
+    .filter((path): path is string => Boolean(path));
+
+  const allInOneFolder =
+    outputPaths.length > 0 &&
+    outputPaths.every((path) => parentFolder(path) === parentFolder(outputPaths[0]));
+
+  const openOutputFolder = async () => {
+    try {
+      await invoke("reveal_outputs", { paths: outputPaths });
+    } catch (error) {
+      setNotes([`Could not open the folder: ${errorText(error)}`]);
+    }
+  };
+
+  const total = entries.length;
+  const finished = entries.filter((entry) =>
+    ["done", "failed", "skipped"].includes(entry.status),
+  ).length;
+  const inputBytes = entries.reduce((sum, entry) => sum + entry.sizeBytes, 0);
 
   return (
     <div className="ic">
@@ -179,7 +255,7 @@ export default function ImageConverter() {
               hint={`Formats: ${SUPPORTED_INPUT}`}
               onFiles={addFiles}
               onBrowse={browse}
-              disabled={busy}
+              disabled={locked}
             />
 
             {notes.length > 0 && (
@@ -194,23 +270,70 @@ export default function ImageConverter() {
               entries={entries}
               onRemove={removeFile}
               onClear={clearAll}
-              disabled={busy}
+              disabled={locked}
             />
 
-            <div className="ic-actions">
-              <button
-                type="button"
-                className="button-primary"
-                onClick={convert}
-                disabled={busy || entries.length === 0}
-              >
-                Convert {entries.length} file{entries.length === 1 ? "" : "s"}
-              </button>
-              {probeResult && <p className="ic-probe">{probeResult}</p>}
-            </div>
+            {converting && (
+              <div className="ic-progress-row">
+                <ProgressBar
+                  value={finished}
+                  max={total}
+                  label="Overall conversion progress"
+                />
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={cancel}
+                  disabled={cancelling}
+                >
+                  {cancelling ? "Cancelling…" : "Cancel"}
+                </button>
+              </div>
+            )}
+
+            {phase === "ready" && (
+              <div className="ic-actions">
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={convert}
+                  disabled={busy || entries.length === 0}
+                >
+                  Convert {entries.length} file{entries.length === 1 ? "" : "s"}
+                </button>
+              </div>
+            )}
+
+            {phase === "done" && summary && (
+              <div className="ic-done">
+                <p className="ic-summary">
+                  Converted {summary.converted} · Failed {summary.failed} ·
+                  Skipped {summary.skipped} · {formatBytes(inputBytes)} →{" "}
+                  {formatBytes(summary.outputBytes)}
+                </p>
+                <div className="ic-actions">
+                  <button
+                    type="button"
+                    className="button-primary"
+                    onClick={convertMore}
+                  >
+                    Convert more
+                  </button>
+                  {allInOneFolder && (
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={openOutputFolder}
+                    >
+                      Open output folder
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          <OptionsPanel options={options} onChange={setOptions} disabled={busy} />
+          <OptionsPanel options={options} onChange={setOptions} disabled={locked} />
         </div>
       )}
     </div>

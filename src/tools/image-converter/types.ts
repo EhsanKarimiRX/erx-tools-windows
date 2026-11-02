@@ -34,6 +34,9 @@ export interface FileEntry {
   animated: boolean;
   status: FileStatus;
   note: string | null;
+  /** Where the converted file was written (set on "done"). */
+  outputPath?: string;
+  outputSize?: number;
 }
 
 /** Mirrors the Rust `InspectedFile` struct. */
@@ -45,6 +48,23 @@ export interface InspectedFile {
   format: string | null;
   animated: boolean;
   reason: string | null;
+}
+
+/** Mirrors the Rust `ProgressEvent` pushed through the channel. */
+export interface ProgressEvent {
+  index: number;
+  status: "converting" | "done" | "failed" | "skipped";
+  outputPath: string | null;
+  outputSize: number | null;
+  reason: string | null;
+}
+
+/** Mirrors the Rust `BatchSummary` returned when the batch finishes. */
+export interface BatchSummary {
+  converted: number;
+  failed: number;
+  skipped: number;
+  outputBytes: number;
 }
 
 /** Human-readable byte size, e.g. "12.4 MB". */

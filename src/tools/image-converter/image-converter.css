@@ -150,10 +150,25 @@
   font-size: 11.5px;
 }
 
-/* Status colors arrive with the real pipeline (checkpoint 2C). */
-.ic-status-done .ic-status-chip {
+/* Per-file status colors. */
+.ic-status-converting .ic-status-chip {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.ic-status-done .ic-status-chip {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+
+.ic-status-failed .ic-status-chip {
+  border-color: #d13438;
+  color: #d13438;
+}
+
+.ic-status-waiting .ic-status-chip,
+.ic-status-skipped .ic-status-chip {
+  border-style: dashed;
 }
 
 .ic-remove {
@@ -276,8 +291,29 @@
   flex-wrap: wrap;
 }
 
-.ic-probe {
+/* ----- Converting / done states ----- */
+
+.ic-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ic-progress-row .progress {
+  flex: 1;
+}
+
+.ic-done {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.ic-summary {
   margin: 0;
-  color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: 13.5px;
 }

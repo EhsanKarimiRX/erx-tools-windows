@@ -147,3 +147,18 @@ the bottom of their section.
 - **Limits are enforced at two points:** file size + header pixel count at
   inspection (before the batch), and a hard pixel guard + decoder
   allocation cap in the engine right before decode (decompression bombs).
+- **Batch progress uses a Tauri 2 `Channel`** (`tauri::ipc::Channel`), the
+  currently recommended mechanism for command → frontend streaming — no
+  global event bus, no extra permissions. Events carry the list index, so
+  the UI always shows results in list order regardless of completion order.
+- **Worker pool is bounded at 4** (`min(CPU cores, 4)`): one image can
+  decode into ~320 MB of pixels, so unbounded parallelism could exhaust
+  memory; files are STARTED in list order via a shared atomic index.
+- **Cancel is a managed `AtomicBool`** (`BatchState`, command
+  `cancel_conversion`): workers stop pulling new files, running ones
+  finish, unstarted files are reported as Skipped; outputs already written
+  are kept. The flag is reset when a new batch starts.
+- **"Open output folder" uses `tauri-plugin-opener` from the Rust side only**
+  (`reveal_item_in_dir`, showing the output files selected in Explorer).
+  Like the dialog plugin, the webview receives no opener permission;
+  capabilities stay `core:default`.

@@ -6,6 +6,10 @@ pub fn run() {
         // Native file dialogs for tools that pick files/folders. Used from
         // Rust commands only, so no webview permission is granted for it.
         .plugin(tauri_plugin_dialog::init())
+        // "Open output folder" support (reveal in Explorer). Also used from
+        // Rust commands only; the webview gets no opener permission.
+        .plugin(tauri_plugin_opener::init())
+        .manage(tools::image_convert::commands::BatchState::default())
         .invoke_handler(tauri::generate_handler![
             // Central command registry: every command the frontend can call
             // is listed here exactly once. Adding a tool backend means adding
@@ -15,7 +19,9 @@ pub fn run() {
             tools::image_convert::commands::inspect_files,
             tools::image_convert::commands::pick_image_files,
             tools::image_convert::commands::pick_output_folder,
-            tools::image_convert::commands::probe_conversion,
+            tools::image_convert::commands::convert_files,
+            tools::image_convert::commands::cancel_conversion,
+            tools::image_convert::commands::reveal_outputs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

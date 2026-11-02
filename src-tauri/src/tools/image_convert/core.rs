@@ -475,8 +475,8 @@ pub fn parse_hex_rgb(text: &str) -> Option<RgbColor> {
 }
 
 /// Fully validated conversion options — the single source of truth shared by
-/// the command layer and (from 2B) the conversion engine.
-#[derive(Debug)]
+/// the command layer and the conversion engine.
+#[derive(Debug, Clone)]
 pub struct ConvertOptions {
     pub format: OutputFormat,
     /// JPEG quality, 1-100 (WebP output is lossless in v1, so no quality).
@@ -528,26 +528,6 @@ impl ConvertOptions {
             background,
             output_folder,
         })
-    }
-
-    /// One-line English summary for messages.
-    pub fn describe(&self) -> String {
-        match self.format {
-            OutputFormat::Jpeg => format!(
-                "JPEG at quality {}{}",
-                self.jpeg_quality,
-                self.output_folder
-                    .as_ref()
-                    .map_or_else(String::new, |p| format!(" into {}", p.display()))
-            ),
-            other => format!(
-                "{} (lossless){}",
-                other.label(),
-                self.output_folder
-                    .as_ref()
-                    .map_or_else(String::new, |p| format!(" into {}", p.display()))
-            ),
-        }
     }
 }
 
