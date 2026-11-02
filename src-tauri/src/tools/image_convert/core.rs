@@ -45,8 +45,21 @@ impl InputFormat {
         }
     }
 
+    /// True when this input format is the same kind as the output format
+    /// (drives the `name-converted.ext` re-compression naming rule).
+    pub fn matches_output(self, output: OutputFormat) -> bool {
+        matches!(
+            (self, output),
+            (InputFormat::Jpeg, OutputFormat::Jpeg)
+                | (InputFormat::Png, OutputFormat::Png)
+                | (InputFormat::Webp, OutputFormat::Webp)
+                | (InputFormat::Bmp, OutputFormat::Bmp)
+                | (InputFormat::Tiff, OutputFormat::Tiff)
+        )
+    }
+
     /// Maps a content-sniffed `image` crate format to ours, if supported.
-    fn from_image_format(format: image::ImageFormat) -> Option<Self> {
+    pub(crate) fn from_image_format(format: image::ImageFormat) -> Option<Self> {
         match format {
             image::ImageFormat::Jpeg => Some(InputFormat::Jpeg),
             image::ImageFormat::Png => Some(InputFormat::Png),
@@ -183,7 +196,7 @@ pub fn inspect_path(path: &Path) -> Inspection {
 }
 
 /// Friendly name for a format `image` knows but this tool does not accept.
-fn friendly_format_name(format: image::ImageFormat) -> &'static str {
+pub fn friendly_format_name(format: image::ImageFormat) -> &'static str {
     match format {
         image::ImageFormat::Avif => "AVIF",
         image::ImageFormat::Dds => "DDS",
@@ -264,6 +277,10 @@ fn gif_is_animated(path: &Path) -> std::io::Result<bool> {
     let mut lsd = [0u8; 7]; // logical screen descriptor
     if !read_full(&mut reader, &mut lsd)? {
         return Ok(false);
+    }
+    if lsd[4] & 0x80 != 0 {
+        // A global color table precedes all blocks.
+        skip_bytes(&mut reader, 3u64 << ((lsd[4] & 0x07) + 1))?;
     }
 
     let mut descriptors = 0;
@@ -421,8 +438,6 @@ impl OutputFormat {
     }
 
     /// File extension used for outputs.
-    // First used by the conversion engine in checkpoint 2B.
-    #[allow(dead_code)]
     pub fn extension(self) -> &'static str {
         match self {
             OutputFormat::Jpeg => "jpg",
@@ -436,8 +451,6 @@ impl OutputFormat {
     /// True when the format cannot store alpha, so transparent images must
     /// be flattened onto the background color first. (32-bit BMP exists but
     /// is poorly supported elsewhere; v1 always flattens for BMP.)
-    // First used by the conversion engine in checkpoint 2B.
-    #[allow(dead_code)]
     pub fn needs_flattening(self) -> bool {
         matches!(self, OutputFormat::Jpeg | OutputFormat::Bmp)
     }
@@ -469,8 +482,6 @@ pub struct ConvertOptions {
     /// JPEG quality, 1-100 (WebP output is lossless in v1, so no quality).
     pub jpeg_quality: u8,
     /// Background used when flattening transparency.
-    // First used by the conversion engine in checkpoint 2B.
-    #[allow(dead_code)]
     pub background: RgbColor,
     /// `None` = same folder as each source file.
     pub output_folder: Option<PathBuf>,
@@ -537,5 +548,155 @@ impl ConvertOptions {
                     .map_or_else(String::new, |p| format!(" into {}", p.display()))
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn parses_hex_colors() {
+        assert_eq!(parse_hex_rgb("#ffffff"), Some(RgbColor(255, 255, 255)));
+        assert_eq!(parse_hex_rgb("#1A2b3C"), Some(RgbColor(0x1a, 0x2b, 0x3c)));
+        assert_eq!(parse_hex_rgb("ffffff"), None);
+        assert_eq!(parse_hex_rgb("#fff"), None);
+        assert_eq!(parse_hex_rgb("#12345"), None);
+        assert_eq!(parse_hex_rgb("#gggggg"), None);
+    }
+
+    #[test]
+    fn validates_ui_options() {
+        let valid = ConvertOptions::from_ui("jpeg", 85, "#ffffff", None).unwrap();
+        assert_eq!(valid.format, OutputFormat::Jpeg);
+
+        assert!(ConvertOptions::from_ui("avif", 85, "#ffffff", None).is_err());
+        assert!(ConvertOptions::from_ui("png", 0, "#ffffff", None).is_err());
+        assert!(ConvertOptions::from_ui("png", 101, "#ffffff", None).is_err());
+        assert!(ConvertOptions::from_ui("png", 85, "#fff", None).is_err());
+        assert!(ConvertOptions::from_ui("png", 85, "#ffffff", Some("relative\\path")).is_err());
+        assert!(ConvertOptions::from_ui("png", 85, "#ffffff", Some("D:/does/not/exist")).is_err());
+
+        let absolute = ConvertOptions::from_ui(
+            "png",
+            85,
+            "#ffffff",
+            Some(std::env::temp_dir().to_str().unwrap()),
+        )
+        .unwrap();
+        assert!(absolute.output_folder.is_some());
+    }
+
+    #[test]
+    fn same_format_detection_drives_naming() {
+        assert!(InputFormat::Jpeg.matches_output(OutputFormat::Jpeg));
+        assert!(InputFormat::Tiff.matches_output(OutputFormat::Tiff));
+        assert!(!InputFormat::Jpeg.matches_output(OutputFormat::Png));
+        assert!(!InputFormat::Gif.matches_output(OutputFormat::Tiff));
+    }
+
+    /// Fresh per-test directory under the system temp dir.
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("erx-core-test-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_bytes(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = dir.join(name);
+        let mut file = File::create(&path).unwrap();
+        file.write_all(bytes).unwrap();
+        path
+    }
+
+    fn tiny_png_bytes() -> Vec<u8> {
+        let image = image::DynamicImage::ImageRgb8(image::ImageBuffer::from_fn(2, 2, |_, _| {
+            image::Rgb([10, 20, 30])
+        }));
+        let mut out = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    }
+
+    #[test]
+    fn detects_format_from_content_not_extension() {
+        let dir = temp_dir("rename");
+        // PNG bytes inside a .jpg name must be detected as PNG.
+        let renamed = write_bytes(&dir, "photo.jpg", &tiny_png_bytes());
+        match inspect_path(&renamed) {
+            Inspection::Image(info) => assert_eq!(info.format, InputFormat::Png),
+            other => panic!("expected image, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn flags_animated_gifs() {
+        let dir = temp_dir("gif");
+        let frame = image::ImageBuffer::from_fn(4, 4, |_, _| image::Rgba([1, 2, 3, 255]));
+        let bytes = {
+            let mut out = std::io::Cursor::new(Vec::new());
+            {
+                let mut encoder = image::codecs::gif::GifEncoder::new(&mut out);
+                encoder
+                    .encode_frame(image::Frame::new(frame.clone()))
+                    .unwrap();
+                encoder.encode_frame(image::Frame::new(frame)).unwrap();
+            }
+            out.into_inner()
+        };
+        let animated = write_bytes(&dir, "anim.gif", &bytes);
+        match inspect_path(&animated) {
+            Inspection::Image(info) => assert!(info.animated),
+            other => panic!("expected image, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rejects_empty_files_and_folders() {
+        let dir = temp_dir("invalid");
+        let empty = write_bytes(&dir, "empty.png", &[]);
+        assert!(matches!(inspect_path(&empty), Inspection::Invalid { .. }));
+        assert!(matches!(inspect_path(&dir), Inspection::Invalid { .. }));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rejects_damaged_headers() {
+        let dir = temp_dir("damaged");
+        let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        bytes.extend([0u8; 64]);
+        let damaged = write_bytes(&dir, "damaged.png", &bytes);
+        match inspect_path(&damaged) {
+            Inspection::Invalid { reason } => assert!(reason.contains("damaged")),
+            other => panic!("expected invalid, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rejects_oversized_headers() {
+        let dir = temp_dir("huge");
+        let mut bytes = Vec::new();
+        bytes.extend(b"BM");
+        bytes.extend(0u32.to_le_bytes());
+        bytes.extend(0u32.to_le_bytes());
+        bytes.extend(54u32.to_le_bytes());
+        bytes.extend(40u32.to_le_bytes());
+        bytes.extend(12000u32.to_le_bytes());
+        bytes.extend(12000u32.to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(24u16.to_le_bytes());
+        bytes.extend(0u32.to_le_bytes());
+        bytes.extend([0u8; 20]);
+        let huge = write_bytes(&dir, "huge.bmp", &bytes);
+        match inspect_path(&huge) {
+            Inspection::Invalid { reason } => assert!(reason.contains("MP limit")),
+            other => panic!("expected invalid, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

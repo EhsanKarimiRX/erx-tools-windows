@@ -5,4 +5,7 @@
 //! - `commands`: the thin Tauri command layer the webview calls.
 
 pub mod commands;
+pub mod convert;
 pub mod core;
+pub mod naming;
+pub mod pipeline;

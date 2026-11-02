@@ -2,9 +2,9 @@
 
 ## Current status
 
-**Prompt 2 (Image Converter) — checkpoint 2A done, awaiting user verification.**
-The tool's UI is complete and wired to real Rust commands for inspection,
-dialogs and a bridge probe. Actual conversion arrives in 2B/2C.
+**Prompt 2 (Image Converter) — checkpoint 2B done.** The conversion engine is
+complete and unit-tested (29 tests). UI wiring (progress, cancel, summary)
+arrives in 2C. 2A was verified by the owner with real files.
 
 **Prompt 1 (foundation) — complete.** The app shell, tool registry, square-tile
 home screen, 4 placeholder tools, Rust command skeleton, security baseline,
@@ -12,7 +12,7 @@ docs, git and GitHub are all in place.
 
 ## Prompt 2 — Image Converter
 
-### Checkpoint 2A (this commit) — UI + file intake + bridge
+### Checkpoint 2A (verified by owner) — UI + file intake + bridge
 
 - [x] Cleanups: `authors` = EhsanKarimiRX, unused `serde_json` removed,
       vite IPv4 pin documented in DECISIONS.md
@@ -34,16 +34,33 @@ docs, git and GitHub are all in place.
       (same folder / chosen folder), metadata-removal note
 - [x] Convert button → `probe_conversion` command proving the JS → Rust
       bridge with the real validated options payload
-- [x] Gates pass: `npm run build`, `cargo fmt --check`,
-      `cargo clippy -- -D warnings`
 
-### Checkpoint 2B (next) — conversion core with unit tests
+### Checkpoint 2B (this commit) — conversion core with unit tests
 
-Decode/encode for all supported combinations, alpha flattening, EXIF
-orientation, naming/collision rules, limits, error cases, first-frame
-handling.
+- [x] `convert.rs`: decode → EXIF orientation → alpha flatten → encode,
+      all 6 input × 5 output format combinations; outputs are built in
+      memory so failures never leave partial files
+- [x] Animated GIF/WebP inputs: first frame via the crate's animation API
+      (composited); multi-page TIFF: first page (generic decode)
+- [x] `naming.rs`: `name.newext` → `name (1).newext` collisions,
+      `name-converted.ext` for same-format re-compression, Windows-safe
+      sanitization (forbidden chars, trailing dots/spaces, reserved device
+      names, length cap); Unicode/Persian names preserved
+- [x] `pipeline.rs`: inspect → pick name → convert → write for one file;
+      originals never touched; output cannot escape the chosen folder
+- [x] Limits enforced in the engine: 80 MP pixel guard before decode,
+      decoder allocation cap (belt-and-braces on top of the crate default)
+- [x] 29 unit tests: all 30 format combinations roundtrip (pixel-exact for
+      lossless→lossless), flatten exactness, alpha preservation, EXIF
+      orientation via a hand-crafted TIFF, first-frame handling, naming
+      rules, oversized/damaged/empty/folder rejection, Persian names,
+      option validation
+- [x] Fixed a real inspection bug found by tests: `gif_is_animated` did not
+      skip the global color table
+- [x] Gates pass: `cargo test`, `cargo fmt --check`,
+      `cargo clippy -- -D warnings`, `npm run build`
 
-### Checkpoint 2C (after that) — full wiring
+### Checkpoint 2C (next) — full wiring
 
 Ordered start with bounded parallel workers, progress reporting, per-file
 status, cancel, summary, Open output folder, polish, docs.
@@ -90,9 +107,8 @@ status, cancel, summary, Open output folder, polish, docs.
 
 ## Next steps
 
-1. **Prompt 2 — Image Converter**: 2A done (UI + intake + bridge). Next:
-   2B (conversion core + tests), then 2C (parallel pipeline, progress,
-   cancel, summary).
+1. **Prompt 2 — Image Converter**: 2A + 2B done. Next: 2C (parallel
+   pipeline, progress, cancel, summary, docs polish).
 2. Later tools: QR Code Generator, Folder Icon Changer, Encrypted Notes
    (needs Persian/RTL text support; secret state only in Rust).
 3. Installer work (separate prompts): NSIS x64 + ARM64, icons, versioning,

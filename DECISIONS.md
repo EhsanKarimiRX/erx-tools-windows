@@ -130,5 +130,20 @@ the bottom of their section.
   follow in 2B.
 - **Privacy by construction:** outputs are re-encoded from decoded pixels,
   so no EXIF/GPS/metadata survives; EXIF orientation is applied during
-  conversion (2B) via `ImageDecoder::orientation()` +
+  conversion via `ImageDecoder::orientation()` +
   `DynamicImage::apply_orientation()` (image 0.25.8+).
+- **First frames of animations come from the crate's animation API**
+  (`AnimationDecoder::into_frames`, fully composited) for animated GIF and
+  animated WebP alike — both decode in pure Rust; multi-page TIFF simply
+  uses page 0 of the generic decode.
+- **Outputs are encoded in memory, then written in one `fs::write`.** A
+  failed conversion can never leave a partial output file.
+- **Naming rules live in `naming.rs`:** `name.newext` → `name (1).newext`
+  for collisions, `name-converted.ext` for same-format re-compression.
+  Stems are sanitized against Windows-forbidden characters, trailing
+  dots/spaces, reserved device names (CON, COM1…) and overlong names; the
+  sanitized stem cannot contain path separators, so `Path::join` can never
+  escape the chosen output folder. Unicode/Persian names pass through.
+- **Limits are enforced at two points:** file size + header pixel count at
+  inspection (before the batch), and a hard pixel guard + decoder
+  allocation cap in the engine right before decode (decompression bombs).
