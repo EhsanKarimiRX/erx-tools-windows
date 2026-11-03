@@ -9,28 +9,19 @@ pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
 
 ## PROMPT 4 STATUS
 
-- Last finished sub-step: **4B-3** — the Windows core: `ini.rs`
-  (desktop.ini editor preserving other sections/keys/encoding/line endings
-  byte-exactly; UTF-16 LE BOM, UTF-8 ±BOM, ANSI via byte-exact latin-1
-  round trip; refuses damaged files and duplicate [.ShellClassInfo]
-  sections), `apply.rs` (#[cfg(windows)]): apply writes the content-derived
-  `erx-folder-icon-<8 hex>.ico` (FNV-1a) inside the folder via
-  temp+rename with Hidden+System, sets `IconResource=<name>,0` with a
-  RELATIVE path, adds the folder Read-only attribute (others preserved),
-  removes only our older icon files, targeted SHChangeNotify
-  (UPDATEITEM folder + UPDATEDIR parent, no global broadcast), full
-  rollback on every failure path; restore removes only IconResource keys,
-  deletes only our .ico files, deletes a meaningless desktop.ini and
-  clears Read-only, keeps foreign .ico files and other customizations;
-  inspect = Default / CustomByErx / CustomByOther. Commands
-  `folder_icon_inspect/apply/restore` registered. Tests: 13 ini round-trip
-  tests + 10 temp-dir apply/restore/inspect tests incl. the 100-folder
-  batch, idempotent re-apply, foreign-content preservation and the
-  never-overwrite-a-broken-ini rule. **ARM64 check
-  (`cargo check --target aarch64-pc-windows-msvc`) PASSED.** 189 tests.
-- NEXT STEP: 4B-4 — minimal single-folder UI (Add folder button with
-  Rust-side dialog, Apply + Restore, result message) so the owner can test
-  real Explorer behavior; then the owner runs manual checklist rows 5–12.
+- Last finished sub-step: **4B-4** — minimal single-folder UI: "Add folder"
+  button (native folder dialog from Rust), the picked path with its
+  inspect status line (Default / Icon set by this tool / Custom icon
+  (another program) / Blocked + reason / Warning), Apply icon (uses the
+  current designer settings) and Restore default icon buttons, result
+  message area, buttons disabled while busy. docs/folder-icon-manual-
+  checklist.md created (all 19 rows; rows 5–12 are the 4B focus).
+  **Checkpoint 4B complete — the owner now tests rows 5–12 on real
+  Explorer before 4C starts.**
+- NEXT STEP: owner manual tests (checklist rows 1–12), especially #5/#8
+  (icon appears/changes without logoff) and #7 (relative path survives
+  rename/move). Then 4C-1 (drag & drop, folder list) after any findings
+  are fixed.
 - Known issues: the RELATIVE IconResource path must be verified by the
   owner on real Windows 11 (rename/move test, checklist #7); if it fails,
   fall back to absolute + DECISIONS.md. Whether Explorer refreshes the

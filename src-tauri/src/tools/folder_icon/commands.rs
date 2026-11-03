@@ -3,9 +3,21 @@
 //! `settings.rs`; the webview needs no permissions beyond `core:default`.
 
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
 
 use super::core;
 use crate::tools::ToolError;
+
+/// Opens the native folder picker from the Rust side (no webview dialog
+/// permission). Returns the absolute path, or null on cancel.
+#[tauri::command]
+pub fn folder_icon_pick_folder(app: AppHandle) -> Option<String> {
+    let picked = app.dialog().file().blocking_pick_folder();
+    picked
+        .and_then(|folder| folder.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned())
+}
 
 /// The eligibility verdict in a flat UI-friendly shape.
 #[derive(Debug, Serialize)]
