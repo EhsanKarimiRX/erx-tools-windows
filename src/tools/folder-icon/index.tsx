@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ColorControl from "./ColorControl";
+import FolderList from "./FolderList";
 import PatternControls from "./PatternControls";
-import type { IconSettingsInput, PatternKind } from "./types";
+import type {
+  EligibilityDto,
+  FolderEntry,
+  IconSettingsInput,
+  InspectResult,
+  PatternKind,
+} from "./types";
+import { MAX_FOLDERS } from "./types";
+import DropZone from "../../shared/DropZone";
 import "./folder-icon.css";
 
 /** Preview refresh delay: rapid slider/typing changes don't spam Rust. */
@@ -26,25 +35,12 @@ interface FramePreview {
   dataUrl: string;
 }
 
-/** Eligibility verdict from Rust (flat shape). */
-interface EligibilityDto {
-  status: "allowed" | "warning" | "blocked";
-  reason: string | null;
-  warning: string | null;
-}
-
-/** Inspect result from Rust. */
-interface InspectResult {
-  state: "default" | "custom_by_erx" | "custom_by_other";
-  eligibility: EligibilityDto;
-}
-
 type BusyAction = "pick" | "apply" | "restore" | null;
 
-/** Folder Icon Changer: pick ONE folder (drag & drop + multi-folder batch
- * arrive in 4C), design the icon on the right, then Apply or Restore.
- * Rust does every file operation; the webview only sends paths and
- * validated settings. */
+/** Folder Icon Changer: folders on the left (drag & drop or the native
+ * picker), the icon designer on the right. Apply/Restore run over all
+ * eligible folders sequentially; Rust validates and performs every file
+ * operation. */
 export default function FolderIconChanger() {
   // --- designer state ---
   const [baseColor, setBaseColor] = useState("#0078D4");
@@ -57,13 +53,10 @@ export default function FolderIconChanger() {
   const [preview, setPreview] = useState<PreviewState>({ status: "empty" });
   const requestRef = useRef(0);
 
-  // --- folder state (4B: one folder) ---
-  const [folder, setFolder] = useState<string | null>(null);
-  const [inspect, setInspect] = useState<InspectResult | null>(null);
+  // --- folder list state ---
+  const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [busy, setBusy] = useState<BusyAction>(null);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
+  const [note, setNote] = useState<string | null>(null);
 
   // Live preview: regenerate (debounced) whenever the design changes. A
   // request counter drops responses that arrive out of order.
@@ -100,37 +93,116 @@ export default function FolderIconChanger() {
     return () => window.clearTimeout(timer);
   }, [baseColor, pattern, patternColor, patternSize, patternOpacity]);
 
-  /** Re-reads the folder's icon state and eligibility. */
-  function refreshInspect(path: string) {
-    invoke<InspectResult>("folder_icon_inspect", { path })
-      .then((info) => setInspect(info))
-      .catch((error) => {
-        setInspect(null);
-        setResult({ ok: false, text: errorText(error) });
-      });
+  /** Adds paths (from the dialog or a drop), skipping duplicates and
+   * enforcing the cap. Each path is inspected by Rust: files, protected
+   * and otherwise blocked locations land in the list as Blocked with the
+   * reason. */
+  function addPaths(paths: string[]) {
+    setNote(null);
+    setFolders((current) => {
+      const known = new Set(current.map((entry) => entry.path.toLowerCase()));
+      const added: FolderEntry[] = [];
+      let duplicates = 0;
+      let overflow = 0;
+      for (const path of paths) {
+        if (current.length + added.length >= MAX_FOLDERS) {
+          overflow += 1;
+          continue;
+        }
+        const key = path.toLowerCase();
+        if (known.has(key)) {
+          duplicates += 1;
+          continue;
+        }
+        known.add(key);
+        added.push({
+          path,
+          status: "checking",
+          detail: null,
+          inspectState: null,
+        });
+      }
+      if (duplicates > 0 || overflow > 0) {
+        const parts: string[] = [];
+        if (duplicates > 0) {
+          parts.push(
+            `Skipped ${duplicates} duplicate ${duplicates === 1 ? "folder" : "folders"} already in the list.`,
+          );
+        }
+        if (overflow > 0) {
+          parts.push(`Only ${MAX_FOLDERS} folders per batch — ${overflow} not added.`);
+        }
+        setNote(parts.join(" "));
+      }
+      if (added.length === 0) return current;
+      // Inspect each new path; keep the response matching by path.
+      for (const entry of added) {
+        invoke<InspectResult>("folder_icon_inspect", { path: entry.path })
+          .then((info) => {
+            setFolders((list) =>
+              list.map((item) =>
+                item.path === entry.path
+                  ? {
+                      ...item,
+                      status: statusOf(info.eligibility),
+                      detail: detailOf(info.eligibility),
+                      inspectState: info.state,
+                    }
+                  : item,
+              ),
+            );
+          })
+          .catch((error) => {
+            setFolders((list) =>
+              list.map((item) =>
+                item.path === entry.path
+                  ? { ...item, status: "failed", detail: errorText(error) }
+                  : item,
+              ),
+            );
+          });
+      }
+      return [...current, ...added];
+    });
   }
 
-  async function pickFolder() {
+  async function pickFolders() {
     setBusy("pick");
-    setResult(null);
     try {
-      const picked = await invoke<string | null>("folder_icon_pick_folder");
-      if (picked) {
-        setFolder(picked);
-        setInspect(null);
-        refreshInspect(picked);
-      }
+      const picked = await invoke<string[] | null>("folder_icon_pick_folders");
+      if (picked && picked.length > 0) addPaths(picked);
     } catch (error) {
-      setResult({ ok: false, text: errorText(error) });
+      setNote(errorText(error));
     } finally {
       setBusy(null);
     }
   }
 
-  async function apply() {
-    if (folder === null) return;
+  function removeFolder(index: number) {
+    setNote(null);
+    setFolders((list) => list.filter((_, i) => i !== index));
+  }
+
+  function clearList() {
+    setNote(null);
+    setFolders([]);
+  }
+
+  function patchFolder(path: string, patch: Partial<FolderEntry>) {
+    setFolders((list) =>
+      list.map((item) => (item.path === path ? { ...item, ...patch } : item)),
+    );
+  }
+
+  /** Applies the current design to every Ready/Warning folder,
+   * sequentially (never parallel). Each row updates as its result lands. */
+  async function applyAll() {
+    const targets = folders.filter(
+      (entry) => entry.status === "ready" || entry.status === "warning",
+    );
+    if (targets.length === 0) return;
     setBusy("apply");
-    setResult(null);
+    setNote(null);
     const settings: IconSettingsInput = {
       baseColor,
       pattern,
@@ -138,35 +210,63 @@ export default function FolderIconChanger() {
       patternSize,
       patternOpacity,
     };
-    try {
-      const message = await invoke<string>("folder_icon_apply", {
-        path: folder,
-        settings,
-      });
-      setResult({ ok: true, text: message });
-    } catch (error) {
-      setResult({ ok: false, text: errorText(error) });
-    } finally {
-      setBusy(null);
-      refreshInspect(folder);
+    let applied = 0;
+    let failed = 0;
+    for (const entry of targets) {
+      patchFolder(entry.path, { status: "applying", detail: null });
+      try {
+        await invoke("folder_icon_apply", { path: entry.path, settings });
+        applied += 1;
+        patchFolder(entry.path, {
+          status: "applied",
+          detail: null,
+          inspectState: "custom_by_erx",
+        });
+      } catch (error) {
+        failed += 1;
+        patchFolder(entry.path, { status: "failed", detail: errorText(error) });
+      }
     }
+    setBusy(null);
+    setNote(
+      `Applied ${applied} of ${targets.length}` +
+        (failed > 0 ? ` — ${failed} failed (see the list).` : "."),
+    );
   }
 
-  async function restore() {
-    if (folder === null) return;
+  /** Restores the default icon on every eligible folder. */
+  async function restoreAll() {
+    const targets = folders.filter(
+      (entry) =>
+        entry.status === "ready" ||
+        entry.status === "warning" ||
+        entry.status === "applied",
+    );
+    if (targets.length === 0) return;
     setBusy("restore");
-    setResult(null);
-    try {
-      const message = await invoke<string>("folder_icon_restore", {
-        path: folder,
-      });
-      setResult({ ok: true, text: message });
-    } catch (error) {
-      setResult({ ok: false, text: errorText(error) });
-    } finally {
-      setBusy(null);
-      refreshInspect(folder);
+    setNote(null);
+    let restored = 0;
+    let failed = 0;
+    for (const entry of targets) {
+      patchFolder(entry.path, { status: "applying", detail: null });
+      try {
+        await invoke<string>("folder_icon_restore", { path: entry.path });
+        restored += 1;
+        patchFolder(entry.path, {
+          status: "ready",
+          detail: null,
+          inspectState: "default",
+        });
+      } catch (error) {
+        failed += 1;
+        patchFolder(entry.path, { status: "failed", detail: errorText(error) });
+      }
     }
+    setBusy(null);
+    setNote(
+      `Restored ${restored} of ${targets.length}` +
+        (failed > 0 ? ` — ${failed} failed (see the list).` : "."),
+    );
   }
 
   const previewArea = (() => {
@@ -208,95 +308,82 @@ export default function FolderIconChanger() {
     );
   })();
 
-  // Folder panel: eligibility + current icon state as one status line.
-  const eligibility = inspect?.eligibility ?? null;
-  const stateNames: Record<InspectResult["state"], string> = {
-    default: "Default icon",
-    custom_by_erx: "Icon set by this tool",
-    custom_by_other: "Custom icon (another program)",
-  };
-  const statusLine = (() => {
-    if (folder === null) return null;
-    if (eligibility === null) return "Checking the folder…";
-    if (eligibility.status === "blocked") {
-      return `Blocked — ${eligibility.reason ?? ""}`;
-    }
-    if (eligibility.status === "warning") {
-      return `Warning — ${eligibility.warning ?? ""}`;
-    }
-    return inspect ? stateNames[inspect.state] : null;
-  })();
-  const canApply =
-    folder !== null && eligibility?.status !== "blocked" && busy === null;
-  const canRestore = folder !== null && busy === null;
+  const readyCount = folders.filter(
+    (entry) => entry.status === "ready" || entry.status === "warning",
+  ).length;
+  const restorableCount = folders.filter(
+    (entry) =>
+      entry.status === "ready" ||
+      entry.status === "warning" ||
+      entry.status === "applied",
+  ).length;
+  const working = busy !== null;
 
   return (
     <div className="fi-layout">
-      {/* ----- left: one folder (drop zone + list arrive in 4C) ----- */}
-      <section className="fi-main" aria-label="Folder">
-        <div className="fi-folder-panel">
-          <button
-            type="button"
-            className="button-primary fi-add-button"
-            onClick={pickFolder}
-            disabled={busy !== null}
-          >
-            {busy === "pick" ? "Opening…" : "Add folder"}
-          </button>
-
-          {folder !== null && (
-            <>
-              <p
-                className="fi-folder-path"
-                title={folder}
-                aria-label="Selected folder"
-              >
-                {folder}
-              </p>
-              <p
-                className={
-                  eligibility?.status === "blocked"
-                    ? "fi-folder-status fi-status-blocked"
-                    : "fi-folder-status"
+      {/* ----- left: drop zone + folder list ----- */}
+      <section className="fi-main" aria-label="Folders">
+        <DropZone
+          label="Drag & drop folders here"
+          hint="Files and protected locations are checked and marked Blocked."
+          browseLabel="Add folder"
+          onBrowse={pickFolders}
+          onFiles={addPaths}
+          disabled={working}
+        />
+        {folders.length > 0 ? (
+          <>
+            <FolderList
+              folders={folders}
+              onRemove={removeFolder}
+              disabled={working}
+            />
+            <div className="fi-folder-actions">
+              <button
+                type="button"
+                className="button-primary"
+                onClick={applyAll}
+                disabled={working || readyCount === 0}
+                title={
+                  readyCount === 0 ? "No ready folders in the list" : undefined
                 }
-                aria-live="polite"
               >
-                {statusLine}
-              </p>
-              <div className="fi-folder-actions">
-                <button
-                  type="button"
-                  className="button-primary"
-                  onClick={apply}
-                  disabled={!canApply}
-                >
-                  {busy === "apply" ? "Applying…" : "Apply icon"}
-                </button>
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={restore}
-                  disabled={!canRestore}
-                >
-                  {busy === "restore" ? "Restoring…" : "Restore default icon"}
-                </button>
-              </div>
-            </>
-          )}
-
-          {result !== null && (
-            <p
-              className={result.ok ? "fi-result" : "fi-result fi-result-error"}
-              role={result.ok ? "status" : "alert"}
-            >
-              {result.text}
-            </p>
-          )}
-        </div>
-        <p className="fi-placeholder-note">
-          Drag &amp; drop and multiple folders arrive with the next update of
-          this tool.
-        </p>
+                {busy === "apply" ? "Applying…" : "Apply icon"}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={restoreAll}
+                disabled={working || restorableCount === 0}
+                title={
+                  restorableCount === 0
+                    ? "No restorable folders in the list"
+                    : undefined
+                }
+              >
+                {busy === "restore" ? "Restoring…" : "Restore default icon"}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={clearList}
+                disabled={working}
+              >
+                Clear list
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="fi-placeholder-note">
+            Add one or more folders to change their icons. Nothing is written
+            until you press Apply icon.
+          </p>
+        )}
+        {note !== null && (
+          <p className="fi-note" role="status">
+            {note}
+          </p>
+        )}
       </section>
 
       {/* ----- right: preview + designer ----- */}
@@ -343,4 +430,17 @@ export default function FolderIconChanger() {
       </section>
     </div>
   );
+}
+
+/** Maps the eligibility verdict to a list status. */
+function statusOf(eligibility: EligibilityDto): FolderEntry["status"] {
+  if (eligibility.status === "blocked") return "blocked";
+  if (eligibility.status === "warning") return "warning";
+  return "ready";
+}
+
+function detailOf(eligibility: EligibilityDto): string | null {
+  if (eligibility.status === "blocked") return eligibility.reason;
+  if (eligibility.status === "warning") return eligibility.warning;
+  return null;
 }

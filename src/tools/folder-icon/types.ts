@@ -26,6 +26,39 @@ export const PATTERN_SIZE_MAX = 5;
 export const PATTERN_OPACITY_MIN = 10;
 export const PATTERN_OPACITY_MAX = 100;
 
+/** Hard cap on folders in the list, mirroring Rust's MAX_BATCH (4.4). */
+export const MAX_FOLDERS = 100;
+
+/** Eligibility verdict from Rust (flat shape). */
+export interface EligibilityDto {
+  status: "allowed" | "warning" | "blocked";
+  reason: string | null;
+  warning: string | null;
+}
+
+/** Inspect result from Rust. */
+export interface InspectResult {
+  state: "default" | "custom_by_erx" | "custom_by_other";
+  eligibility: EligibilityDto;
+}
+
+/** One row of the folder list. */
+export interface FolderEntry {
+  path: string;
+  status:
+    | "checking"
+    | "ready"
+    | "warning"
+    | "blocked"
+    | "applying"
+    | "applied"
+    | "failed";
+  /** Blocked reason, warning text or error message. */
+  detail: string | null;
+  /** What the folder currently shows (from inspect). */
+  inspectState: InspectResult["state"] | null;
+}
+
 export const PATTERN_KINDS: readonly PatternKind[] = [
   "none",
   "vertical",

@@ -9,14 +9,19 @@ use tauri_plugin_dialog::DialogExt;
 use super::core;
 use crate::tools::ToolError;
 
-/// Opens the native folder picker from the Rust side (no webview dialog
-/// permission). Returns the absolute path, or null on cancel.
+/// Opens the native multi-select folder picker from the Rust side (no
+/// webview dialog permission). Returns the absolute paths, or null on
+/// cancel.
 #[tauri::command]
-pub fn folder_icon_pick_folder(app: AppHandle) -> Option<String> {
-    let picked = app.dialog().file().blocking_pick_folder();
-    picked
-        .and_then(|folder| folder.into_path().ok())
-        .map(|path| path.to_string_lossy().into_owned())
+pub fn folder_icon_pick_folders(app: AppHandle) -> Option<Vec<String>> {
+    let picked = app.dialog().file().blocking_pick_folders();
+    picked.map(|folders| {
+        folders
+            .into_iter()
+            .filter_map(|folder| folder.into_path().ok())
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect()
+    })
 }
 
 /// The eligibility verdict in a flat UI-friendly shape.

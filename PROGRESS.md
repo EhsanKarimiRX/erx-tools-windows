@@ -9,24 +9,20 @@ pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
 
 ## PROMPT 4 STATUS
 
-- Last finished sub-step: **4B-4** — minimal single-folder UI: "Add folder"
-  button (native folder dialog from Rust), the picked path with its
-  inspect status line (Default / Icon set by this tool / Custom icon
-  (another program) / Blocked + reason / Warning), Apply icon (uses the
-  current designer settings) and Restore default icon buttons, result
-  message area, buttons disabled while busy. docs/folder-icon-manual-
-  checklist.md created (all 19 rows; rows 5–12 are the 4B focus).
-  **Checkpoint 4B complete — the owner now tests rows 5–12 on real
-  Explorer before 4C starts.**
-- NEXT STEP: owner manual tests (checklist rows 1–12), especially #5/#8
-  (icon appears/changes without logoff) and #7 (relative path survives
-  rename/move). Then 4C-1 (drag & drop, folder list) after any findings
-  are fixed.
-- Known issues: the RELATIVE IconResource path must be verified by the
-  owner on real Windows 11 (rename/move test, checklist #7); if it fails,
-  fall back to absolute + DECISIONS.md. Whether Explorer refreshes the
-  icon without a logoff (targeted SHChangeNotify) needs the owner's
-  manual check (rows 5, 8).
+- Last finished sub-step: **4C-1** — drag & drop of folders via the shared
+  DropZone (window-wide highlight, real paths) + multi-select "Add folder"
+  native dialog (new `folder_icon_pick_folders` command replacing the
+  single-folder one); folder list with name, truncated path (tooltip shows
+  the full path), status chips (Ready / Warning / Blocked / Applying /
+  Applied / Failed) with the blocked reason shown under the path, remove
+  button per row, Clear list, duplicate skip and the 100-folder cap with
+  notes; files and protected locations dropped in land as Blocked with the
+  same eligibility messages. Apply icon / Restore default icon run over
+  all eligible folders sequentially (frontend loop, per-row live status).
+- NEXT STEP: 4C-2 — replace the frontend loop with a Rust batch command
+  (Channel progress "3 of 12", cancel, per-folder results, summary, cap
+  enforced in Rust) reusing the Image Converter's progress pattern.
+- Known issues: none new.
 
 **Prompt 3 (QR Code Generator) — code complete (3A–3C), awaiting the
 owner's manual checklist.** All three content types, both styles, custom
