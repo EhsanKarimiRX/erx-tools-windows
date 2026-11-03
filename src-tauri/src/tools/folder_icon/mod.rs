@@ -6,10 +6,9 @@
 //! Windows-specific apply/restore code (desktop.ini) arrives in checkpoint
 //! 4B behind `#[cfg(windows)]`.
 
-// Temporary: the types below are consumed by the preview command landing in
-// checkpoint 4A-2 (same pattern as error.rs's allow(dead_code) until first
-// use). Remove when the command exists.
-#![allow(dead_code)]
-
 pub mod colors;
+pub mod commands;
+pub mod core;
+pub mod geometry;
 pub mod settings;
+pub mod svg;

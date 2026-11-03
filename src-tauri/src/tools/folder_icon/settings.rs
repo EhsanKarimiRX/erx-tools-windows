@@ -32,16 +32,6 @@ impl PatternKind {
             other => Err(format!("Unknown pattern: {other}")),
         }
     }
-
-    /// Stable token used in tests and error messages.
-    pub fn token(self) -> &'static str {
-        match self {
-            PatternKind::None => "none",
-            PatternKind::Vertical => "vertical",
-            PatternKind::Horizontal => "horizontal",
-            PatternKind::Checker => "checker",
-        }
-    }
 }
 
 /// Pattern size steps, thin (1) to thick (5).
@@ -140,7 +130,6 @@ mod tests {
         ] {
             let settings = VALID("#808080", token, "#000000", 1, 10).expect(token);
             assert_eq!(settings.pattern, expected);
-            assert_eq!(settings.pattern.token(), token);
         }
     }
 

@@ -9,18 +9,23 @@ pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
 
 ## PROMPT 4 STATUS
 
-- Last finished sub-step: **4A-1** — `tools/folder_icon/` Rust module
-  (`colors.rs` strict `#RRGGBB` parsing, `settings.rs` the single validated
-  source of settings types/bounds) + frontend skeleton
-  (`src/tools/folder-icon/` with `types.ts` mirroring the Rust settings and
-  the 12 preset colors); module registered in `tools/mod.rs`. Temporary
-  `#![allow(dead_code)]` at the module root until the 4A-2 preview command
-  consumes the types (same pattern as error.rs).
-- NEXT STEP: 4A-2 — OKLab color derivation (back panel/highlight), pattern
-  geometry (vertical/horizontal/checker, clipped to the front panel),
-  geometry-to-SVG renderer, `folder_icon_preview_svg` command, unit tests.
+- Last finished sub-step: **4A-2** — OKLab color engine in `colors.rs`
+  (strict parse, WCAG contrast, back-panel derivation with an enforced
+  minimum OKLab lightness difference of 0.10 for every possible base color;
+  out-of-gamut results gamut-mapped by chroma reduction), `geometry.rs`
+  (original 256×256 folder design: back panel with tab + front panel,
+  pattern cells for vertical/horizontal/checker in 5 size steps, clipped to
+  the front panel), `svg.rs` (SVG writer, validated colors + geometry
+  numbers only), `core.rs` pipeline with the non-blocking "Pattern may be
+  hard to see." hint (fires below 1.5:1 WCAG), and the
+  `folder_icon_preview_svg` command registered in lib.rs. 140 tests.
+- NEXT STEP: 4A-3 — UI: 12 presets + color picker + HEX fields, pattern
+  segmented control with color/size/opacity, contrast hint, large + small
+  (16/32/48) live previews, theme/keyboard accessibility.
 - Known issues: none. Small previews are SVG until 4B, then they switch to
-  the exact .ico raster data (spec 4.2 "same data as the .ico").
+  the exact .ico raster data (spec 4.2 "same data as the .ico"). The 2 px
+  minimum pattern cell for 16/24/32 px .ico frames is enforced at raster
+  time in 4B (the 4A SVG preview always renders the 256 design).
 
 **Prompt 3 (QR Code Generator) — code complete (3A–3C), awaiting the
 owner's manual checklist.** All three content types, both styles, custom
