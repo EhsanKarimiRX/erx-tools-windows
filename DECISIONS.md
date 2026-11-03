@@ -280,3 +280,180 @@ the bottom of their section.
   baked into the transform (scale then translate, drawn at the origin).
   The read-back test with a logo caught this — the misplaced logo covered
   a finder pattern and detection failed.
+
+## Folder Icon Changer (Prompt 4)
+
+### Icon design and color model
+
+- **One geometry, two backends (like the QR tool):** `geometry.rs` builds
+  an original 256×256 folder design — back panel with tab, larger front
+  panel overlapping the lower part, rounded corners, subtle white
+  top-highlight fade on the front panel. The SVG writer and the tiny-skia
+  rasterizer both consume the same `Drawing`, so preview, SVG and .ico
+  always match. All artwork is original; nothing was traced.
+- **Color model: OKLab, not HSL.** The user picks ONE base color (the
+  front panel). The back panel is derived in OKLab (Björn Ottosson's
+  published reference formulas, public domain; correctness pinned by
+  known-value and round-trip tests) because its L channel matches
+  perceived lightness across hues. Back-panel rule: lightness ×0.76 for
+  light colors, −0.10 for mid colors, +0.10 for near-black (L < 0.10,
+  where darkening further is impossible). A minimum ΔL of 0.10 is
+  enforced and tested for every preset and the pure black/white/saturated
+  extremes. Hue is kept, chroma slightly muted (×0.9); out-of-gamut
+  results are gamut-mapped by shrinking chroma toward neutral (binary
+  search), never by per-channel clamping (which shifts hue).
+- **Patterns** (vertical / horizontal stripes, checkerboard) live only on
+  the front panel, clipped in SVG via `clipPath` and in tiny-skia via a
+  `Mask` — verified against the actual tiny-skia 0.12.0 source
+  (`Mask::fill_path` + `fill_path(..., Some(&mask))`); no resvg needed.
+  Cells: bar width 4/6/9/13/18 px (5 steps) at canvas scale, stripes have
+  an equal gap (period = 2 × width).
+- **Pattern anti-noise rule (small sizes):** when the standard cell would
+  shrink below 2 device pixels (frames ≤ 32 px with thin cells), the cell
+  is widened to exactly 2 device pixels and the pattern is REGENERATED in
+  canvas units for that frame, so bars stay crisp instead of dissolving
+  into gray noise. The 256 frame and the large preview always use the
+  standard cell.
+- **HEX input accepts `#RGB` and `#RRGGBB`**; validation lives once in
+  Rust (`Rgb::parse`), the TypeScript mirror never decides validity.
+- **Pattern contrast hint** fires below WCAG 1.5:1 between pattern and
+  base color — a decorative overlay stays visible below the QR tool's
+  3.0 scannability threshold, but at 1.5 it melts into the panel.
+  Non-blocking by design.
+
+### ICO and rendering
+
+- **No new crates.** The ICO container comes from the `image` crate's
+  `ico` feature, which only enables `bmp`+`png` code paths that were
+  already compiled in (verified in image 0.25.10's Cargo.toml). Frames
+  16–128 px are 32bpp BITMAPINFOHEADER DIBs built here (bottom-up BGRA
+  + 1bpp AND mask whose bits are set only where alpha = 0); the 256 px
+  frame is PNG-compressed (explicitly allowed by the format, spec 4.1).
+  Read-back tests decode the file through image's own independent
+  ICO+BMP decoder, so builder and verifier are separate implementations.
+- **Content-derived icon file name** (`erx-folder-icon-<8 hex>.ico`,
+  FNV-1a of the .ico bytes): a changed color always produces a new file
+  name, so Explorer's icon cache can never show a stale image. Same
+  content → same name, making re-apply idempotent (tested byte-exactly).
+- **ARM64:** `cargo check --target aarch64-pc-windows-msvc` PASSES
+  (verified 2026-11-04 with windows-sys 0.61, tiny-skia 0.12, image
+  0.25). Everything is pure Rust; no C dependencies.
+
+### Applying and restoring (desktop.ini)
+
+- **The icon path is RELATIVE** (`IconResource=<file name>,0`) so the
+  icon survives moving/renaming/copying the folder. **Verified working by
+  the owner on Windows 11 (2026-11-04): the icon stayed after rename and
+  move.** No absolute-path fallback needed.
+- **Shell refresh is targeted:** `SHChangeNotify` with UPDATEITEM on the
+  folder + UPDATEDIR on the parent per folder — deliberately not the
+  heavy global "association changed" broadcast. **Verified by the owner
+  on Windows 11: the icon appears and changes without logoff or manual
+  F5.**
+- **desktop.ini is preserved byte-exactly** outside the one edited line:
+  other sections/keys (InfoTip, LocalizedResourceName, [ViewState], …),
+  per-line endings (CRLF/LF kept, even mixed), and the file encoding —
+  UTF-16 LE with BOM, UTF-8 with/without BOM, or ANSI. ANSI is handled as
+  latin-1, which round-trips every byte value exactly (edited lines are
+  pure ASCII, so Windows-1252 content we keep survives unchanged). A
+  file that cannot be decoded safely (broken UTF-16, duplicate
+  [.ShellClassInfo] sections) is NEVER overwritten — the folder is
+  marked Failed with a clear message (tested).
+- **Encodings for NEW desktop.ini files:** UTF-8 without BOM — the
+  content this tool writes is pure ASCII, which every Explorer version
+  reads correctly.
+- **Attributes:** desktop.ini and the .ico get Hidden + System (cleared
+  before rewriting, set again after — replacing a Hidden+System file by
+  rename would otherwise be refused by Windows). The folder gets the
+  Read-only attribute (preserving its other attributes) because the Shell
+  only processes desktop.ini on Read-only/System folders. Read-only on a
+  folder does NOT make its contents read-only — it is a flag the Shell
+  uses to look for desktop.ini. Verified in practice by the owner's
+  tests (files inside stayed writable).
+- **Safety:** writes go through temp-file-then-rename inside the same
+  folder; every failure path rolls back exactly what it changed (icon
+  file removed if newly created, folder attribute reverted if we added
+  it). Only files matching `erx-folder-icon-<8 hex>.ico` are ever
+  deleted — foreign .ico files and foreign desktop.ini keys survive both
+  apply and restore (tested). Restore removes the IconResource key(s)
+  (ours or foreign — "restore default" means the default icon), deletes
+  only our .ico files, deletes a desktop.ini that has no `Key=Value`
+  lines left and then clears the Read-only attribute.
+- **No permission pre-check on inspect:** Windows offers no reliable
+  non-writing way to test directory write access, so inspecting never
+  writes; permission problems surface at apply time from the real error
+  (PermissionDenied → "No permission to modify this folder."). The tool
+  never asks for or uses admin rights.
+
+### Folder eligibility (the final list — spec 4.3)
+
+One data-driven function (`eligibility.rs`), environment from Windows
+known-folder APIs (`SHGetKnownFolderPath`, so redirected locations are
+honored), never hardcoded drive letters. Paths are resolved first
+(canonicalize → strip the `\\?\` verbatim prefix → case-insensitive
+component compare; trailing separators and `..` collapse during
+canonicalize).
+
+**Blocked** ("Icon change is not available for this folder." + reason):
+1. Not an existing directory (files, missing paths, .zip files).
+2. Drive roots (`C:\`, `C:`, `D:\`).
+3. Protected system locations — everything under: the Windows directory,
+   Program Files, Program Files (x86), and (as the first folder on any
+   drive root, themselves and everything under them) $Recycle.Bin, System
+   Volume Information, Recovery, Boot, Config.Msi, MSOCache, PerfLogs,
+   Documents and Settings. Root ONLY: the ProgramData root, the Users
+   root (their subfolders stay allowed, per spec).
+4. Known user folders THEMSELVES (subfolders stay allowed): user profile
+   root, Desktop, Documents, Downloads, Music, Pictures, Videos,
+   Favorites, Links, Saved Games, Searches, Contacts, AppData (derived
+   as RoamingAppData's parent), AppData\Roaming, AppData\Local, the
+   OneDrive root — all from the known-folder API, so redirected
+   locations (e.g. Documents moved to D:) are covered. Reason: Windows
+   manages their desktop.ini itself.
+5. Symlinks, junctions and mount points as the dropped folder
+   (FILE_ATTRIBUTE_REPARSE_POINT).
+6. Network locations: UNC paths (covers WebDAV's `@SSL`/`DavWWWRoot`
+   forms) and mapped drives reported DRIVE_REMOTE by GetDriveTypeW.
+7. Paths whose icon file would exceed 259 UTF-16 units (MAX_PATH − NUL;
+   the Shell parses desktop.ini IconResource without long-path
+   awareness): folder path + separator + the 28-character icon file name.
+
+**Allowed with warning** (non-blocking): folders inside OneDrive (known
+folder `FOLDERID_SkyDrive` plus the OneDrive/OneDriveConsumer/
+OneDriveCommercial env vars). Reason: sync clients may skip or reset
+hidden system files such as desktop.ini.
+
+**Unverified / known limits:**
+- Other cloud providers (Dropbox, Google Drive, …) are not detected —
+  they have no known-folder ID and no standard env var. They simply get
+  no warning; whether their clients keep desktop.ini is unverified.
+- Windows 10 was NOT tested (no device available). The mechanisms used
+  (desktop.ini, SHGetKnownFolderPath, SHChangeNotify) are documented as
+  available since Vista/Windows 7, but nothing was verified on Windows 10.
+
+### Batch processing
+
+- **Sequential, never parallel** (spec 4.4) — unlike the Image
+  Converter's worker pool, folder operations touch the Shell and must
+  notify in order.
+- **Hard cap 100 folders** (`MAX_BATCH`), enforced in Rust by the batch
+  commands and mirrored in the UI list; tested with a real 100-folder
+  apply+restore loop.
+- **Per-folder results** (Applied / Restored / Skipped / Failed + reason)
+  stream through a Tauri Channel; eligibility is re-checked right before
+  each folder (blocked → Skipped, not Failed). One failing folder never
+  stops the batch. Cancel skips the remaining folders.
+
+### UI
+
+- **Live previews from the exact .ico data:** the small 16/32/48 px
+  previews are PNG data URLs rendered by the same rasterizer that builds
+  the .ico frames — what the UI shows at small sizes IS the icon data.
+  The large preview is the SVG (identical geometry, 256 design).
+- **The pattern color control is disabled while the pattern is off**, so
+  its state can never be invalid when needed.
+- **No new Tauri permissions:** dialogs open from Rust (the dialog
+  plugin was already present for earlier tools); the capability file is
+  unchanged. The command list grew only by Folder Icon commands; the
+  unused single-folder apply/restore commands from the 4B test phase were
+  removed again (minimal command surface).

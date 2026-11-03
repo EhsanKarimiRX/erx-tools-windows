@@ -164,42 +164,6 @@ pub fn folder_icon_inspect(path: String) -> Result<InspectResultDto, ToolError> 
     })
 }
 
-/// Applies the icon to ONE folder. Re-validates everything in Rust;
-/// returns a short friendly success message.
-#[cfg(windows)]
-#[tauri::command]
-pub fn folder_icon_apply(
-    path: String,
-    settings: FolderIconSettingsDto,
-) -> Result<String, ToolError> {
-    let settings = super::settings::IconSettings::from_parts(
-        &settings.base_color,
-        &settings.pattern,
-        &settings.pattern_color,
-        settings.pattern_size,
-        settings.pattern_opacity,
-    )
-    .map_err(ToolError::Internal)?;
-    let built = core::build(&settings);
-    super::apply::apply_icon(std::path::Path::new(&path), &built.params)
-        .map(|_| "Icon applied.".to_string())
-        .map_err(ToolError::Internal)
-}
-
-/// Restores the default icon on ONE folder.
-#[cfg(windows)]
-#[tauri::command]
-pub fn folder_icon_restore(path: String) -> Result<String, ToolError> {
-    let outcome =
-        super::apply::restore_icon(std::path::Path::new(&path)).map_err(ToolError::Internal)?;
-    Ok(match outcome {
-        super::apply::RestoreOutcome::Restored => "Default icon restored.".to_string(),
-        super::apply::RestoreOutcome::AlreadyDefault => {
-            "The folder already shows the default icon.".to_string()
-        }
-    })
-}
-
 // ----- batch processing (spec 4.4: sequential, capped, per-folder
 // results streamed through a Channel, cancellable) -----
 

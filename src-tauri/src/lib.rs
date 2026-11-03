@@ -31,8 +31,6 @@ pub fn run() {
             tools::folder_icon::commands::folder_icon_preview_svg,
             tools::folder_icon::commands::folder_icon_pick_folders,
             tools::folder_icon::commands::folder_icon_inspect,
-            tools::folder_icon::commands::folder_icon_apply,
-            tools::folder_icon::commands::folder_icon_restore,
             tools::folder_icon::commands::folder_icon_apply_batch,
             tools::folder_icon::commands::folder_icon_restore_batch,
             tools::folder_icon::commands::folder_icon_cancel_batch,

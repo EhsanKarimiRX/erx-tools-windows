@@ -8,6 +8,19 @@ The home screen shows every tool as a square tile. Tools live in isolated
 folders and are lazy-loaded only when opened — see
 [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md) to add one.
 
+## Tools
+
+- **Image Converter** — convert images between JPEG, PNG, WebP, BMP, GIF
+  and TIFF in batches, with live progress, cancel and a summary.
+- **QR Code Generator** — create QR codes from text, links or Wi-Fi
+  credentials; sharp or rounded style, custom colors, logo support; export
+  as PNG or SVG.
+- **Folder Icon Changer** — recolor Windows folder icons in any color,
+  with optional stripe/checker patterns; applies a multi-size .ico plus
+  desktop.ini to selected folders and restores the default icon again.
+  Fully offline, no admin rights.
+- **Encrypted Notes** — planned (placeholder tile).
+
 ## Development
 
 Prerequisites: Node.js (LTS), Rust (stable, MSVC toolchain), WebView2

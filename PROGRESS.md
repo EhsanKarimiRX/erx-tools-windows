@@ -2,28 +2,21 @@
 
 ## Current status
 
-**Prompt 4 (Folder Icon Changer) — sub-step 4A-1 done.** Module skeleton
-with validated settings on the Rust side, mirrored in TypeScript. Gates
-pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
-`folder_icon_preview_svg` command, unit tests).
+**Prompt 4 (Folder Icon Changer) — code complete (4A–4C), owner verified
+the 4B core on real Explorer (icon appears/changes without logoff;
+relative path survives rename/move); the 4C experience (drag & drop,
+list, batch) awaits the owner's checklist run.** All quality gates pass,
+ARM64 cross-check passed, 190 Rust tests.
 
 ## PROMPT 4 STATUS
 
-- Last finished sub-step: **4C-2** — real batch processing moved into Rust:
-  `folder_icon_apply_batch` / `folder_icon_restore_batch` (strictly
-  sequential, per spec never parallel) stream one event per folder through
-  a Tauri Channel ("applied"/"restored"/"skipped"/"failed" + reason),
-  re-check eligibility right before each folder (blocked → Skipped), are
-  cancellable (`folder_icon_cancel_batch` skips the rest) and enforce the
-  100-folder cap in Rust (`validate_batch_len`, tested at 100). The UI
-  shows the shared ProgressBar with "Applying 3 of 12…", a Cancel button,
-  live per-row chips (incl. Skipped) and the final summary; a validation
-  error resets the rows (nothing ran). Batch-event JSON shape pinned by a
-  test. 190 tests.
-- NEXT STEP: 4C-3 — final polish (all states, accessibility pass, error
-  messages review, cloud warning already in), docs (README, DECISIONS:
-  design + eligibility list + relative-path VERIFIED by owner +
-  not-tested-on-Windows-10), PROGRESS, final quality gates.
+- **All sub-steps done.** Last finished: **4C-3** — docs (README tools
+  list, DECISIONS.md Folder Icon section with the final eligibility list,
+  the owner-verified relative-path and targeted-refresh decisions, and
+  the unverified items), unused single-folder commands removed (minimal
+  command surface), final quality gates green.
+- NEXT STEP: the owner runs docs/folder-icon-manual-checklist.md (rows
+  1–19; 4B rows 5–12 already verified). Findings go back into this tool.
 - Known issues: none.
 
 **Prompt 3 (QR Code Generator) — code complete (3A–3C), awaiting the
