@@ -7,6 +7,39 @@ use serde::{Deserialize, Serialize};
 use super::core;
 use crate::tools::ToolError;
 
+/// The eligibility verdict in a flat UI-friendly shape.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EligibilityDto {
+    /// "allowed" | "warning" | "blocked"
+    pub status: &'static str,
+    /// The secondary reason line when blocked.
+    pub reason: Option<String>,
+    /// The non-blocking warning line when warning.
+    pub warning: Option<String>,
+}
+
+fn eligibility_dto(eligibility: &super::eligibility::Eligibility) -> EligibilityDto {
+    use super::eligibility::Eligibility as E;
+    match eligibility {
+        E::Allowed => EligibilityDto {
+            status: "allowed",
+            reason: None,
+            warning: None,
+        },
+        E::AllowedWithWarning(code) => EligibilityDto {
+            status: "warning",
+            reason: None,
+            warning: Some(code.message().to_string()),
+        },
+        E::Blocked(reason) => EligibilityDto {
+            status: "blocked",
+            reason: Some(reason.message().to_string()),
+            warning: None,
+        },
+    }
+}
+
 /// Raw settings as sent by the UI (unvalidated; Rust decides).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +112,74 @@ pub fn folder_icon_preview_svg(
         svg: built.svg,
         warnings: built.warnings,
         frames,
+    })
+}
+
+/// Inspect result: what the folder currently shows plus the
+/// eligibility verdict for the status chip.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(windows)]
+pub struct InspectResultDto {
+    /// "default" | "custom_by_erx" | "custom_by_other"
+    pub state: &'static str,
+    pub eligibility: EligibilityDto,
+}
+
+/// Inspects a folder (read-only) for the UI: the current icon state plus
+/// whether applying would be allowed/warned/blocked.
+#[cfg(windows)]
+#[tauri::command]
+pub fn folder_icon_inspect(path: String) -> Result<InspectResultDto, ToolError> {
+    let folder = std::path::PathBuf::from(&path);
+    let resolved = super::eligibility::resolve(&folder);
+    let env = super::platform::gather_environment();
+    let facts = super::platform::path_facts(&resolved);
+    let eligibility = super::eligibility::evaluate(&resolved, facts, &env);
+    let state = super::apply::inspect_folder(&folder).map_err(ToolError::Internal)?;
+    Ok(InspectResultDto {
+        state: match state {
+            super::apply::IconState::Default => "default",
+            super::apply::IconState::CustomByErx => "custom_by_erx",
+            super::apply::IconState::CustomByOther => "custom_by_other",
+        },
+        eligibility: eligibility_dto(&eligibility),
+    })
+}
+
+/// Applies the icon to ONE folder. Re-validates everything in Rust;
+/// returns a short friendly success message.
+#[cfg(windows)]
+#[tauri::command]
+pub fn folder_icon_apply(
+    path: String,
+    settings: FolderIconSettingsDto,
+) -> Result<String, ToolError> {
+    let settings = super::settings::IconSettings::from_parts(
+        &settings.base_color,
+        &settings.pattern,
+        &settings.pattern_color,
+        settings.pattern_size,
+        settings.pattern_opacity,
+    )
+    .map_err(ToolError::Internal)?;
+    let built = core::build(&settings);
+    super::apply::apply_icon(std::path::Path::new(&path), &built.params)
+        .map(|_| "Icon applied.".to_string())
+        .map_err(ToolError::Internal)
+}
+
+/// Restores the default icon on ONE folder.
+#[cfg(windows)]
+#[tauri::command]
+pub fn folder_icon_restore(path: String) -> Result<String, ToolError> {
+    let outcome =
+        super::apply::restore_icon(std::path::Path::new(&path)).map_err(ToolError::Internal)?;
+    Ok(match outcome {
+        super::apply::RestoreOutcome::Restored => "Default icon restored.".to_string(),
+        super::apply::RestoreOutcome::AlreadyDefault => {
+            "The folder already shows the default icon.".to_string()
+        }
     })
 }
 

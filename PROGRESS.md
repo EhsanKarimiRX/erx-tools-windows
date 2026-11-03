@@ -9,27 +9,33 @@ pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
 
 ## PROMPT 4 STATUS
 
-- Last finished sub-step: **4B-2** — the eligibility function in ONE place
-  (`eligibility.rs`, pure + injectable): Allowed / AllowedWithWarning /
-  Blocked with reason codes for non-directories, drive roots, protected
-  system locations (Windows + Program Files ×2 + everything under them;
-  ProgramData + Users roots only; the fixed drive-root names $Recycle.Bin,
-  System Volume Information, Recovery, Boot, Config.Msi, MSOCache,
-  PerfLogs, Documents and Settings), known user folders themselves
-  (including redirected locations; subfolders stay allowed), reparse
-  points, network locations (UNC/WebDAV/mapped remote drives), and a
-  documented MAX_PATH limit for the icon file path (259 UTF-16 units);
-  cloud-sync roots warn non-blocking. Real facts come from `platform.rs`
-  via `windows-sys` 0.61 with minimal features (SHGetKnownFolderPath with
-  redirected locations, GetDriveTypeW, GetFileAttributesW). Tests inject
-  invented paths/env (17 eligibility tests + real-env smoke tests). 164
-  tests.
-- NEXT STEP: 4B-3 — desktop.ini editor + apply + restore + inspect
-  (cfg(windows)) + temp-dir tests + the ARM64 check.
-- Known issues: temporary `#![allow(dead_code)]` on eligibility.rs and
-  platform.rs until the 4B-4 UI consumes them via commands. No safe
-  non-writing write-permission pre-check exists on Windows — permission
-  problems are detected by the real error at apply time (documented).
+- Last finished sub-step: **4B-3** — the Windows core: `ini.rs`
+  (desktop.ini editor preserving other sections/keys/encoding/line endings
+  byte-exactly; UTF-16 LE BOM, UTF-8 ±BOM, ANSI via byte-exact latin-1
+  round trip; refuses damaged files and duplicate [.ShellClassInfo]
+  sections), `apply.rs` (#[cfg(windows)]): apply writes the content-derived
+  `erx-folder-icon-<8 hex>.ico` (FNV-1a) inside the folder via
+  temp+rename with Hidden+System, sets `IconResource=<name>,0` with a
+  RELATIVE path, adds the folder Read-only attribute (others preserved),
+  removes only our older icon files, targeted SHChangeNotify
+  (UPDATEITEM folder + UPDATEDIR parent, no global broadcast), full
+  rollback on every failure path; restore removes only IconResource keys,
+  deletes only our .ico files, deletes a meaningless desktop.ini and
+  clears Read-only, keeps foreign .ico files and other customizations;
+  inspect = Default / CustomByErx / CustomByOther. Commands
+  `folder_icon_inspect/apply/restore` registered. Tests: 13 ini round-trip
+  tests + 10 temp-dir apply/restore/inspect tests incl. the 100-folder
+  batch, idempotent re-apply, foreign-content preservation and the
+  never-overwrite-a-broken-ini rule. **ARM64 check
+  (`cargo check --target aarch64-pc-windows-msvc`) PASSED.** 189 tests.
+- NEXT STEP: 4B-4 — minimal single-folder UI (Add folder button with
+  Rust-side dialog, Apply + Restore, result message) so the owner can test
+  real Explorer behavior; then the owner runs manual checklist rows 5–12.
+- Known issues: the RELATIVE IconResource path must be verified by the
+  owner on real Windows 11 (rename/move test, checklist #7); if it fails,
+  fall back to absolute + DECISIONS.md. Whether Explorer refreshes the
+  icon without a logoff (targeted SHChangeNotify) needs the owner's
+  manual check (rows 5, 8).
 
 **Prompt 3 (QR Code Generator) — code complete (3A–3C), awaiting the
 owner's manual checklist.** All three content types, both styles, custom

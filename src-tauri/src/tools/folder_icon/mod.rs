@@ -6,12 +6,15 @@
 //! Windows-specific apply/restore code (desktop.ini) arrives in checkpoint
 //! 4B behind `#[cfg(windows)]`.
 
+#[cfg(windows)]
+pub mod apply;
 pub mod colors;
 pub mod commands;
 pub mod core;
 pub mod eligibility;
 pub mod geometry;
 pub mod ico;
+pub mod ini;
 #[cfg(windows)]
 pub mod platform;
 pub mod raster;

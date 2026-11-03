@@ -28,6 +28,9 @@ pub fn run() {
             tools::qr_code::commands::pick_logo_file,
             tools::qr_code::commands::load_logo,
             tools::folder_icon::commands::folder_icon_preview_svg,
+            tools::folder_icon::commands::folder_icon_inspect,
+            tools::folder_icon::commands::folder_icon_apply,
+            tools::folder_icon::commands::folder_icon_restore,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
