@@ -80,6 +80,12 @@
   gap: 4px;
 }
 
+.fi-small-frame {
+  display: block;
+  /* Crisp downscaling is not needed: these ARE the .ico frame sizes. */
+  image-rendering: pixelated;
+}
+
 .fi-small-size {
   font-size: 11px;
   color: var(--text-muted);

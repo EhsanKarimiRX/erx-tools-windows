@@ -24,10 +24,33 @@ pub struct FolderIconSettingsDto {
 pub struct FolderIconPreview {
     pub svg: String,
     pub warnings: Vec<String>,
+    /// Small previews rendered exactly like the .ico frames (PNG data
+    /// URLs), so what the UI shows at 16/32/48 px IS the icon data.
+    pub frames: Vec<FramePreview>,
 }
 
-/// Builds the folder icon SVG for the live preview. The returned string is
-/// generated entirely from validated colors and our own geometry.
+/// One small preview frame.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FramePreview {
+    pub size: u32,
+    pub data_url: String,
+}
+
+/// Small preview frame sizes, matching the smallest .ico entries.
+const SMALL_FRAME_SIZES: [u32; 3] = [16, 32, 48];
+
+/// `data:image/png;base64,…` for a PNG buffer (the base64 crate is already
+/// in the project via the QR tool's logo embedding).
+fn png_data_url(png: &[u8]) -> String {
+    format!(
+        "data:image/png;base64,{}",
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png)
+    )
+}
+
+/// Builds the folder icon SVG for the live preview plus the small preview
+/// frames rendered on the exact .ico path.
 #[tauri::command]
 pub fn folder_icon_preview_svg(
     settings: FolderIconSettingsDto,
@@ -41,9 +64,21 @@ pub fn folder_icon_preview_svg(
     )
     .map_err(ToolError::Internal)?;
     let built = core::build(&settings);
+    let frames = SMALL_FRAME_SIZES
+        .iter()
+        .map(|&size| {
+            super::raster::render_frame_png(&built.params, size)
+                .map(|png| FramePreview {
+                    size,
+                    data_url: png_data_url(&png),
+                })
+                .map_err(ToolError::Internal)
+        })
+        .collect::<Result<Vec<_>, ToolError>>()?;
     Ok(FolderIconPreview {
         svg: built.svg,
         warnings: built.warnings,
+        frames,
     })
 }
 
@@ -74,6 +109,21 @@ mod tests {
         let preview = folder_icon_preview_svg(dto).expect("builds");
         assert!(preview.svg.starts_with("<svg"));
         assert!(preview.warnings.is_empty());
+        // The small previews arrive as PNG data URLs for every size.
+        assert_eq!(
+            preview
+                .frames
+                .iter()
+                .map(|frame| frame.size)
+                .collect::<Vec<_>>(),
+            vec![16, 32, 48]
+        );
+        assert!(
+            preview
+                .frames
+                .iter()
+                .all(|frame| frame.data_url.starts_with("data:image/png;base64,"))
+        );
     }
 
     #[test]

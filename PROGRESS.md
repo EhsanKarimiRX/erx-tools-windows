@@ -9,26 +9,22 @@ pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
 
 ## PROMPT 4 STATUS
 
-- Last finished sub-step: **4A-3** — full designer UI: two-column layout
-  (left column reserved for folder selection, arriving in 4C), large
-  preview + small 16/32/48 px previews from the same SVG, 12 preset
-  swatches + color picker + HEX field (accepts `#RGB` and `#RRGGBB`; inline
-  error keeps the last valid color; bare hex gets `#` on blur) for the
-  folder color and the pattern color, pattern segmented control
-  (None/Vertical/Horizontal/Checker) with size and opacity sliders (dimmed
-  while off), non-blocking "Pattern may be hard to see." hint, debounced
-  (50 ms) preview with out-of-order response dropping, light/dark theme via
-  shared variables, keyboard accessible (swatches are buttons, segmented
-  control is a radiogroup, sliders are native inputs with labels). Rust
-  `Rgb::parse` now also accepts `#RGB` (the single validation point). All
-  gates pass (140 tests).
-- NEXT STEP: 4B-1 — tiny-skia rasterizer + multi-size ICO builder (16–256)
-  + tests; small previews then switch from SVG to the exact .ico frame
-  bitmaps.
-- Known issues: none. Small previews are SVG until 4B, then they switch to
-  the exact .ico raster data (spec 4.2 "same data as the .ico"). The 2 px
-  minimum pattern cell for 16/24/32 px .ico frames is enforced at raster
-  time in 4B (the 4A SVG preview always renders the 256 design).
+- Last finished sub-step: **4B-1** — tiny-skia rasterizer (`raster.rs`,
+  Mask-based clipping verified against the actual tiny-skia 0.12.0 source,
+  device-space linear gradient for the highlight) + multi-size ICO builder
+  (`ico.rs`): frames 16/24/32/48/64/128 as 32bpp BMP-in-ICO DIBs built per
+  the MS icon format, 256 as PNG-compressed; the container comes from the
+  `image` crate's IcoEncoder (new `ico` feature — only enables bmp+png code
+  paths already on, no new crate). Read-back tests decode through image's
+  independent ICO+BMP decoder; sample-pixel tests account for the highlight
+  overlay. Small previews now render the EXACT .ico frame bitmaps (16/32/48
+  PNG data URLs from the same raster path). Pattern anti-noise rule
+  implemented: below 2 device px the cell widens to exactly 2 device px and
+  the pattern is regenerated per frame (tested at 16/32 px). 150 tests.
+- NEXT STEP: 4B-2 — the eligibility function (data-driven
+  Allowed/AllowedWithWarning/Blocked with injected-path tests).
+- Known issues: `build_ico` carries a temporary `#[allow(dead_code)]` until
+  4B-3 wires it into the apply command.
 
 **Prompt 3 (QR Code Generator) — code complete (3A–3C), awaiting the
 owner's manual checklist.** All three content types, both styles, custom

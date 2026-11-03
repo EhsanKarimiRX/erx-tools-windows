@@ -146,7 +146,7 @@ fn num(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::super::colors::Rgb;
-    use super::super::geometry::{Fill, Shape, build_drawing, pattern_shapes};
+    use super::super::geometry::{Fill, Shape, build_drawing, pattern_cell, pattern_shapes};
     use super::super::settings::PatternKind;
     use super::*;
 
@@ -172,7 +172,7 @@ mod tests {
             },
             PatternKind::None,
             WHITE,
-            3,
+            pattern_cell(3),
             0.5,
         );
         let svg = render(&drawing);
@@ -199,7 +199,7 @@ mod tests {
             },
             PatternKind::Vertical,
             WHITE,
-            2,
+            pattern_cell(2),
             0.6,
         );
         let svg = render(&drawing);
@@ -220,11 +220,11 @@ mod tests {
             Rgb { r: 0, g: 0, b: 0 },
             PatternKind::Checker,
             WHITE,
-            1,
+            pattern_cell(1),
             0.8,
         );
         let svg = render(&drawing);
-        let cells = pattern_shapes(PatternKind::Checker, 1, WHITE, 0.8).len();
+        let cells = pattern_shapes(PatternKind::Checker, pattern_cell(1), WHITE, 0.8).len();
         // 3 panel paths + 1 clip path + one path per pattern cell.
         assert_eq!(svg.matches("<path d=\"M").count(), 4 + cells);
     }

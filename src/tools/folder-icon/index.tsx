@@ -17,12 +17,14 @@ function errorText(error: unknown): string {
 
 type PreviewState =
   | { status: "empty" }
-  | { status: "ok"; svg: string; warnings: string[] }
+  | { status: "ok"; svg: string; warnings: string[]; frames: FramePreview[] }
   | { status: "error"; message: string };
 
-/** Sizes of the small preview row; the same sizes as the smallest .ico
- * frames (rendered from the exact raster in 4B). */
-const SMALL_SIZES = [16, 32, 48];
+/** One small preview frame, rendered on the exact .ico raster path. */
+interface FramePreview {
+  size: number;
+  dataUrl: string;
+}
 
 /** Folder Icon Changer: icon designer on the right (color + pattern +
  * previews), folder selection on the left (drop zone + list arrive in 4C;
@@ -52,15 +54,17 @@ export default function FolderIconChanger() {
     };
     const request = ++requestRef.current;
     const timer = window.setTimeout(() => {
-      invoke<{ svg: string; warnings: string[] }>("folder_icon_preview_svg", {
-        settings,
-      })
+      invoke<{ svg: string; warnings: string[]; frames: FramePreview[] }>(
+        "folder_icon_preview_svg",
+        { settings },
+      )
         .then((result) => {
           if (requestRef.current === request) {
             setPreview({
               status: "ok",
               svg: result.svg,
               warnings: result.warnings,
+              frames: result.frames,
             });
           }
         })
@@ -93,16 +97,18 @@ export default function FolderIconChanger() {
           dangerouslySetInnerHTML={{ __html: preview.svg }}
         />
         <div className="fi-small-row" aria-label="Small size previews">
-          {SMALL_SIZES.map((size) => (
-            <div key={size} className="fi-small-item">
-              <div
-                className="fi-svg-holder fi-svg-small"
-                style={{ width: size, height: size }}
-                // Same generated SVG, scaled down; in 4B these switch to
-                // the exact .ico frame bitmaps.
-                dangerouslySetInnerHTML={{ __html: preview.svg }}
+          {preview.frames.map((frame) => (
+            <div key={frame.size} className="fi-small-item">
+              <img
+                className="fi-small-frame"
+                src={frame.dataUrl}
+                width={frame.size}
+                height={frame.size}
+                // Rust-rendered PNG of the exact .ico frame; no remote
+                // content, no user strings.
+                alt={`Preview at ${frame.size} pixels`}
               />
-              <span className="fi-small-size">{size} px</span>
+              <span className="fi-small-size">{frame.size} px</span>
             </div>
           ))}
         </div>

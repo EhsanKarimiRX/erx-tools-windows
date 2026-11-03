@@ -21,14 +21,19 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
+# Image Converter: decoding/encoding. The `ico` feature (Folder Icon) only
+# enables bmp+png code paths that are already on — it adds the ICO container
+# encoder plus the independent decoder used by the read-back tests.
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp", "ico"] }
 tauri-plugin-dialog = "2.8.4"
 tauri-plugin-opener = "2.7.2"
 # QR Code Generator: QR matrix generation (pure Rust, zero dependencies).
 qrcodegen = "1.8"
 # QR Code Generator: PNG rasterization of the shared QR geometry (pure Rust).
+# Folder Icon: rasterizes the shared folder geometry into .ico frames.
 tiny-skia = "0.12"
 # QR Code Generator: embedding the logo PNG into the SVG as a data URL.
+# Folder Icon: PNG data URLs for the small previews.
 base64 = "0.22"
 
 [dev-dependencies]

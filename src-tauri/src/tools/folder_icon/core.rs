@@ -3,21 +3,55 @@
 //! no Tauri types here (same split as the QR tool's `core`).
 
 use super::colors::{MIN_PATTERN_CONTRAST, contrast_ratio, derive_back_color};
-use super::geometry::{Drawing, build_drawing};
+use super::geometry::{build_drawing, pattern_cell};
 use super::settings::PatternKind;
 
-/// A built folder icon: everything the UI and (in 4B) the ICO writer need.
+/// Everything needed to draw the icon: the validated settings plus the
+/// derived back panel color. The SVG writer and the rasterizer both start
+/// from this, so preview and .ico always match.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IconParams {
+    /// The front panel color, exactly as the user picked it.
+    pub base_color: super::colors::Rgb,
+    /// The derived back panel color.
+    pub back_color: super::colors::Rgb,
+    pub pattern: PatternKind,
+    pub pattern_color: super::colors::Rgb,
+    /// Pattern size step 1..=5 (resolved to a cell width at draw time).
+    pub pattern_size: i32,
+    /// Pattern opacity 0..=1.
+    pub pattern_opacity: f64,
+}
+
+impl IconParams {
+    /// The drawing at canvas scale with the standard cell for the size
+    /// step (what the SVG preview and the 256 px frame show).
+    pub fn drawing(&self) -> super::geometry::Drawing {
+        self.drawing_with_cell(pattern_cell(self.pattern_size))
+    }
+
+    /// The drawing with a specific pattern cell width in canvas px (the
+    /// rasterizer widens the cell for small frames so the pattern never
+    /// turns into noise).
+    pub fn drawing_with_cell(&self, cell_px: f64) -> super::geometry::Drawing {
+        build_drawing(
+            self.base_color,
+            self.back_color,
+            self.pattern,
+            self.pattern_color,
+            cell_px,
+            self.pattern_opacity,
+        )
+    }
+}
+
+/// A built folder icon: everything the UI and the ICO writer need.
 #[derive(Debug, Clone)]
 pub struct BuiltIcon {
-    /// The SVG document shown in the preview.
+    /// The SVG document shown in the preview (256-canvas design).
     pub svg: String,
-    /// The shared geometry the 4B rasterizer will consume for the .ico.
-    /// Unused until then (same pattern as error.rs's allow(dead_code)).
-    #[allow(dead_code)]
-    pub drawing: Drawing,
-    /// The derived back panel color (reportable in tests/UI).
-    #[allow(dead_code)]
-    pub back_color: super::colors::Rgb,
+    /// The parameters both renderers consume.
+    pub params: IconParams,
     /// Non-blocking hints ("Pattern may be hard to see.").
     pub warnings: Vec<String>,
 }
@@ -25,19 +59,18 @@ pub struct BuiltIcon {
 /// Builds the icon from already-validated settings.
 pub fn build(settings: &super::settings::IconSettings) -> BuiltIcon {
     let back_color = derive_back_color(settings.base_color);
-    let drawing = build_drawing(
-        settings.base_color,
+    let params = IconParams {
+        base_color: settings.base_color,
         back_color,
-        settings.pattern,
-        settings.pattern_color,
-        settings.pattern_size,
-        f64::from(settings.pattern_opacity) / 100.0,
-    );
-    let svg = super::svg::render(&drawing);
+        pattern: settings.pattern,
+        pattern_color: settings.pattern_color,
+        pattern_size: settings.pattern_size,
+        pattern_opacity: f64::from(settings.pattern_opacity) / 100.0,
+    };
+    let svg = super::svg::render(&params.drawing());
     BuiltIcon {
         svg,
-        drawing,
-        back_color,
+        params,
         warnings: warnings(settings),
     }
 }
@@ -70,7 +103,7 @@ mod tests {
         assert!(built.svg.starts_with("<svg"));
         assert!(built.warnings.is_empty());
         // The back panel differs from the base color.
-        assert_ne!(built.back_color.hex(), "#0078d4");
+        assert_ne!(built.params.back_color.hex(), "#0078d4");
     }
 
     #[test]
@@ -114,7 +147,7 @@ mod tests {
             // Both panel colors appear as distinct fills.
             let front = Rgb::parse(base).unwrap().hex();
             assert!(built.svg.contains(&format!("fill=\"{front}\"")));
-            assert_ne!(built.back_color.hex(), front, "base {base}");
+            assert_ne!(built.params.back_color.hex(), front, "base {base}");
         }
     }
 

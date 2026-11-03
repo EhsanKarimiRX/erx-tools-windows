@@ -10,5 +10,7 @@ pub mod colors;
 pub mod commands;
 pub mod core;
 pub mod geometry;
+pub mod ico;
+pub mod raster;
 pub mod settings;
 pub mod svg;

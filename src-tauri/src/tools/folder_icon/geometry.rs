@@ -98,14 +98,17 @@ pub fn pattern_cell(size_step: i32) -> f64 {
     }
 }
 
-/// Builds the complete drawing for the given colors. `pattern` shapes carry
-/// `pattern_opacity` (0..=1) and are clipped to the front panel.
+/// Builds the complete drawing for the given colors. `pattern_cell_px` is
+/// the bar/square width in canvas px (callers resolve the size step; the
+/// rasterizer passes a larger, device-adjusted cell for small frames).
+/// Pattern shapes carry `pattern_opacity` (0..=1) and are clipped to the
+/// front panel.
 pub fn build_drawing(
     base_color: super::colors::Rgb,
     back_color: super::colors::Rgb,
     pattern: super::settings::PatternKind,
     pattern_color: super::colors::Rgb,
-    pattern_size: i32,
+    pattern_cell_px: f64,
     pattern_opacity: f64,
 ) -> Drawing {
     let front_path = rounded_rect(FRONT.x, FRONT.y, FRONT.w, FRONT.h, PANEL_RADIUS);
@@ -122,7 +125,7 @@ pub fn build_drawing(
         }),
     ];
 
-    let cells = pattern_shapes(pattern, pattern_size, pattern_color, pattern_opacity);
+    let cells = pattern_shapes(pattern, pattern_cell_px, pattern_color, pattern_opacity);
     if !cells.is_empty() {
         layers.push(Layer::ClippedGroup {
             clip: front_path.clone(),
@@ -218,19 +221,20 @@ fn rect(x: f64, y: f64, w: f64, h: f64, color: super::colors::Rgb, opacity: f64)
 }
 
 /// The pattern cells covering the front panel's bounding box (the renderer
-/// clips them to the panel's rounded shape). `None` yields no shapes.
+/// clips them to the panel's rounded shape). `cell_px` is the bar/square
+/// width in canvas px. `None` yields no shapes.
 pub fn pattern_shapes(
     pattern: super::settings::PatternKind,
-    size_step: i32,
+    cell_px: f64,
     color: super::colors::Rgb,
     opacity: f64,
 ) -> Vec<Shape> {
     use super::settings::PatternKind;
     let mut shapes = Vec::new();
+    let w = cell_px.max(0.5);
     match pattern {
         PatternKind::None => {}
         PatternKind::Vertical | PatternKind::Horizontal => {
-            let w = pattern_cell(size_step);
             let vertical = pattern == PatternKind::Vertical;
             // Bars of width w with an equal gap, starting at the panel edge.
             let span = if vertical { FRONT.w } else { FRONT.h };
@@ -245,7 +249,6 @@ pub fn pattern_shapes(
             }
         }
         PatternKind::Checker => {
-            let w = pattern_cell(size_step);
             let cols = (FRONT.w / w).ceil() as usize;
             let rows = (FRONT.h / w).ceil() as usize;
             for j in 0..rows {
@@ -294,21 +297,28 @@ mod tests {
 
     #[test]
     fn drawing_has_the_expected_layers() {
-        let drawing = build_drawing(WHITE, BLACK, PatternKind::None, RED, 3, 0.5);
+        let drawing = build_drawing(WHITE, BLACK, PatternKind::None, RED, pattern_cell(3), 0.5);
         // Back, front, (no pattern group), highlight.
         assert_eq!(drawing.layers.len(), 3);
         assert!(matches!(drawing.layers[0], Layer::Fill(..)));
         assert!(matches!(drawing.layers[1], Layer::Fill(..)));
         assert!(matches!(drawing.layers[2], Layer::Fill(..)));
 
-        let drawing = build_drawing(WHITE, BLACK, PatternKind::Checker, RED, 3, 0.5);
+        let drawing = build_drawing(
+            WHITE,
+            BLACK,
+            PatternKind::Checker,
+            RED,
+            pattern_cell(3),
+            0.5,
+        );
         assert_eq!(drawing.layers.len(), 4);
         assert!(matches!(&drawing.layers[2], Layer::ClippedGroup { .. }));
     }
 
     #[test]
     fn panels_are_closed_single_paths() {
-        let drawing = build_drawing(WHITE, BLACK, PatternKind::None, RED, 1, 0.5);
+        let drawing = build_drawing(WHITE, BLACK, PatternKind::None, RED, pattern_cell(1), 0.5);
         for layer in &drawing.layers {
             let Layer::Fill(shape) = layer else {
                 continue;
@@ -329,7 +339,7 @@ mod tests {
                 PatternKind::Horizontal,
                 PatternKind::Checker,
             ] {
-                let drawing = build_drawing(WHITE, BLACK, kind, RED, step, 0.5);
+                let drawing = build_drawing(WHITE, BLACK, kind, RED, pattern_cell(step), 0.5);
                 for layer in &drawing.layers {
                     let shapes: Vec<&Shape> = match layer {
                         Layer::Fill(shape) => vec![shape],
@@ -361,7 +371,7 @@ mod tests {
     #[test]
     fn pattern_shape_counts_scale_with_size() {
         let counts: Vec<usize> = (1..=5)
-            .map(|step| pattern_shapes(PatternKind::Vertical, step, RED, 0.5).len())
+            .map(|step| pattern_shapes(PatternKind::Vertical, pattern_cell(step), RED, 0.5).len())
             .collect();
         // Thicker bars mean fewer bars.
         for pair in counts.windows(2) {
@@ -371,19 +381,19 @@ mod tests {
         assert_eq!(counts[0], (208.0_f64 / 8.0).ceil() as usize);
 
         let checkers: Vec<usize> = (1..=5)
-            .map(|step| pattern_shapes(PatternKind::Checker, step, RED, 0.5).len())
+            .map(|step| pattern_shapes(PatternKind::Checker, pattern_cell(step), RED, 0.5).len())
             .collect();
         for pair in checkers.windows(2) {
             assert!(pair[0] > pair[1], "checker counts descending: {checkers:?}");
         }
 
-        assert!(pattern_shapes(PatternKind::None, 3, RED, 0.5).is_empty());
+        assert!(pattern_shapes(PatternKind::None, pattern_cell(3), RED, 0.5).is_empty());
     }
 
     #[test]
     fn horizontal_pattern_is_transposed_vertical() {
-        let v = pattern_shapes(PatternKind::Vertical, 3, RED, 0.5);
-        let h = pattern_shapes(PatternKind::Horizontal, 3, RED, 0.5);
+        let v = pattern_shapes(PatternKind::Vertical, pattern_cell(3), RED, 0.5);
+        let h = pattern_shapes(PatternKind::Horizontal, pattern_cell(3), RED, 0.5);
         // The panel is 208 wide but only 100 tall, so the bar COUNTS differ;
         // what must match is the bar thickness and the covering orientation.
         // Corner 2 is (x+w, y), corner 3 is (x+w, y+h).
@@ -407,7 +417,7 @@ mod tests {
 
     #[test]
     fn checker_alternates_cells() {
-        let shapes = pattern_shapes(PatternKind::Checker, 5, RED, 1.0);
+        let shapes = pattern_shapes(PatternKind::Checker, pattern_cell(5), RED, 1.0);
         // With w=18 over 208×100: cols=12, rows=6, half filled = 36.
         assert_eq!(shapes.len(), 36);
         // Opacity and color flow through.
@@ -417,7 +427,7 @@ mod tests {
 
     #[test]
     fn pattern_opacity_flows_through() {
-        let shapes = pattern_shapes(PatternKind::Vertical, 3, RED, 0.37);
+        let shapes = pattern_shapes(PatternKind::Vertical, pattern_cell(3), RED, 0.37);
         assert!(shapes.iter().all(|s| (s.opacity - 0.37).abs() < 1e-9));
     }
 
