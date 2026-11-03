@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import ColorControl from "./ColorControl";
 import FolderList from "./FolderList";
 import PatternControls from "./PatternControls";
 import type {
+  BatchEvent,
+  BatchSummary,
   EligibilityDto,
   FolderEntry,
   IconSettingsInput,
@@ -12,6 +14,7 @@ import type {
 } from "./types";
 import { MAX_FOLDERS } from "./types";
 import DropZone from "../../shared/DropZone";
+import ProgressBar from "../../shared/ProgressBar";
 import "./folder-icon.css";
 
 /** Preview refresh delay: rapid slider/typing changes don't spam Rust. */
@@ -57,6 +60,9 @@ export default function FolderIconChanger() {
   const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
 
   // Live preview: regenerate (debounced) whenever the design changes. A
   // request counter drops responses that arrive out of order.
@@ -188,21 +194,14 @@ export default function FolderIconChanger() {
     setFolders([]);
   }
 
-  function patchFolder(path: string, patch: Partial<FolderEntry>) {
-    setFolders((list) =>
-      list.map((item) => (item.path === path ? { ...item, ...patch } : item)),
-    );
-  }
-
-  /** Applies the current design to every Ready/Warning folder,
-   * sequentially (never parallel). Each row updates as its result lands. */
+  /** Applies the current design to every Ready/Warning folder through the
+   * Rust batch command: strictly sequential, per-folder events update the
+   * rows live, cancellable, capped at 100 in Rust. */
   async function applyAll() {
     const targets = folders.filter(
       (entry) => entry.status === "ready" || entry.status === "warning",
     );
     if (targets.length === 0) return;
-    setBusy("apply");
-    setNote(null);
     const settings: IconSettingsInput = {
       baseColor,
       pattern,
@@ -210,28 +209,7 @@ export default function FolderIconChanger() {
       patternSize,
       patternOpacity,
     };
-    let applied = 0;
-    let failed = 0;
-    for (const entry of targets) {
-      patchFolder(entry.path, { status: "applying", detail: null });
-      try {
-        await invoke("folder_icon_apply", { path: entry.path, settings });
-        applied += 1;
-        patchFolder(entry.path, {
-          status: "applied",
-          detail: null,
-          inspectState: "custom_by_erx",
-        });
-      } catch (error) {
-        failed += 1;
-        patchFolder(entry.path, { status: "failed", detail: errorText(error) });
-      }
-    }
-    setBusy(null);
-    setNote(
-      `Applied ${applied} of ${targets.length}` +
-        (failed > 0 ? ` — ${failed} failed (see the list).` : "."),
-    );
+    await runBatch("folder_icon_apply_batch", targets, { settings });
   }
 
   /** Restores the default icon on every eligible folder. */
@@ -243,30 +221,95 @@ export default function FolderIconChanger() {
         entry.status === "applied",
     );
     if (targets.length === 0) return;
-    setBusy("restore");
+    await runBatch("folder_icon_restore_batch", targets, {});
+  }
+
+  /** Shared batch runner: streams per-folder results through a Channel,
+   * shows the "3 of 12" progress and a Cancel button, and reports the
+   * summary. If the command rejects (validation), nothing ran and the
+   * rows go back to their previous state. */
+  async function runBatch(
+    command: "folder_icon_apply_batch" | "folder_icon_restore_batch",
+    targets: FolderEntry[],
+    extraArgs: Record<string, unknown>,
+  ) {
+    setBusy(command === "folder_icon_apply_batch" ? "apply" : "restore");
     setNote(null);
-    let restored = 0;
-    let failed = 0;
-    for (const entry of targets) {
-      patchFolder(entry.path, { status: "applying", detail: null });
-      try {
-        await invoke<string>("folder_icon_restore", { path: entry.path });
-        restored += 1;
-        patchFolder(entry.path, {
-          status: "ready",
-          detail: null,
-          inspectState: "default",
-        });
-      } catch (error) {
-        failed += 1;
-        patchFolder(entry.path, { status: "failed", detail: errorText(error) });
-      }
-    }
-    setBusy(null);
-    setNote(
-      `Restored ${restored} of ${targets.length}` +
-        (failed > 0 ? ` — ${failed} failed (see the list).` : "."),
+    setProgress({ done: 0, total: targets.length });
+    setFolders((list) =>
+      list.map((item) =>
+        targets.some((target) => target.path === item.path)
+          ? { ...item, status: "applying", detail: null }
+          : item,
+      ),
     );
+
+    const channel = new Channel<BatchEvent>();
+    channel.onmessage = (event) => {
+      setProgress((current) =>
+        current ? { ...current, done: current.done + 1 } : current,
+      );
+      setFolders((list) =>
+        list.map((item) => {
+          if (item.path !== event.path) return item;
+          switch (event.status) {
+            case "applied":
+              return {
+                ...item,
+                status: "applied",
+                detail: null,
+                inspectState: "custom_by_erx",
+              };
+            case "restored":
+              return {
+                ...item,
+                status: "ready",
+                detail: null,
+                inspectState: "default",
+              };
+            case "skipped":
+              return { ...item, status: "skipped", detail: event.detail };
+            default:
+              return { ...item, status: "failed", detail: event.detail };
+          }
+        }),
+      );
+    };
+
+    try {
+      const summary = await invoke<BatchSummary>(command, {
+        paths: targets.map((entry) => entry.path),
+        onProgress: channel,
+        ...extraArgs,
+      });
+      const verb = command === "folder_icon_apply_batch" ? "Applied" : "Restored";
+      setNote(
+        `${verb} ${summary.done} of ${targets.length}` +
+          (summary.skipped > 0 ? `, ${summary.skipped} skipped` : "") +
+          (summary.failed > 0 ? `, ${summary.failed} failed (see the list).` : "."),
+      );
+    } catch (error) {
+      // Validation ran before any folder was touched — reset the rows.
+      setNote(errorText(error));
+      setFolders((list) =>
+        list.map((item) =>
+          item.status === "applying"
+            ? { ...item, status: "ready", detail: null }
+            : item,
+        ),
+      );
+    } finally {
+      setBusy(null);
+      setProgress(null);
+    }
+  }
+
+  async function cancelBatch() {
+    try {
+      await invoke("folder_icon_cancel_batch");
+    } catch {
+      // Nothing running — nothing to cancel.
+    }
   }
 
   const previewArea = (() => {
@@ -338,6 +381,26 @@ export default function FolderIconChanger() {
               onRemove={removeFolder}
               disabled={working}
             />
+            {progress !== null && (
+              <div className="fi-progress-area">
+                <p className="fi-progress-label" aria-live="polite">
+                  {busy === "apply" ? "Applying" : "Restoring"} {progress.done}{" "}
+                  of {progress.total}…
+                </p>
+                <ProgressBar
+                  value={progress.done}
+                  max={progress.total}
+                  label="Batch progress"
+                />
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={cancelBatch}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             <div className="fi-folder-actions">
               <button
                 type="button"

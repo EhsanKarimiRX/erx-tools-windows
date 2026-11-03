@@ -234,15 +234,20 @@ pub fn inspect_folder(folder: &Path) -> Result<IconState, String> {
     }
 }
 
-/// Validates a batch size against the hard cap. Consumed by the batch
-/// command in 4C-2 (same pattern as error.rs).
-#[allow(dead_code)]
+/// Validates a batch size against the hard cap (used by the batch
+/// commands).
 pub fn validate_batch_len(count: usize) -> Result<(), String> {
     if count > MAX_BATCH {
         Err(format!("A batch is limited to {MAX_BATCH} folders."))
     } else {
         Ok(())
     }
+}
+
+/// Batch-facing wrapper: AlreadyDefault counts as success (the goal is
+/// "the folder shows the default icon", which holds either way).
+pub fn restore_icon_for_batch(folder: &Path) -> Result<(), String> {
+    restore_icon(folder).map(|_| ())
 }
 
 // ----- internals -----

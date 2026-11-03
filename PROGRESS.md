@@ -9,20 +9,22 @@ pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
 
 ## PROMPT 4 STATUS
 
-- Last finished sub-step: **4C-1** — drag & drop of folders via the shared
-  DropZone (window-wide highlight, real paths) + multi-select "Add folder"
-  native dialog (new `folder_icon_pick_folders` command replacing the
-  single-folder one); folder list with name, truncated path (tooltip shows
-  the full path), status chips (Ready / Warning / Blocked / Applying /
-  Applied / Failed) with the blocked reason shown under the path, remove
-  button per row, Clear list, duplicate skip and the 100-folder cap with
-  notes; files and protected locations dropped in land as Blocked with the
-  same eligibility messages. Apply icon / Restore default icon run over
-  all eligible folders sequentially (frontend loop, per-row live status).
-- NEXT STEP: 4C-2 — replace the frontend loop with a Rust batch command
-  (Channel progress "3 of 12", cancel, per-folder results, summary, cap
-  enforced in Rust) reusing the Image Converter's progress pattern.
-- Known issues: none new.
+- Last finished sub-step: **4C-2** — real batch processing moved into Rust:
+  `folder_icon_apply_batch` / `folder_icon_restore_batch` (strictly
+  sequential, per spec never parallel) stream one event per folder through
+  a Tauri Channel ("applied"/"restored"/"skipped"/"failed" + reason),
+  re-check eligibility right before each folder (blocked → Skipped), are
+  cancellable (`folder_icon_cancel_batch` skips the rest) and enforce the
+  100-folder cap in Rust (`validate_batch_len`, tested at 100). The UI
+  shows the shared ProgressBar with "Applying 3 of 12…", a Cancel button,
+  live per-row chips (incl. Skipped) and the final summary; a validation
+  error resets the rows (nothing ran). Batch-event JSON shape pinned by a
+  test. 190 tests.
+- NEXT STEP: 4C-3 — final polish (all states, accessibility pass, error
+  messages review, cloud warning already in), docs (README, DECISIONS:
+  design + eligibility list + relative-path VERIFIED by owner +
+  not-tested-on-Windows-10), PROGRESS, final quality gates.
+- Known issues: none.
 
 **Prompt 3 (QR Code Generator) — code complete (3A–3C), awaiting the
 owner's manual checklist.** All three content types, both styles, custom

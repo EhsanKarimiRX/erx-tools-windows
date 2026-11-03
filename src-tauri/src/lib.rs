@@ -10,6 +10,7 @@ pub fn run() {
         // Rust commands only; the webview gets no opener permission.
         .plugin(tauri_plugin_opener::init())
         .manage(tools::image_convert::commands::BatchState::default())
+        .manage(tools::folder_icon::commands::BatchState::default())
         .invoke_handler(tauri::generate_handler![
             // Central command registry: every command the frontend can call
             // is listed here exactly once. Adding a tool backend means adding
@@ -32,6 +33,9 @@ pub fn run() {
             tools::folder_icon::commands::folder_icon_inspect,
             tools::folder_icon::commands::folder_icon_apply,
             tools::folder_icon::commands::folder_icon_restore,
+            tools::folder_icon::commands::folder_icon_apply_batch,
+            tools::folder_icon::commands::folder_icon_restore_batch,
+            tools::folder_icon::commands::folder_icon_cancel_batch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

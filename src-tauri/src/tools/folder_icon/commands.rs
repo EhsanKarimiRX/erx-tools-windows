@@ -200,9 +200,228 @@ pub fn folder_icon_restore(path: String) -> Result<String, ToolError> {
     })
 }
 
+// ----- batch processing (spec 4.4: sequential, capped, per-folder
+// results streamed through a Channel, cancellable) -----
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::State;
+use tauri::ipc::Channel;
+
+/// Shared state of the running batch (cancel flag).
+#[derive(Default)]
+pub struct BatchState {
+    pub cancel: Arc<AtomicBool>,
+}
+
+/// One per-folder result streamed while the batch runs.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchEvent {
+    pub index: usize,
+    pub path: String,
+    /// "applied" | "restored" | "skipped" | "failed"
+    pub status: &'static str,
+    pub detail: Option<String>,
+}
+
+/// Final counts, returned when the batch command resolves.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchSummaryDto {
+    pub done: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
+
+#[derive(Default)]
+struct BatchCounters {
+    done: usize,
+    skipped: usize,
+    failed: usize,
+}
+
+/// Asks the running batch to stop starting new folders (folders already
+/// processed keep their result). Safe to call when nothing is running.
+#[tauri::command]
+pub fn folder_icon_cancel_batch(state: State<BatchState>) {
+    state.cancel.store(true, Ordering::Relaxed);
+}
+
+/// Runs one folder through the eligibility re-check (right before the
+/// operation, spec 4.3) and the given operation, sending the per-folder
+/// event and updating the counters.
+#[cfg(windows)]
+fn batch_step(
+    folder: &std::path::Path,
+    operation: impl Fn(&std::path::Path) -> Result<(), String>,
+    ok_status: &'static str,
+    index: usize,
+    channel: &Channel<BatchEvent>,
+    counters: &Mutex<BatchCounters>,
+) {
+    // Re-check eligibility right before touching the folder: blocked
+    // folders are Skipped, not Failed (spec 4.4).
+    let resolved = super::eligibility::resolve(folder);
+    let env = super::platform::gather_environment();
+    let facts = super::platform::path_facts(&resolved);
+    let blocked = match super::eligibility::evaluate(&resolved, facts, &env) {
+        super::eligibility::Eligibility::Allowed
+        | super::eligibility::Eligibility::AllowedWithWarning(_) => None,
+        super::eligibility::Eligibility::Blocked(reason) => Some(reason.message().to_string()),
+    };
+    let result = match blocked {
+        Some(reason) => Err((ok_status, "skipped", Some(reason))),
+        None => match operation(folder) {
+            Ok(()) => Ok(()),
+            Err(message) => Err((ok_status, "failed", Some(message))),
+        },
+    };
+    let mut counters = counters.lock().expect("batch thread owns the counters");
+    let (status, detail) = match &result {
+        Ok(()) => {
+            counters.done += 1;
+            (ok_status, None)
+        }
+        Err((_, status, detail)) => {
+            match *status {
+                "skipped" => counters.skipped += 1,
+                "failed" => counters.failed += 1,
+                _ => {}
+            }
+            (*status, detail.clone())
+        }
+    };
+    let _ = channel.send(BatchEvent {
+        index,
+        path: folder.to_string_lossy().into_owned(),
+        status,
+        detail,
+    });
+}
+
+/// Applies the icon to every given folder, strictly sequentially (spec
+/// 4.4: never parallel). Blocked folders are skipped, one failing folder
+/// never stops the batch, a cancelled batch skips the remaining folders.
+#[cfg(windows)]
+#[tauri::command]
+pub fn folder_icon_apply_batch(
+    state: State<BatchState>,
+    on_progress: Channel<BatchEvent>,
+    paths: Vec<String>,
+    settings: FolderIconSettingsDto,
+) -> Result<BatchSummaryDto, ToolError> {
+    super::apply::validate_batch_len(paths.len()).map_err(ToolError::Internal)?;
+    let settings = super::settings::IconSettings::from_parts(
+        &settings.base_color,
+        &settings.pattern,
+        &settings.pattern_color,
+        settings.pattern_size,
+        settings.pattern_opacity,
+    )
+    .map_err(ToolError::Internal)?;
+    let built = core::build(&settings);
+
+    state.cancel.store(false, Ordering::Relaxed);
+    let counters = Mutex::new(BatchCounters::default());
+    for (index, path) in paths.iter().enumerate() {
+        if state.cancel.load(Ordering::Relaxed) {
+            let _ = on_progress.send(BatchEvent {
+                index,
+                path: path.clone(),
+                status: "skipped",
+                detail: Some("Cancelled.".into()),
+            });
+            counters.lock().expect("single thread").skipped += 1;
+            continue;
+        }
+        batch_step(
+            std::path::Path::new(path),
+            |folder| super::apply::apply_icon(folder, &built.params),
+            "applied",
+            index,
+            &on_progress,
+            &counters,
+        );
+    }
+    let counters = counters.into_inner().expect("single thread");
+    Ok(BatchSummaryDto {
+        done: counters.done,
+        skipped: counters.skipped,
+        failed: counters.failed,
+    })
+}
+
+/// Restores the default icon on every given folder, same rules as the
+/// apply batch.
+#[cfg(windows)]
+#[tauri::command]
+pub fn folder_icon_restore_batch(
+    state: State<BatchState>,
+    on_progress: Channel<BatchEvent>,
+    paths: Vec<String>,
+) -> Result<BatchSummaryDto, ToolError> {
+    super::apply::validate_batch_len(paths.len()).map_err(ToolError::Internal)?;
+
+    state.cancel.store(false, Ordering::Relaxed);
+    let counters = Mutex::new(BatchCounters::default());
+    for (index, path) in paths.iter().enumerate() {
+        if state.cancel.load(Ordering::Relaxed) {
+            let _ = on_progress.send(BatchEvent {
+                index,
+                path: path.clone(),
+                status: "skipped",
+                detail: Some("Cancelled.".into()),
+            });
+            counters.lock().expect("single thread").skipped += 1;
+            continue;
+        }
+        batch_step(
+            std::path::Path::new(path),
+            super::apply::restore_icon_for_batch,
+            "restored",
+            index,
+            &on_progress,
+            &counters,
+        );
+    }
+    let counters = counters.into_inner().expect("single thread");
+    Ok(BatchSummaryDto {
+        done: counters.done,
+        skipped: counters.skipped,
+        failed: counters.failed,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The batch event JSON the frontend consumes must keep its exact
+    /// shape (tagged by "type", camelCase fields).
+    #[test]
+    fn batch_event_json_shape() {
+        let event = BatchEvent {
+            index: 3,
+            path: r"C:\dev\one".into(),
+            status: "applied",
+            detail: None,
+        };
+        let json = serde_json::to_string(&event).expect("serializes");
+        assert_eq!(
+            json,
+            r#"{"index":3,"path":"C:\\dev\\one","status":"applied","detail":null}"#
+        );
+        let skipped = BatchEvent {
+            index: 0,
+            path: r"C:\Windows".into(),
+            status: "skipped",
+            detail: Some("This is a protected Windows location.".into()),
+        };
+        let json = serde_json::to_string(&skipped).expect("serializes");
+        assert!(json.contains(r#""status":"skipped""#));
+        assert!(json.contains(r#""detail":"#));
+    }
 
     /// The exact JSON shape the frontend sends must deserialize into our
     /// DTO (camelCase), so a rename on either side fails here instead of

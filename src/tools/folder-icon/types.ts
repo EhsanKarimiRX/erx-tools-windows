@@ -52,11 +52,27 @@ export interface FolderEntry {
     | "blocked"
     | "applying"
     | "applied"
+    | "skipped"
     | "failed";
   /** Blocked reason, warning text or error message. */
   detail: string | null;
   /** What the folder currently shows (from inspect). */
   inspectState: InspectResult["state"] | null;
+}
+
+/** One per-folder batch result streamed from Rust. */
+export interface BatchEvent {
+  index: number;
+  path: string;
+  status: "applied" | "restored" | "skipped" | "failed";
+  detail: string | null;
+}
+
+/** Final batch counts. */
+export interface BatchSummary {
+  done: number;
+  skipped: number;
+  failed: number;
 }
 
 export const PATTERN_KINDS: readonly PatternKind[] = [

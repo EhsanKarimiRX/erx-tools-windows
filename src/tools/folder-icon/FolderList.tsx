@@ -71,6 +71,8 @@ function chipLabel(status: FolderEntry["status"]): string {
       return "Applying";
     case "applied":
       return "Applied";
+    case "skipped":
+      return "Skipped";
     case "failed":
       return "Failed";
   }
