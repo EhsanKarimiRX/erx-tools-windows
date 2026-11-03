@@ -9,19 +9,22 @@ pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
 
 ## PROMPT 4 STATUS
 
-- Last finished sub-step: **4A-2** — OKLab color engine in `colors.rs`
-  (strict parse, WCAG contrast, back-panel derivation with an enforced
-  minimum OKLab lightness difference of 0.10 for every possible base color;
-  out-of-gamut results gamut-mapped by chroma reduction), `geometry.rs`
-  (original 256×256 folder design: back panel with tab + front panel,
-  pattern cells for vertical/horizontal/checker in 5 size steps, clipped to
-  the front panel), `svg.rs` (SVG writer, validated colors + geometry
-  numbers only), `core.rs` pipeline with the non-blocking "Pattern may be
-  hard to see." hint (fires below 1.5:1 WCAG), and the
-  `folder_icon_preview_svg` command registered in lib.rs. 140 tests.
-- NEXT STEP: 4A-3 — UI: 12 presets + color picker + HEX fields, pattern
-  segmented control with color/size/opacity, contrast hint, large + small
-  (16/32/48) live previews, theme/keyboard accessibility.
+- Last finished sub-step: **4A-3** — full designer UI: two-column layout
+  (left column reserved for folder selection, arriving in 4C), large
+  preview + small 16/32/48 px previews from the same SVG, 12 preset
+  swatches + color picker + HEX field (accepts `#RGB` and `#RRGGBB`; inline
+  error keeps the last valid color; bare hex gets `#` on blur) for the
+  folder color and the pattern color, pattern segmented control
+  (None/Vertical/Horizontal/Checker) with size and opacity sliders (dimmed
+  while off), non-blocking "Pattern may be hard to see." hint, debounced
+  (50 ms) preview with out-of-order response dropping, light/dark theme via
+  shared variables, keyboard accessible (swatches are buttons, segmented
+  control is a radiogroup, sliders are native inputs with labels). Rust
+  `Rgb::parse` now also accepts `#RGB` (the single validation point). All
+  gates pass (140 tests).
+- NEXT STEP: 4B-1 — tiny-skia rasterizer + multi-size ICO builder (16–256)
+  + tests; small previews then switch from SVG to the exact .ico frame
+  bitmaps.
 - Known issues: none. Small previews are SVG until 4B, then they switch to
   the exact .ico raster data (spec 4.2 "same data as the .ico"). The 2 px
   minimum pattern cell for 16/24/32 px .ico frames is enforced at raster

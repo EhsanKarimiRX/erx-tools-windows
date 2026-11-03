@@ -33,9 +33,20 @@ export const PATTERN_KINDS: readonly PatternKind[] = [
   "checker",
 ];
 
-/** Strict `#RRGGBB` check, mirroring the Rust parser. */
+/** Strict hex check, mirroring the Rust parser: `#RRGGBB` or short `#RGB`. */
 export function isHexColor(value: string): boolean {
-  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value.trim());
+}
+
+/** Expands `#RGB` to `#RRGGBB`; returns null for anything invalid. */
+export function expandHex(value: string): string | null {
+  const text = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(text)) return text.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(text)) {
+    const [r, g, b] = text.slice(1);
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return null;
 }
 
 /** The 12 preset colors of the color row (spec 4.2). */

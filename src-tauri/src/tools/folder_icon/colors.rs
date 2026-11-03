@@ -24,16 +24,27 @@ pub struct Rgb {
 }
 
 impl Rgb {
-    /// Parses `#RRGGBB` strictly: exactly seven characters, `#` first, all
-    /// remaining characters hex digits. Anything else is a friendly error.
+    /// Parses `#RRGGBB` or the short `#RGB` form (each digit doubled),
+    /// always with a leading `#` and nothing but hex digits. Anything else
+    /// is a friendly error.
     pub fn parse(input: &str) -> Result<Self, String> {
-        let Some(digits) = input.trim().strip_prefix('#') else {
-            return Err(COLOR_MESSAGE.into());
-        };
-        if digits.len() != 6 || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+        let digits = input.trim().strip_prefix('#').ok_or(COLOR_MESSAGE)?;
+        if !digits.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(COLOR_MESSAGE.into());
         }
-        let value = u32::from_str_radix(digits, 16).unwrap_or(0);
+        match digits.len() {
+            3 => {
+                let expanded: String = digits.chars().flat_map(|c| [c, c]).collect();
+                Self::from_hex6(&expanded)
+            }
+            6 => Self::from_hex6(digits),
+            _ => Err(COLOR_MESSAGE.into()),
+        }
+    }
+
+    /// Converts exactly six hex digits to a color.
+    fn from_hex6(digits: &str) -> Result<Self, String> {
+        let value = u32::from_str_radix(digits, 16).map_err(|_| COLOR_MESSAGE.to_string())?;
         Ok(Rgb {
             r: (value >> 16) as u8,
             g: (value >> 8) as u8,
@@ -94,7 +105,8 @@ impl Rgb {
 }
 
 /// The single user-facing message for every malformed color.
-pub const COLOR_MESSAGE: &str = "Use a color in the #RRGGBB form, for example #1A9E4F.";
+pub const COLOR_MESSAGE: &str =
+    "Use a color in the #RRGGBB form (or short #RGB), for example #1A9E4F.";
 
 /// A color in the OKLab perceptual space.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -282,12 +294,30 @@ mod tests {
                 b: 0x3c
             }
         );
+        // The short #RGB form doubles each digit.
+        assert_eq!(
+            Rgb::parse("#FFF").unwrap(),
+            Rgb {
+                r: 255,
+                g: 255,
+                b: 255
+            }
+        );
+        assert_eq!(
+            Rgb::parse("#0aF").unwrap(),
+            Rgb {
+                r: 0,
+                g: 0xaa,
+                b: 0xff
+            }
+        );
     }
 
     #[test]
     fn parse_rejects_everything_else() {
         for bad in [
-            "", "#", "#fff", "#fffff", "#fffffff", "ffffff", "#ffgggg", "#ff;fff", "red", "#12 456",
+            "", "#", "#ff", "#ffff", "#fffff", "#fffffff", "ffffff", "#ffgggg", "#ff;fff", "red",
+            "#12 456",
         ] {
             assert!(Rgb::parse(bad).is_err(), "should reject {bad:?}");
             assert_eq!(Rgb::parse(bad).unwrap_err(), COLOR_MESSAGE);
