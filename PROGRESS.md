@@ -2,6 +2,26 @@
 
 ## Current status
 
+**Prompt 4 (Folder Icon Changer) — sub-step 4A-1 done.** Module skeleton
+with validated settings on the Rust side, mirrored in TypeScript. Gates
+pass. NEXT: 4A-2 (color derivation, pattern geometry, SVG renderer,
+`folder_icon_preview_svg` command, unit tests).
+
+## PROMPT 4 STATUS
+
+- Last finished sub-step: **4A-1** — `tools/folder_icon/` Rust module
+  (`colors.rs` strict `#RRGGBB` parsing, `settings.rs` the single validated
+  source of settings types/bounds) + frontend skeleton
+  (`src/tools/folder-icon/` with `types.ts` mirroring the Rust settings and
+  the 12 preset colors); module registered in `tools/mod.rs`. Temporary
+  `#![allow(dead_code)]` at the module root until the 4A-2 preview command
+  consumes the types (same pattern as error.rs).
+- NEXT STEP: 4A-2 — OKLab color derivation (back panel/highlight), pattern
+  geometry (vertical/horizontal/checker, clipped to the front panel),
+  geometry-to-SVG renderer, `folder_icon_preview_svg` command, unit tests.
+- Known issues: none. Small previews are SVG until 4B, then they switch to
+  the exact .ico raster data (spec 4.2 "same data as the .ico").
+
 **Prompt 3 (QR Code Generator) — code complete (3A–3C), awaiting the
 owner's manual checklist.** All three content types, both styles, custom
 colors, transparent background, error correction, margin, PNG/SVG export
