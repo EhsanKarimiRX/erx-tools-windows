@@ -9,8 +9,11 @@
 pub mod colors;
 pub mod commands;
 pub mod core;
+pub mod eligibility;
 pub mod geometry;
 pub mod ico;
+#[cfg(windows)]
+pub mod platform;
 pub mod raster;
 pub mod settings;
 pub mod svg;
