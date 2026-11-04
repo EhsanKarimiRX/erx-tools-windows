@@ -172,6 +172,10 @@
   white-space: nowrap;
 }
 
+.fi-refresh-button {
+  align-self: flex-start;
+}
+
 .fi-placeholder-note {
   margin: 0;
   padding: 14px 16px;

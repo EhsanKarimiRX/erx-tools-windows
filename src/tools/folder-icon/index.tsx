@@ -312,6 +312,18 @@ export default function FolderIconChanger() {
     }
   }
 
+  /** The on-demand global refresh (spec 4.1-A5): one association-changed
+   * broadcast. Heavy — Explorer may flicker briefly — so it is only a
+   * button, never an automatic per-folder action. */
+  async function refreshIcons() {
+    try {
+      await invoke("folder_icon_refresh_icons");
+      setNote("Explorer was asked to rebuild its icon associations.");
+    } catch (error) {
+      setNote(errorText(error));
+    }
+  }
+
   const previewArea = (() => {
     if (preview.status === "error") {
       return (
@@ -442,6 +454,15 @@ export default function FolderIconChanger() {
             until you press Apply icon.
           </p>
         )}
+        <button
+          type="button"
+          className="button-secondary fi-refresh-button"
+          onClick={refreshIcons}
+          disabled={busy !== null}
+          title="Ask Explorer to rebuild its icon associations (use if an icon still looks stale)"
+        >
+          Refresh icons
+        </button>
         {note !== null && (
           <p className="fi-note" role="status">
             {note}

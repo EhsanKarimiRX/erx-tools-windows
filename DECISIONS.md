@@ -457,3 +457,102 @@ hidden system files such as desktop.ini.
   unchanged. The command list grew only by Folder Icon commands; the
   unused single-folder apply/restore commands from the 4B test phase were
   removed again (minimal command surface).
+
+## Folder Icon refresh fixes (Prompt 4.1, Part A)
+
+### A0 — what the code did BEFORE (recorded from the code, not memory)
+
+Write order per applied folder (`apply_icon` before 4.1-A1):
+
+1. Eligibility re-check.
+2. Build the .ico bytes, derive the content-hash file name.
+3. **The folder's Read-only attribute was set FIRST** (preserving other
+   attributes), before any file was touched.
+4. The .ico was written (target attributes cleared, temp+rename, then
+   Hidden+System set immediately on the new file).
+5. desktop.ini was read, parsed (never overwritten when unreadable),
+   edited and written the same way.
+6. Previous ERX icon files (older hashes) were deleted.
+7. Notification: `SHCNE_UPDATEITEM` for the folder and `SHCNE_UPDATEDIR`
+   for its parent, both with `SHCNF_PATHW`, **without** `SHCNF_FLUSH`,
+   **without** a PIDL form, **without** `SHCNE_ATTRIBUTES`, **without**
+   an UPDATEDIR for the folder itself, and **without** any retry.
+
+`restore_icon` notified with the same weak pair.
+
+Owner's evidence on Windows 11: the on-disk state was always correct and
+F5 always showed the right icon, but the new icon often appeared only
+after the NEXT Apply "pushed" it — a view-update race, not a data problem.
+
+### A1 — write order AFTER
+
+`.ico` written → desktop.ini written → attributes on BOTH files
+(Hidden + System) → **the folder's Read-only attribute LAST** (preserving
+others) → all handles closed (std fs closes on drop; nothing is held) →
+notification. Writes go through temp+rename inside the folder; on any
+failure after the first write the previous desktop.ini is put back
+byte-exactly (or deleted if none) and our icon files are removed — the
+folder attribute needs no revert because it is set last.
+
+### A2 — per-folder notification AFTER
+
+Per folder, after the last file operation: `SHCNE_UPDATEITEM`,
+`SHCNE_ATTRIBUTES`, `SHCNE_UPDATEDIR` for the folder and
+`SHCNE_UPDATEDIR` for its parent — **each event in both forms**:
+`SHCNF_PATHW` (path) and `SHCNF_IDLIST` (PIDL from `SHParseDisplayName`;
+freed with `ILFree`), all with `SHCNF_FLUSH`. Flag check against the
+current SHChangeNotify documentation and windows-sys 0.61: the PIDL form
+is `SHCNF_IDLIST` (0) — **there is no `SHCNF_PIDW` in the current flag
+set** (the docs list IDLIST/PATHA/PRINTERA/PATHW/PRINTERW + FLUSH
+0x1000 / FLUSHNOWAIT 0x3000). `SHParseDisplayName` is used for the PIDLs.
+
+### A3 — deferred retry
+
+The same notification set is sent again `DEFERRED_NOTIFY_DELAY_MS = 300`
+ms later by a dedicated worker thread (`notification.rs`): pushing a job
+never blocks the UI or the batch loop, the queue is bounded
+(`DEFERRED_QUEUE_CAP = 64`, oldest dropped, duplicates for the same path
+coalesced), and the thread is a daemon — the process exiting (app close)
+stops it. Nothing is kept alive across app restarts; no icon-cache files
+are touched and explorer.exe is never killed.
+
+### A4 — global broadcast per batch
+
+After a WHOLE batch finishes (apply or restore) ONE
+`SHCNE_ASSOCCHANGED` with `SHCNF_IDLIST | SHCNF_FLUSH` is sent — never
+per folder. It makes every Explorer window rebuild its icon
+associations; a brief flicker in open Explorer windows is possible and
+expected.
+
+### A5 — on-demand refresh
+
+The "Refresh icons" button sends the same global broadcast on demand
+(command `folder_icon_refresh_icons`). It is available even with an
+empty list, for folders customized before this fix.
+
+### What each strategy is for (A6 summary)
+
+1. Immediate per-folder set (UPDATEITEM + ATTRIBUTES + UPDATEDIR on the
+   folder, UPDATEDIR on the parent; path + PIDL forms; flush) — tells the
+   Shell this specific item changed and refreshes the views showing it.
+2. Deferred retry after 300 ms — second chance for views that miss the
+   first notification while the folder's Read-only attribute changes
+   (the race the owner observed).
+3. One global ASSOCCHANGED per batch / on demand — the heavy hammer:
+   rebuilds associations everywhere; last resort, so it is never per
+   folder.
+
+The content-derived icon file name stays as-is: different content →
+different name, so the icon cache cannot show stale bytes (spec 4.1-A6
+declines a nonce unless evidence shows a stale-cache problem — it does
+not; the owner's evidence pointed at view refresh, not cache).
+
+### Honest limits
+
+Whether the combination is enough on every machine/view cannot be proven
+from code: the owner's refresh table (docs/folder-icon-manual-checklist.md)
+decides. If some rows still need F5, the next escalation would be (in
+order): a longer/multiple deferred retries (e.g. 300 ms + 1.5 s), sending
+`SHCNE_RENAMEFOLDER` (renaming a folder in place), or SHCNE_ASSOCCHANGED
+per folder — the last one is exactly what the Refresh button already
+covers manually.

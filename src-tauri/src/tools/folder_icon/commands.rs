@@ -205,6 +205,14 @@ struct BatchCounters {
     failed: usize,
 }
 
+/// Sends the global association-changed broadcast on demand (the
+/// "Refresh icons" button). Heavy: every Explorer window rebuilds its
+/// icon associations; there may be a brief flicker.
+#[tauri::command]
+pub fn folder_icon_refresh_icons() {
+    super::notification::notify_all_associations();
+}
+
 /// Asks the running batch to stop starting new folders (folders already
 /// processed keep their result). Safe to call when nothing is running.
 #[tauri::command]
@@ -309,6 +317,9 @@ pub fn folder_icon_apply_batch(
         );
     }
     let counters = counters.into_inner().expect("single thread");
+    // One global broadcast for the WHOLE batch (never per folder): heavy,
+    // may flicker briefly, but guarantees every view re-reads associations.
+    super::notification::notify_all_associations();
     Ok(BatchSummaryDto {
         done: counters.done,
         skipped: counters.skipped,
@@ -350,6 +361,7 @@ pub fn folder_icon_restore_batch(
         );
     }
     let counters = counters.into_inner().expect("single thread");
+    super::notification::notify_all_associations();
     Ok(BatchSummaryDto {
         done: counters.done,
         skipped: counters.skipped,

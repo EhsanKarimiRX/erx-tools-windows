@@ -8,6 +8,24 @@ relative path survives rename/move); the 4C experience (drag & drop,
 list, batch) awaits the owner's checklist run.** All quality gates pass,
 ARM64 cross-check passed, 190 Rust tests.
 
+## PROMPT 4.1 STATUS
+
+- Checkpoint **4.1-A done** (A0–A6 implemented in one pass, as the prompt
+  instructs): write order fixed (folder attribute LAST), full per-folder
+  notification set (UPDATEITEM + ATTRIBUTES + UPDATEDIR folder/parent,
+  path AND PIDL forms, SHCNF_FLUSH; PIDL = SHCNF_IDLIST — no SHCNF_PIDW
+  exists), deferred 300 ms retry on a bounded daemon worker thread, one
+  ASSOCCHANGED per finished batch, "Refresh icons" button, all constants
+  in `notification.rs`. A0 "before" state recorded in DECISIONS.md.
+  194 tests (+4 notification tests: non-blocking scheduling, bounded +
+  dedupe queue, PIDL resolution, event-set safety).
+- NEXT STEP: checkpoint **4.1-B** (icon size: measure opaque bbox,
+  rescale to ~97% canvas width, per-size native render with pixel
+  snapping, tests).
+- Known issues: whether Explorer now refreshes without F5 must be
+  confirmed by the owner's refresh table; escalation options are
+  documented in DECISIONS.md.
+
 ## PROMPT 4 STATUS
 
 - **All sub-steps done.** Last finished: **4C-3** — docs (README tools

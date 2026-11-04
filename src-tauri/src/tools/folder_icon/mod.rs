@@ -16,6 +16,8 @@ pub mod geometry;
 pub mod ico;
 pub mod ini;
 #[cfg(windows)]
+pub mod notification;
+#[cfg(windows)]
 pub mod platform;
 pub mod raster;
 pub mod settings;

@@ -13,9 +13,9 @@
 //! 3. desktop.ini is marked Hidden + System; the folder gets the Read-only
 //!    attribute (which makes the Shell process desktop.ini and does NOT
 //!    make the folder's contents read-only).
-//! 4. The Shell is notified per folder (UPDATEITEM on the folder +
-//!    UPDATEDIR on the parent) — deliberately not the heavy global
-//!    "association changed" broadcast.
+//! 4. The Shell is notified per folder with the full immediate set plus a
+//!    deferred retry (see  — the ONE place for all
+//!    notification strategies).
 //!
 //! Failure safety: writes go through temp-file-then-rename inside the same
 //! folder, and every step after the first mutation rolls the previous
@@ -23,14 +23,10 @@
 //! Only files matching our own icon name pattern are ever deleted.
 
 use std::path::{Path, PathBuf};
-use std::ptr;
 
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM,
     GetFileAttributesW, INVALID_FILE_ATTRIBUTES, SetFileAttributesW,
-};
-use windows_sys::Win32::UI::Shell::{
-    SHCNE_UPDATEDIR, SHCNE_UPDATEITEM, SHCNF_PATHW, SHChangeNotify,
 };
 
 use super::core::IconParams;
@@ -105,64 +101,92 @@ fn is_our_icon_value(value: &str) -> bool {
 
 /// Applies the icon to ONE folder. Returns a friendly English error on any
 /// failure, with the previous state rolled back.
+///
+/// Write ORDER (spec 4.1-A1) so the Shell only ever sees final state:
+/// .ico written -> desktop.ini written -> attributes on both files ->
+/// the folder's Read-only attribute LAST -> all handles closed (std fs
+/// closes on drop, nothing is held) -> notification. Before 4.1-A1 the
+/// folder attribute was set FIRST and the notification was a weak
+/// UPDATEITEM/UPDATEDIR pair without flush, PIDL form or retry.
 pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
     let resolved = check_eligibility(folder)?;
 
     let ico_bytes = super::ico::build_ico(params)?;
     let name = icon_file_name(&ico_bytes);
     let icon_path = resolved.join(&name);
-
-    // 1. The folder needs the Read-only attribute so the Shell processes
-    //    desktop.ini. Preserve all other attributes; remember whether we
-    //    added it so a later failure can undo exactly that.
-    let attrs =
-        get_attributes(&resolved).ok_or_else(|| "The folder could not be accessed.".to_string())?;
-    let folder_had_readonly = attrs & FILE_ATTRIBUTE_READONLY != 0;
-    if !folder_had_readonly {
-        set_attributes(&resolved, attrs | FILE_ATTRIBUTE_READONLY)?;
-    }
-
-    // 2. Write the icon file (temp + rename, Hidden + System).
-    let icon_existed_before = get_attributes(&icon_path).is_some();
-    if let Err(error) = write_hidden_system(&icon_path, &ico_bytes) {
-        rollback_folder_attribute(&resolved, attrs, folder_had_readonly);
-        return Err(error);
-    }
-
-    // 3. Update desktop.ini. An unreadable file is NEVER overwritten.
     let ini_path = resolved.join("desktop.ini");
-    let mut ini = match std::fs::read(&ini_path) {
-        Ok(bytes) => match DesktopIni::parse(&bytes) {
-            Ok(ini) => ini,
-            Err(error) => {
-                if !icon_existed_before {
-                    let _ = std::fs::remove_file(&icon_path);
-                }
-                rollback_folder_attribute(&resolved, attrs, folder_had_readonly);
-                return Err(format!(
-                    "desktop.ini could not be read, so nothing was changed. {error}"
-                ));
-            }
-        },
-        Err(_) => DesktopIni::new_file(),
+
+    // Snapshot the previous desktop.ini for rollback. An unreadable file
+    // is NEVER overwritten (parse here, before anything is written).
+    let previous_ini: Option<Vec<u8>> = match std::fs::read(&ini_path) {
+        Ok(bytes) => {
+            DesktopIni::parse(&bytes).map_err(|error| {
+                format!("desktop.ini could not be read, so nothing was changed. {error}")
+            })?;
+            Some(bytes)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(friendly_io_error(&error, "desktop.ini could not be read.")),
+    };
+    let mut ini = match &previous_ini {
+        Some(bytes) => DesktopIni::parse(bytes).expect("parsed above"),
+        None => DesktopIni::new_file(),
     };
     ini.set_icon_resource(&name);
-    if let Err(error) = write_hidden_system(&ini_path, &ini.serialize()) {
-        if !icon_existed_before {
-            let _ = std::fs::remove_file(&icon_path);
-        }
-        rollback_folder_attribute(&resolved, attrs, folder_had_readonly);
+    let ini_bytes = ini.serialize();
+
+    // 1. Write the .ico (temp + rename; the target's attributes are
+    //    cleared first so a Hidden+System file can be replaced).
+    replace_file(&icon_path, &ico_bytes)?;
+    // 2. Write desktop.ini.
+    if let Err(error) = replace_file(&ini_path, &ini_bytes) {
+        rollback_apply(&resolved, previous_ini);
         return Err(error);
     }
-
-    // 4. Remove previous ERX icon files (older content hashes only —
+    // 3. Attributes on both files (Hidden + System).
+    if let Err(error) = set_attributes(&icon_path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) {
+        rollback_apply(&resolved, previous_ini);
+        return Err(error);
+    }
+    if let Err(error) = set_attributes(&ini_path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) {
+        rollback_apply(&resolved, previous_ini);
+        return Err(error);
+    }
+    // 4. The folder's own attribute LAST (Read-only, preserving others) —
+    //    the last file-system change the Shell sees before the notify.
+    let attrs =
+        get_attributes(&resolved).ok_or_else(|| "The folder could not be accessed.".to_string())?;
+    if let Err(error) = set_attributes(&resolved, attrs | FILE_ATTRIBUTE_READONLY) {
+        rollback_apply(&resolved, previous_ini);
+        return Err(error);
+    }
+    // 5. Remove previous ERX icon files (older content hashes only —
     //    never the new one, never a foreign .ico). A locked file here is
     //    not fatal: the new name differs, so the icon still updates.
     delete_our_icon_files(&resolved, Some(&name));
 
-    // 5. Targeted Shell notification: the folder itself + the parent view.
-    notify(&resolved);
+    // 6. Notify: the full immediate set, then one deferred retry.
+    super::notification::notify_folder_now(&resolved);
+    super::notification::schedule_folder_notify(resolved.clone());
     Ok(())
+}
+
+/// Rolls an interrupted apply back: our icon files are removed (they are
+/// ours) and the previous desktop.ini is put back byte-exactly (or
+/// deleted if there was none). The folder attribute was set last, so on
+/// any failure up to that point nothing needs reverting there.
+fn rollback_apply(folder: &Path, previous_ini: Option<Vec<u8>>) {
+    delete_our_icon_files(folder, None);
+    let ini_path = folder.join("desktop.ini");
+    match previous_ini {
+        Some(bytes) => {
+            let _ = write_hidden_system(&ini_path, &bytes);
+        }
+        None => {
+            clear_attributes(&ini_path);
+            let _ = std::fs::remove_file(&ini_path);
+        }
+    }
 }
 
 /// Restores the default icon: removes the IconResource key(s), deletes
@@ -180,7 +204,8 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
             // clear the Read-only attribute we may have set earlier.
             delete_our_icon_files(&resolved, None);
             let _ = clear_readonly(&resolved);
-            notify(&resolved);
+            super::notification::notify_folder_now(&resolved);
+            super::notification::schedule_folder_notify(resolved.clone());
             return Ok(RestoreOutcome::AlreadyDefault);
         }
         Err(error) => return Err(friendly_io_error(&error, "desktop.ini could not be read.")),
@@ -201,13 +226,17 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
         std::fs::remove_file(&ini_path)
             .map_err(|error| friendly_io_error(&error, "desktop.ini could not be removed."))?;
         let _ = clear_readonly(&resolved);
-        notify(&resolved);
+        super::notification::notify_folder_now(&resolved);
+        super::notification::schedule_folder_notify(resolved.clone());
         return Ok(RestoreOutcome::Restored);
     }
 
-    // Other customizations remain: keep desktop.ini (with its attributes).
-    write_hidden_system(&ini_path, &ini.serialize())?;
-    notify(&resolved);
+    // Other customizations remain: keep desktop.ini — write first, then
+    // its attributes (same order discipline as apply).
+    replace_file(&ini_path, &ini.serialize())?;
+    set_attributes(&ini_path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)?;
+    super::notification::notify_folder_now(&resolved);
+    super::notification::schedule_folder_notify(resolved.clone());
     if had_icon_key {
         Ok(RestoreOutcome::Restored)
     } else {
@@ -266,12 +295,6 @@ fn check_eligibility(folder: &Path) -> Result<PathBuf, String> {
     }
 }
 
-fn rollback_folder_attribute(folder: &Path, original: u32, we_changed_it: bool) {
-    if we_changed_it {
-        let _ = set_attributes(folder, original);
-    }
-}
-
 fn wide(path: &Path) -> Vec<u16> {
     path.as_os_str()
         .to_string_lossy()
@@ -311,10 +334,11 @@ fn clear_attributes(path: &Path) {
 }
 
 /// Writes bytes to `path` via a temp file + rename inside the same folder,
-/// then marks the file Hidden + System. Existing targets get their
+/// WITHOUT touching attributes afterwards (spec 4.1-A1 order: attributes
+/// come as their own step, after all writes). Existing targets get their
 /// attributes cleared first (replacing a Hidden+System file by rename
 /// would otherwise be refused).
-fn write_hidden_system(path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     clear_attributes(path); // fine if the file does not exist yet
     let file_name = path
         .file_name()
@@ -332,8 +356,15 @@ fn write_hidden_system(path: &Path, bytes: &[u8]) -> Result<(), String> {
             "The icon file could not be put in place (is the folder open in another program?).",
         ));
     }
-    set_attributes(path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)?;
     Ok(())
+}
+
+/// Writes bytes and marks the file Hidden + System in one go (used by the
+/// rollback path to put the previous desktop.ini back in its original
+/// attribute state).
+fn write_hidden_system(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    replace_file(path, bytes)?;
+    set_attributes(path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)
 }
 
 /// Deletes every icon file of OURS in the folder except `keep`.
@@ -353,29 +384,6 @@ fn delete_our_icon_files(folder: &Path, keep: Option<&str>) -> usize {
         }
     }
     deleted
-}
-
-/// Targeted Shell notification: UPDATEITEM for the folder, UPDATEDIR for
-/// the parent view. No global association-changed broadcast.
-fn notify(folder: &Path) {
-    unsafe {
-        let folder_wide = wide(folder);
-        SHChangeNotify(
-            SHCNE_UPDATEITEM as i32,
-            SHCNF_PATHW,
-            folder_wide.as_ptr().cast(),
-            ptr::null(),
-        );
-        if let Some(parent) = folder.parent() {
-            let parent_wide = wide(parent);
-            SHChangeNotify(
-                SHCNE_UPDATEDIR as i32,
-                SHCNF_PATHW,
-                parent_wide.as_ptr().cast(),
-                ptr::null(),
-            );
-        }
-    }
 }
 
 /// Maps an io::Error to the user-facing message, with the permission case
