@@ -602,3 +602,141 @@ covers manually.
   (smaller) look until re-applied — the on-disk .ico is only replaced
   when the user applies again, and the new content automatically gets a
   new file name, so no stale cache is possible.
+
+## Folder Icon: diagnosis "icons do not appear while folders are in the list" (Prompt 4.2)
+
+### Conclusion first (spec 4.2-A5)
+
+**H2 is confirmed: Explorer was observing broken intermediate states of
+desktop.ini. H1 is NOT confirmed: a full handle/lock audit found nothing
+held open by our code.** During a re-apply on a folder that already had a
+custom icon, the OLD desktop.ini had its Hidden+System attributes CLEARED
+first (needed for the rename-replace), and the renamed-in file lacked its
+final attributes until a moment later. The folder itself was still
+Read-only from the previous apply, so Explorer kept consulting
+desktop.ini and could read it exactly during that window - where a
+desktop.ini without Hidden+System is ignored by the Shell. That evaluates
+the folder to the DEFAULT icon and the negative result sticks. This
+explains every reported symptom: only previously-customized folders
+flashed to default (first-apply folders are not Read-only mid-sequence,
+so the Shell never consults desktop.ini during it), a later batch's
+ASSOCCHANGED re-read everything and "pushed" the earlier folders'
+refresh, and the on-disk state was always correct afterwards.
+
+### A1 - handle and lifetime audit (what was found: nothing held)
+
+Every filesystem access in the Folder Icon backend is a short-lived
+`std::fs` call: read, write, rename (MoveFileExW REPLACE_EXISTING),
+read_dir, canonicalize, Get/SetFileAttributesW. All of them open and
+close their handle within the call; std fs opens with
+FILE_SHARE_READ|WRITE|DELETE. **No handle, File, or directory reference
+is stored anywhere**: no Tauri managed state beyond the batch cancel
+flag (an AtomicBool), no struct fields, no statics, no worker threads or
+channels holding paths-with-handles (the deferred-notification queue
+holds only `PathBuf`s and opens nothing itself), no watchers (no notify
+crate, no ReadDirectoryChangesW). Temp files (`.erx-tmp`) are deleted on
+every failure path; on success the temp BECOMES the target (no leftover).
+The rollback's "previous desktop.ini" lives only as bytes in memory
+inside the apply call. Inspect calls (on add, per row) are stateless
+Rust: GetFileAttributesW + canonicalize, everything closed on return.
+The frontend list rows hold only path strings, status enums and
+timestamps - no thumbnails, no open-folder calls, nothing that touches
+the folder while it sits in the list; the shared DropZone only forwards
+drag-drop path strings. The WebView2 process receives path strings only
+(drag-drop payload, dialog results) - it has nothing to hold file
+handles with.
+
+### A2 - lock probe (evidence)
+
+`probe.rs` (spec 4.2-A2): exclusive open with share mode 0
+(ERROR_SHARING_VIOLATION detection), a rename-the-folder-and-back probe,
+and a Restart Manager listing (RmStartSession/RmRegisterResources/
+RmGetList/RmEndSession, verified against windows-sys 0.61 and the
+official docs). Results:
+
+- Automated test `nothing_holds_the_files_after_apply`: after a real
+  apply, desktop.ini, the .ico and the folder are all exclusive-openable
+  and the folder is renamable back and forth - **nothing in our process
+  holds anything** (H1 false for erxtools.exe).
+- The dev-only command `folder_icon_debug_probe` (registered only in
+  debug builds) exposes the same probe plus the Restart Manager list to
+  the real UI flow; the owner can verify with Resource Monitor too
+  (manual row 8). RM listing from inside a test could only see the test
+  process anyway; the exclusive-open probe already covers "any process".
+
+### A3 - event timeline (trace before the fix)
+
+Dev-only tracing (`trace()`, ERX_FOLDER_ICON_TRACE=1 in debug builds,
+elapsed milliseconds, no user data). Re-apply on a folder with an
+existing custom icon, BEFORE the fix:
+
+```
+write: target attrs CLEARED (intermediate state begins)   <- desktop.ini visible/non-system
+write: rename done (target still lacks final attrs)        <- new content, still non-system
+apply: ini attrs set (desktop.ini final)                   <- final state, ~1ms later
+```
+
+Two observable windows exist where a Read-only folder's desktop.ini
+lacks Hidden+System (and one moment where it is replaced by a
+not-yet-hidden file). Explorer's change-notification processing is
+asynchronous - it can read milliseconds later, but it reacts to the
+events those steps emit and caches what it saw. After the fix:
+
+```
+write: ReplaceFileW done (attrs intact throughout)   <- single atomic swap, never non-system
+apply: files final (desktop.ini hidden+system throughout)
+```
+
+The new sequence: .ico (new content-derived name) written final ->
+desktop.ini temp written + given final attributes -> ReplaceFileW swaps
+content atomically -> folder attribute (no-op on re-apply) -> old .ico
+deleted (state already final) -> verified read-back -> notify. At NO
+moment is desktop.ini missing, non-hidden/system, empty or partial, and
+every intermediate state a watcher can observe is a VALID custom-icon
+state (either the old or the new icon).
+
+### B - fixes implemented (spec 4.2-B1..B5)
+
+- **B2 (the fix):** `replace_file` no longer clears the target's
+  attributes and never delete-then-creates. It writes the temp file, sets
+  Hidden+System on the TEMP, and swaps it in with `ReplaceFileW`
+  (REPLACEFILE_IGNORE_MERGE_ERRORS; docs-verified 2026-11-04: it merges
+  the replaced file's attributes onto the replacement and handles the
+  target without pre-clearing). New targets use a plain rename. The .ico
+  always uses a content-derived name, so a color change never overwrites.
+- **Skip-identical:** when the .ico or desktop.ini already holds exactly
+  the final bytes with final attributes, nothing is written at all - a
+  same-color re-apply produces zero file-system writes (tested: modified
+  times unchanged).
+- **B3:** notifications remain strictly after everything is finished
+  (all handles closed before the notify); the 300 ms deferred retry from
+  4.1 is kept; one ASSOCCHANGED still runs once per finished batch and
+  from the Refresh button. No settle delay was added: the evidence
+  pointed at broken intermediate states, not at notification timing.
+- **B4:** every apply now ends with a verification read-back
+  (`verify_applied`: desktop.ini parses and points at the new .ico, both
+  files Hidden+System, folder Read-only); a failed verification rolls
+  the apply back and reports an error instead of pretending success.
+  The batch summary gained the honest note "If Explorer still shows the
+  old icon, press F5 or use Refresh icons." - justified by the evidence
+  that Windows itself does not always repaint immediately in every view.
+- **B1:** nothing to remove - the audit found no handles (recorded
+  honestly rather than inventing a fix).
+- **B5 tests:** `replace_file_keeps_hidden_system_through_replacement`
+  (content swapped, attributes intact, no temp leftovers),
+  `identical_reapply_skips_the_writes` (modified times unchanged),
+  `verification_detects_wrong_content`, `nothing_holds_the_files_after_apply`
+  (exclusive open + folder rename probe); rollback byte-exactness, the
+  100-folder batch and the non-blocking scheduling tests are unchanged
+  and pass. 200 tests total.
+
+### Honest limits
+
+Whether the fix removes the default-icon flash on EVERY view on the
+owner's machine must come from the 4.2 manual table. If some row still
+fails, the next candidates (in order) are: a longer settle delay before
+the immediate notification, sending the notification for the PARENT
+before the folder, or per-folder ASSOCCHANGED (the Refresh button
+already covers it manually). The Restart Manager probe is available in
+debug builds if a third-party process (e.g. a sync client) turns out to
+hold the files.

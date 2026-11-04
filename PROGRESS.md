@@ -8,6 +8,28 @@ relative path survives rename/move); the 4C experience (drag & drop,
 list, batch) awaits the owner's checklist run.** All quality gates pass,
 ARM64 cross-check passed, 190 Rust tests.
 
+## PROMPT 4.2 STATUS
+
+- Checkpoints **4.2-A (diagnosis) and 4.2-B (fix) done.** Conclusion:
+  **H2 confirmed** — during a re-apply the old desktop.ini had its
+  Hidden+System attributes cleared and the renamed-in file lacked final
+  attrs for a moment; a Read-only folder keeps consulting desktop.ini,
+  Explorer cached the broken state as "default icon". **H1 not
+  confirmed** — the full audit + lock probes found nothing held open
+  (exclusive-open/rename probes green in tests; Restart Manager probe
+  available via the debug-only `folder_icon_debug_probe` command).
+  Fix: `replace_file` now sets final attributes on the TEMP file and
+  swaps with `ReplaceFileW` (no attribute clearing, no
+  delete-then-create), identical re-applies write nothing, every apply
+  ends with a verification read-back (failure → rollback + error), and
+  the batch summary carries the honest "press F5 or Refresh icons" note.
+  Timeline before/after recorded in DECISIONS.md. 200 tests (+4).
+- NEXT STEP: owner runs the 4.2 table in docs/folder-icon-manual-
+  checklist.md (especially row 2 — no default-icon flash — and row 8 —
+  resmon handle check). Escalation candidates documented if needed.
+- Known issues: none known; the fix's real-world effect awaits the
+  owner's table.
+
 ## PROMPT 4.1 STATUS
 
 - Checkpoints **4.1-A and 4.1-B done.** A: write order fixed (folder

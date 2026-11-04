@@ -286,7 +286,11 @@ export default function FolderIconChanger() {
       setNote(
         `${verb} ${summary.done} of ${targets.length}` +
           (summary.skipped > 0 ? `, ${summary.skipped} skipped` : "") +
-          (summary.failed > 0 ? `, ${summary.failed} failed (see the list).` : "."),
+          (summary.failed > 0 ? `, ${summary.failed} failed (see the list).` : ".") +
+          // Honest note (spec 4.2-B4): the files are written and verified
+          // on disk, but Windows itself does not always repaint the icon
+          // immediately in every view.
+          " If Explorer still shows the old icon, press F5 or use Refresh icons.",
       );
     } catch (error) {
       // Validation ran before any folder was touched — reset the rows.

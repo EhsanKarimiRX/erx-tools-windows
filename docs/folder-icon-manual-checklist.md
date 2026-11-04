@@ -76,3 +76,21 @@ nothing is clipped (tab, corners, highlight) and the pattern stays inside
 the front panel. Note: folders customized BEFORE this fix keep their old
 smaller look until re-applied (new content gets a new file name
 automatically).
+
+---
+
+# Prompt 4.2 — folders still in the list
+
+Fill each cell with: **immediately** / **only after F5** / **after Clear
+list** / **only after closing the app** / **never**.
+
+| Situation | Result |
+|---|---|
+| 1. Two folders with default icons, Apply (File Explorer open) | [ ] |
+| 2. Two folders that already have a custom icon, Apply a new one — must NOT flash to the default icon and stay there | [ ] |
+| 3. Apply, then Clear list WITHOUT applying anything else | [ ] |
+| 4. Apply, then remove only one folder from the list | [ ] |
+| 5. Apply to two folders, then press Refresh icons | [ ] |
+| 6. The same on a Desktop subfolder | [ ] |
+| 7. Restore on folders that are still in the list | [ ] |
+| 8. Resource Monitor (resmon → CPU tab → Associated Handles, search the folder name) after Apply while the folders are still in the list: NO erxtools.exe and NO msedgewebview2.exe entry for the folder or its files | [ ] |

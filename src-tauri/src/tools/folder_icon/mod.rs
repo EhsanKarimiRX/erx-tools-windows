@@ -19,6 +19,7 @@ pub mod ini;
 pub mod notification;
 #[cfg(windows)]
 pub mod platform;
+pub mod probe;
 pub mod raster;
 pub mod settings;
 pub mod svg;

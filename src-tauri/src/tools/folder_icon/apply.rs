@@ -26,13 +26,33 @@ use std::path::{Path, PathBuf};
 
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM,
-    GetFileAttributesW, INVALID_FILE_ATTRIBUTES, SetFileAttributesW,
+    GetFileAttributesW, INVALID_FILE_ATTRIBUTES, REPLACEFILE_IGNORE_MERGE_ERRORS, ReplaceFileW,
+    SetFileAttributesW,
 };
 
 use super::core::IconParams;
 use super::eligibility::{self, Eligibility};
 use super::ini::DesktopIni;
 use super::platform;
+
+/// Dev-only timeline tracing (spec 4.2-A3): enabled with the
+/// ERX_FOLDER_ICON_TRACE=1 environment variable in debug builds only.
+/// Logs operation kinds and elapsed milliseconds - never folder names or
+/// user data. Compiles to nothing in release builds.
+#[cfg(debug_assertions)]
+fn trace(step: &str) {
+    if std::env::var("ERX_FOLDER_ICON_TRACE").as_deref() == Ok("1") {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let start = START.get_or_init(std::time::Instant::now);
+        eprintln!(
+            "[erx-folder-icon +{:>5}ms] {step}",
+            start.elapsed().as_millis()
+        );
+    }
+}
+#[cfg(not(debug_assertions))]
+#[inline]
+fn trace(_step: &str) {}
 
 /// Hard cap on folders per batch (spec 4.4); the batch command (4C) must
 /// refuse more.
@@ -109,10 +129,13 @@ fn is_our_icon_value(value: &str) -> bool {
 /// folder attribute was set FIRST and the notification was a weak
 /// UPDATEITEM/UPDATEDIR pair without flush, PIDL form or retry.
 pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
+    trace("apply: begin");
     let resolved = check_eligibility(folder)?;
+    trace("apply: eligibility ok");
 
     let ico_bytes = super::ico::build_ico(params)?;
     let name = icon_file_name(&ico_bytes);
+    trace("apply: ico built");
     let icon_path = resolved.join(&name);
     let ini_path = resolved.join("desktop.ini");
 
@@ -135,39 +158,106 @@ pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
     ini.set_icon_resource(&name);
     let ini_bytes = ini.serialize();
 
-    // 1. Write the .ico (temp + rename; the target's attributes are
-    //    cleared first so a Hidden+System file can be replaced).
-    replace_file(&icon_path, &ico_bytes)?;
-    // 2. Write desktop.ini.
-    if let Err(error) = replace_file(&ini_path, &ini_bytes) {
+    // 1. Write the .ico ONLY if it is not already on disk with the exact
+    //    same bytes and attributes (a same-color re-apply then rewrites
+    //    nothing at all - no intermediate states, no stale-cache risk).
+    let ico_current = is_current(&icon_path, &ico_bytes);
+    if !ico_current {
+        replace_file(&icon_path, &ico_bytes)?;
+    }
+    trace("apply: ico written");
+    // 2. Write desktop.ini, same skip rule.
+    let ini_current = is_current(&ini_path, &ini_bytes);
+    let write_result = if ini_current {
+        Ok(())
+    } else {
+        replace_file(&ini_path, &ini_bytes)
+    };
+    if let Err(error) = write_result {
+        trace("apply: ini write FAILED");
         rollback_apply(&resolved, previous_ini);
         return Err(error);
     }
-    // 3. Attributes on both files (Hidden + System).
-    if let Err(error) = set_attributes(&icon_path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) {
+    trace("apply: ini written");
+    // 3. Attributes: replace_file already gave the files their final
+    //    attributes (set on the temp BEFORE the swap and merged by
+    //    ReplaceFileW) - only enforce defensively if something differs.
+    if !ico_current && let Err(error) = ensure_hidden_system(&icon_path) {
+        trace("apply: ico attrs FAILED");
         rollback_apply(&resolved, previous_ini);
         return Err(error);
     }
-    if let Err(error) = set_attributes(&ini_path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) {
+    if !ini_current && let Err(error) = ensure_hidden_system(&ini_path) {
+        trace("apply: ini attrs FAILED");
         rollback_apply(&resolved, previous_ini);
         return Err(error);
     }
+    trace("apply: files final (desktop.ini hidden+system throughout)");
     // 4. The folder's own attribute LAST (Read-only, preserving others) —
     //    the last file-system change the Shell sees before the notify.
     let attrs =
         get_attributes(&resolved).ok_or_else(|| "The folder could not be accessed.".to_string())?;
     if let Err(error) = set_attributes(&resolved, attrs | FILE_ATTRIBUTE_READONLY) {
+        trace("apply: folder attr FAILED");
         rollback_apply(&resolved, previous_ini);
         return Err(error);
     }
+    trace("apply: folder attr set");
     // 5. Remove previous ERX icon files (older content hashes only —
     //    never the new one, never a foreign .ico). A locked file here is
     //    not fatal: the new name differs, so the icon still updates.
     delete_our_icon_files(&resolved, Some(&name));
+    trace("apply: old icons deleted");
 
-    // 6. Notify: the full immediate set, then one deferred retry.
+    // 6. Verify the final on-disk state by reading it back (spec 4.2-B4):
+    //    desktop.ini parses and points at the .ico, both files are
+    //    Hidden+System, the folder is Read-only. A failed verification
+    //    rolls the apply back (the state is then not what we promised).
+    if let Err(error) = verify_applied(&resolved, &name) {
+        trace("apply: verification FAILED");
+        rollback_apply(&resolved, previous_ini);
+        return Err(error);
+    }
+    trace("apply: verified on disk");
+
+    // 7. Notify: the full immediate set, then one deferred retry.
     super::notification::notify_folder_now(&resolved);
+    trace("apply: immediate notify done");
     super::notification::schedule_folder_notify(resolved.clone());
+    trace("apply: deferred notify scheduled");
+    Ok(())
+}
+
+/// Reads the final state back from disk (fresh reads, not our cache):
+/// desktop.ini parses and references the .ico, both files carry
+/// Hidden+System, the folder is Read-only. Returns a friendly error on
+/// any mismatch.
+fn verify_applied(folder: &Path, icon_name: &str) -> Result<(), String> {
+    let ini_path = folder.join("desktop.ini");
+    let bytes = std::fs::read(&ini_path)
+        .map_err(|error| format!("Verification failed: desktop.ini could not be read. {error}"))?;
+    let ini = DesktopIni::parse(&bytes).map_err(|error| format!("Verification failed: {error}"))?;
+    let expected = format!("{icon_name},0");
+    if ini.icon_resource() != Some(expected.as_str()) {
+        return Err("Verification failed: desktop.ini does not point at the new icon.".into());
+    }
+    for (label, path) in [
+        ("desktop.ini", ini_path),
+        ("the icon file", folder.join(icon_name)),
+    ] {
+        match get_attributes(&path) {
+            Some(attrs)
+                if attrs & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)
+                    == (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) => {}
+            Some(_) => return Err(format!("Verification failed: {label} lost its attributes.")),
+            None => return Err(format!("Verification failed: {label} is missing.")),
+        }
+    }
+    let attrs = get_attributes(folder)
+        .ok_or_else(|| "Verification failed: the folder is not accessible.".to_string())?;
+    if attrs & FILE_ATTRIBUTE_READONLY == 0 {
+        return Err("Verification failed: the folder is not Read-only.".into());
+    }
     Ok(())
 }
 
@@ -333,23 +423,56 @@ fn clear_attributes(path: &Path) {
     let _ = set_attributes(path, FILE_ATTRIBUTE_NORMAL);
 }
 
-/// Writes bytes to `path` via a temp file + rename inside the same folder,
-/// WITHOUT touching attributes afterwards (spec 4.1-A1 order: attributes
-/// come as their own step, after all writes). Existing targets get their
-/// attributes cleared first (replacing a Hidden+System file by rename
-/// would otherwise be refused).
+/// Writes bytes to `path` with NO observable intermediate state (spec
+/// 4.2-B2). Sequence: write the temp file, give the TEMP its final
+/// Hidden+System attributes, then swap it in atomically:
+/// - existing target: `ReplaceFileW` - verified against the official docs
+///   it swaps the content in one operation, merges the replaced file's
+///   attributes onto the replacement, and needs no attribute clearing of
+///   the target (no window where desktop.ini is visible or non-system);
+/// - new target: a plain rename (a new name never needs attribute games).
+///
+/// The old delete-then-create and clear-attributes-first behavior is gone.
 fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    clear_attributes(path); // fine if the file does not exist yet
     let file_name = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .ok_or_else(|| "The target path is not a file.".to_string())?;
     let temp = path.with_file_name(format!("{file_name}.erx-tmp"));
-    std::fs::write(&temp, bytes).map_err(|error| {
+    let write_result = std::fs::write(&temp, bytes);
+    if let Err(error) = write_result {
         let _ = std::fs::remove_file(&temp);
-        friendly_io_error(&error, "The icon file could not be written.")
-    })?;
-    if let Err(error) = std::fs::rename(&temp, path) {
+        return Err(friendly_io_error(
+            &error,
+            "The icon file could not be written.",
+        ));
+    }
+    // Final attributes on the TEMP, before it takes the real name.
+    if let Err(error) = set_attributes(&temp, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(error);
+    }
+    if get_attributes(path).is_some() {
+        let wide_target = wide(path);
+        let wide_temp = wide(&temp);
+        let ok = unsafe {
+            ReplaceFileW(
+                wide_target.as_ptr(),
+                wide_temp.as_ptr(),
+                std::ptr::null(), // no backup: the caller holds the rollback bytes
+                REPLACEFILE_IGNORE_MERGE_ERRORS,
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        if ok == 0 {
+            let _ = std::fs::remove_file(&temp);
+            return Err(
+                "The file could not be replaced (is the folder open in another program?).".into(),
+            );
+        }
+        trace("write: ReplaceFileW done (attrs intact throughout)");
+    } else if let Err(error) = std::fs::rename(&temp, path) {
         let _ = std::fs::remove_file(&temp);
         return Err(friendly_io_error(
             &error,
@@ -359,12 +482,43 @@ fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// True when the file already holds exactly these bytes with the final
+/// attributes (an identical re-apply then rewrites nothing).
+fn is_current(path: &Path, bytes: &[u8]) -> bool {
+    let Some(attrs) = get_attributes(path) else {
+        return false;
+    };
+    if attrs & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)
+        != (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)
+    {
+        return false;
+    }
+    std::fs::read(path)
+        .map(|existing| existing == bytes)
+        .unwrap_or(false)
+}
+
+/// Sets Hidden+System unless they are already both set (defensive; the
+/// normal path gives files their attributes before the swap).
+fn ensure_hidden_system(path: &Path) -> Result<(), String> {
+    match get_attributes(path) {
+        Some(attrs)
+            if attrs & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)
+                == (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) =>
+        {
+            Ok(())
+        }
+        Some(attrs) => set_attributes(path, attrs | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM),
+        None => Ok(()), // gone; nothing to enforce
+    }
+}
+
 /// Writes bytes and marks the file Hidden + System in one go (used by the
 /// rollback path to put the previous desktop.ini back in its original
 /// attribute state).
 fn write_hidden_system(path: &Path, bytes: &[u8]) -> Result<(), String> {
     replace_file(path, bytes)?;
-    set_attributes(path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)
+    ensure_hidden_system(path)
 }
 
 /// Deletes every icon file of OURS in the folder except `keep`.
@@ -644,6 +798,121 @@ mod tests {
             restore_icon(&folder).unwrap(),
             RestoreOutcome::AlreadyDefault
         );
+        cleanup(&folder);
+    }
+
+    /// Spec 4.2-A2: after a real apply NOTHING may keep the folder,
+    /// desktop.ini or the .ico open (H1 check for our own process).
+    #[test]
+    fn nothing_holds_the_files_after_apply() {
+        let folder = make_dir("probe-locks");
+        apply_icon(&folder, &BLUE).expect("apply");
+        let ico_name = icon_file_name(&super::super::ico::build_ico(&BLUE).unwrap());
+        let icon_path = folder.join(&ico_name);
+
+        // Exclusive open must SUCCEED (true) = nobody anywhere holds it.
+        assert_eq!(
+            crate::tools::folder_icon::probe::try_exclusive_open(&folder.join("desktop.ini")),
+            Ok(true),
+            "desktop.ini must not be held"
+        );
+        assert_eq!(
+            crate::tools::folder_icon::probe::try_exclusive_open(&icon_path),
+            Ok(true),
+            "the .ico must not be held"
+        );
+        // The folder itself must be renamable (no directory handle kept).
+        assert_eq!(
+            crate::tools::folder_icon::probe::try_folder_rename(&folder),
+            Ok(true),
+            "the folder must not be held"
+        );
+        restore_icon(&folder).expect("restore");
+        cleanup(&folder);
+    }
+
+    /// Spec 4.2-B5: replacing an existing Hidden+System file must keep
+    /// it Hidden+System the whole way through (no observable window).
+    #[test]
+    fn replace_file_keeps_hidden_system_through_replacement() {
+        let folder = make_dir("probe-replace");
+        let target = folder.join("desktop.ini");
+        std::fs::write(&target, b"[.ShellClassInfo]\r\nIconResource=old.ico,0\r\n").unwrap();
+        set_attributes(&target, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM).unwrap();
+        let new_bytes = b"[.ShellClassInfo]\r\nIconResource=new.ico,0\r\n";
+        replace_file(&target, new_bytes).expect("replace");
+        // Content swapped...
+        assert_eq!(std::fs::read(&target).unwrap(), new_bytes);
+        // ...attributes intact (either merged from the old file or taken
+        // from the temp - both are Hidden+System)...
+        let attrs = get_attributes(&target).unwrap();
+        assert_ne!(attrs & FILE_ATTRIBUTE_HIDDEN, 0);
+        assert_ne!(attrs & FILE_ATTRIBUTE_SYSTEM, 0);
+        // ...and no temp file is left behind.
+        let leftovers: Vec<_> = std::fs::read_dir(&folder)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".erx-tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp files left: {leftovers:?}");
+        cleanup(&folder);
+    }
+
+    /// Spec 4.2-B5: an identical re-apply must not rewrite the files at
+    /// all (no intermediate states, nothing for Explorer to mis-read).
+    #[test]
+    fn identical_reapply_skips_the_writes() {
+        let folder = make_dir("probe-skip");
+        apply_icon(&folder, &BLUE).expect("first apply");
+        let ini_path = folder.join("desktop.ini");
+        let ico_path = folder.join(icon_file_name(
+            &super::super::ico::build_ico(&BLUE).unwrap(),
+        ));
+        let ini_before = std::fs::read(&ini_path).unwrap();
+        let ico_before = std::fs::read(&ico_path).unwrap();
+        let ini_time = std::fs::metadata(&ini_path).unwrap().modified().unwrap();
+        let ico_time = std::fs::metadata(&ico_path).unwrap().modified().unwrap();
+
+        apply_icon(&folder, &BLUE).expect("second apply");
+
+        // Byte-identical AND not even rewritten (same modified time).
+        assert_eq!(std::fs::read(&ini_path).unwrap(), ini_before);
+        assert_eq!(std::fs::read(&ico_path).unwrap(), ico_before);
+        assert_eq!(
+            std::fs::metadata(&ini_path).unwrap().modified().unwrap(),
+            ini_time,
+            "desktop.ini must not be rewritten"
+        );
+        assert_eq!(
+            std::fs::metadata(&ico_path).unwrap().modified().unwrap(),
+            ico_time,
+            "the .ico must not be rewritten"
+        );
+        // Still fully verified.
+        verify_applied(
+            &folder,
+            &icon_file_name(&super::super::ico::build_ico(&BLUE).unwrap()),
+        )
+        .expect("verification");
+        restore_icon(&folder).expect("restore");
+        cleanup(&folder);
+    }
+
+    /// Spec 4.2-B4: the verification read-back catches a broken state.
+    #[test]
+    fn verification_detects_wrong_content() {
+        let folder = make_dir("probe-verify");
+        apply_icon(&folder, &BLUE).expect("apply");
+        let name = icon_file_name(&super::super::ico::build_ico(&BLUE).unwrap());
+        // Point the ini at a wrong icon: verification must fail.
+        std::fs::write(
+            folder.join("desktop.ini"),
+            b"[.ShellClassInfo]\r\nIconResource=wrong.ico,0\r\n",
+        )
+        .unwrap();
+        assert!(verify_applied(&folder, &name).is_err());
+        restore_icon(&folder).expect("restore");
         cleanup(&folder);
     }
 
