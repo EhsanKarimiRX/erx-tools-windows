@@ -1,8 +1,0 @@
-p = r"C:/Users/EhsanRX/.zcode/cli/memories/projects/erxtools-30c2545db8716089/memory/erxtools-project-status.md"
-s = open(p, encoding="utf-8").read()
-anchor = "198 tests, gates+ARM64 green."
-new = "BISECT VERDICT (owner-executed, five worktrees): L0 c4f545b F5-works; L1 4.1-A F5-DEAD (icons appeared only when the NEXT build applied); L2/L3 same or inconsistent; minimal WIP restores F5 (isolated worktree; a main-folder WIP2 retest showed never-updated - shell state contamination across sessions suspected, unproven). The heavy 4.1-A notification layer (7+ blocking-FLUSH calls x2 with deferred second wave) is THE regression; earlier 'notification layer exonerated' was WRONG - 'not instant' was the wrong discriminator, F5-reliability was the real signal. ADOPTED as local commit a7e2351 (minimal notification layer + dev trace + regression test; keeps ReplaceFileW/skip-identical/verification/size/multi-folder; UI hint now says press F5). Unproven hypothesis: the FLUSH storm + deferred wave poisoned Explorer's cached icon evaluation. Future-improvements section in DECISIONS.md: FolderIco mechanisms (EnumWindows+RegisterWindowMessageW+SendMessage/PostMessage+InvalidateRect+CoInitializeEx+MoveFile rename nudge) as instant-refresh candidates; SHGetFileInfo ICONLOCATION is BLIND for desktop.ini icons - never reuse. Bisect worktrees C:/dev/bisect + C:/dev/wip-current.patch KEPT until owner confirms cleanup. Acceptance test pending from owner: restart Explorer, apply to 2 fresh folders, F5. 198 tests, all gates green, NOT pushed."
-assert anchor in s, "anchor"
-s = s.replace(anchor, new)
-open(p, "w", encoding="utf-8", newline="\n").write(s)
-print("memory updated")
