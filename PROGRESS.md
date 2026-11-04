@@ -8,7 +8,23 @@ relative path survives rename/move); the 4C experience (drag & drop,
 list, batch) awaits the owner's checklist run.** All quality gates pass,
 ARM64 cross-check passed, 190 Rust tests.
 
-## PROMPT 4.2 STATUS (latest: bisect fix adopted)
+## PROMPT 4.2 STATUS (latest: ROOT CAUSE FIXED - rename nudge)
+
+- **A/B experiment verdict (owner verified): the rename event is the
+  trigger.** Two folders, identical apply; B with a real rename
+  (MoveFileW + SHCNE_RENAMEFOLDER) turned red instantly; A with
+  notifications only stayed default. Implemented: after every
+  Apply/Restore the folder is renamed to its own name + invisible
+  zero-width space and back (visible name/path unchanged), with
+  RENAMEFOLDER events per hop (`nudge_folder_by_rename`). Fallback if a
+  folder is locked: silent skip + the F5 hint. Expected: **icons update
+  immediately**. 200 tests (+2 nudge tests), gates green.
+- NEXT STEP: owner acceptance test - apply to 2 fresh folders, icons
+  should appear immediately without F5. Then Encrypted Notes, installers.
+- Known issues: none known; the nudge skips silently on locked folders
+  (F5 hint covers).
+
+## PROMPT 4.2 STATUS (bisect fix adopted)
 
 - **Bisect done by the owner (five worktree builds): the heavy 4.1-A
   notification layer is the regression that made F5 useless** (L0 and the

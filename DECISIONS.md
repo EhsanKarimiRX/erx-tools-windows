@@ -828,3 +828,32 @@ verification read-back, multi-folder batch). UI hint after Apply/Restore:
   again to judge folder-icon state.
 - The deferred-worker / blocking-FLUSH / PIDL-duplication code was removed
   with the bisect fix; do not reintroduce it.
+
+### Root cause found and fixed: the rename nudge (4.2 final)
+
+**Decisive A/B experiment (2026-11-05, owner verified with one look):**
+two fresh folders, identical apply code and notifications; folder A got
+the current minimal notifications only - stayed on the default icon;
+folder B additionally got a REAL rename (`MoveFileW` to its own name with
+an invisible zero-width space appended) plus `SHCNE_RENAMEFOLDER` for
+both names - **turned red instantly**. A rename event is therefore the
+one mechanism that makes Windows 11 Explorer re-read desktop.ini and
+repaint immediately; UPDATEITEM/ASSOCCHANGED in any flag combination and
+F5 do not. This also explains FolderIco's instant updates: its binary
+imports `MoveFileW`/`MoveFileExW`.
+
+**Implemented fix:** `notification.rs::nudge_folder_by_rename` - after
+every Apply/Restore (right after the per-folder notification), the folder
+is renamed to its own name with an invisible zero-width space appended
+and immediately back, sending `SHCNE_RENAMEFOLDER` for each hop. The
+visible name and the final path are unchanged; if the folder cannot be
+renamed (locked), the nudge is skipped silently and the UI's F5 hint
+remains the fallback. Toggle helper `nudge_names` is unit-tested; a
+cfg(windows) test verifies the folder ends back under its original name
+with no leftover sibling. The A/B experiment file was removed after the
+verdict; the handle-free real-flow regression test stays.
+
+**Status:** icons should now update immediately after Apply/Restore. The
+F5 hint remains as the documented fallback. Future instant-refresh
+alternatives (FolderIco's window-message/InvalidateRect machinery) stay
+in Future improvements.

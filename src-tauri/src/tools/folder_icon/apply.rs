@@ -222,6 +222,7 @@ pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
 
     // 7. Notify: one UPDATEITEM per the reference pattern (4.2 experiment).
     super::notification::notify_folder_now(&resolved);
+    super::notification::nudge_folder_by_rename(&resolved);
     Ok(())
 }
 
@@ -292,6 +293,7 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
             delete_our_icon_files(&resolved, None);
             let _ = clear_readonly(&resolved);
             super::notification::notify_folder_now(&resolved);
+            super::notification::nudge_folder_by_rename(&resolved);
             return Ok(RestoreOutcome::AlreadyDefault);
         }
         Err(error) => return Err(friendly_io_error(&error, "desktop.ini could not be read.")),
@@ -313,6 +315,7 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
             .map_err(|error| friendly_io_error(&error, "desktop.ini could not be removed."))?;
         let _ = clear_readonly(&resolved);
         super::notification::notify_folder_now(&resolved);
+        super::notification::nudge_folder_by_rename(&resolved);
         return Ok(RestoreOutcome::Restored);
     }
 
@@ -321,6 +324,7 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
     replace_file(&ini_path, &ini.serialize())?;
     set_attributes(&ini_path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)?;
     super::notification::notify_folder_now(&resolved);
+    super::notification::nudge_folder_by_rename(&resolved);
     if had_icon_key {
         Ok(RestoreOutcome::Restored)
     } else {
