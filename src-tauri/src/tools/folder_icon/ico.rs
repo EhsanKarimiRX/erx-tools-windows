@@ -174,7 +174,8 @@ mod tests {
     /// The front-panel highlight alpha at canvas y (must mirror the
     /// rasterizer's gradient stops).
     fn highlight_alpha_at(y: f64) -> f64 {
-        0.20 + (0.02 - 0.20) * ((y - 106.0) / 100.0)
+        let front = super::super::geometry::FRONT;
+        0.20 + (0.02 - 0.20) * ((y - front.y) / front.h)
     }
 
     #[test]
@@ -185,9 +186,9 @@ mod tests {
         assert_eq!((img.width(), img.height()), (256, 256));
         let rgba = img.to_rgba8();
         // Front center: base color under the highlight fade.
-        let center = rgba.get_pixel(128, 136);
+        let center = rgba.get_pixel(128, 160);
         assert!(center[3] == 255);
-        let alpha = highlight_alpha_at(136.0);
+        let alpha = highlight_alpha_at(160.0);
         let expected_green = (f64::from(0x78) * (1.0 - alpha) + 255.0 * alpha).round() as i16;
         assert!(
             (i16::from(center[1]) - expected_green).abs() <= 2,
@@ -213,9 +214,9 @@ mod tests {
         assert_eq!((img.width(), img.height()), (32, 32));
         let rgba = img.to_rgba8();
         // Front panel center (device 16, 17 ≈ canvas 136): base under fade.
-        let center = rgba.get_pixel(16, 17);
+        let center = rgba.get_pixel(16, 20);
         assert_eq!(center[3], 255);
-        let alpha = highlight_alpha_at(136.0);
+        let alpha = highlight_alpha_at(160.0);
         let expected_green = (f64::from(0x78) * (1.0 - alpha) + 255.0 * alpha).round() as i16;
         assert!(
             (i16::from(center[1]) - expected_green).abs() <= 2,

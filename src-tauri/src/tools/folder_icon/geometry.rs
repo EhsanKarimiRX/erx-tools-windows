@@ -3,10 +3,11 @@
 //! consume, so the preview and the final .ico are always drawn from exactly
 //! the same description — mirroring the QR tool's geometry/svg/raster split.
 //!
-//! Canvas: 256 × 256. The folder is wider than tall: a back panel with a
-//! tab on the upper left, and a larger front panel overlapping the lower
-//! part. All coordinates are our own design (soft, rounded, Windows 11-like
-//! general look; no traced artwork).
+//! Canvas: 256 × 256. The folder is wider than tall (248 × 186, a 96.9%
+//! cell fill matching Windows' own folder icons — see the FRONT notes):
+//! a back panel with a tab on the upper left, and a larger front panel
+//! overlapping the lower part. All coordinates are our own design (soft,
+//! rounded, Windows 11-like general look; no traced artwork).
 //!
 //! Layer order (bottom to top): back panel, front panel, pattern (clipped
 //! to the front panel), top highlight (a white vertical fade over the front
@@ -66,15 +67,23 @@ pub struct Drawing {
 }
 
 /// Front panel rectangle (also the pattern clip region).
+///
+/// Sizing (spec 4.1-B2): the folder artwork is scaled so its opaque
+/// width covers 248 of the 256 canvas px (96.875%), matching how
+/// Windows' own folder icons fill their cell. The 4:3 folder aspect is
+/// kept (248 × 186) and the shape sits VERTICALLY CENTERED (35 px top
+/// and bottom clearance) the way Windows' folder glyphs sit optically
+/// centered in their cell — at 16 px the whole folder is ~15 px wide and
+/// a 1 px placement difference is imperceptible.
 pub const FRONT: Rect = Rect {
-    x: 24.0,
-    y: 106.0,
-    w: 208.0,
-    h: 100.0,
+    x: 4.0,
+    y: 102.0,
+    w: 248.0,
+    h: 119.0,
 };
 
-/// Corner radius shared by both panels.
-const PANEL_RADIUS: f64 = 14.0;
+/// Corner radius shared by both panels (scaled with the artwork).
+const PANEL_RADIUS: f64 = 17.0;
 
 /// An axis-aligned rectangle.
 #[derive(Debug, Clone, Copy)]
@@ -157,15 +166,15 @@ fn back_panel() -> Vec<Segment> {
     let left = FRONT.x;
     let right = FRONT.x + FRONT.w;
     let bottom = FRONT.y + FRONT.h;
-    let body_top = 70.0;
-    let tab_top = 50.0;
-    let tab_end = 98.0; // where the tab's top edge ends and slopes down
+    let body_top = 59.0;
+    let tab_top = 35.0;
+    let tab_end = 92.0; // where the tab's top edge ends and slopes down
     let slope_end = 126.0; // where the slope meets the back body top edge
 
-    let mut p = vec![Segment::MoveTo(left + 12.0, tab_top)];
+    let mut p = vec![Segment::MoveTo(left + 14.0, tab_top)];
     p.push(Segment::LineTo(tab_end, tab_top));
     p.push(Segment::QuadTo(
-        tab_end + 14.0,
+        tab_end + 16.0,
         tab_top,
         slope_end,
         body_top,
@@ -181,8 +190,8 @@ fn back_panel() -> Vec<Segment> {
     p.push(Segment::QuadTo(right, bottom, right - PANEL_RADIUS, bottom));
     p.push(Segment::LineTo(left + PANEL_RADIUS, bottom));
     p.push(Segment::QuadTo(left, bottom, left, bottom - PANEL_RADIUS));
-    p.push(Segment::LineTo(left, tab_top + 12.0));
-    p.push(Segment::QuadTo(left, tab_top, left + 12.0, tab_top));
+    p.push(Segment::LineTo(left, tab_top + 14.0));
+    p.push(Segment::QuadTo(left, tab_top, left + 14.0, tab_top));
     p.push(Segment::Close);
     p
 }
@@ -254,11 +263,16 @@ pub fn pattern_shapes(
             for j in 0..rows {
                 for i in 0..cols {
                     if (i + j) % 2 == 0 {
+                        // The last row/column may be partial: cells are
+                        // clamped to the panel edge so they never overhang
+                        // the canvas and always cover the panel fully.
+                        let x = FRONT.x + (i as f64) * w;
+                        let y = FRONT.y + (j as f64) * w;
                         shapes.push(rect(
-                            FRONT.x + (i as f64) * w,
-                            FRONT.y + (j as f64) * w,
-                            w,
-                            w,
+                            x,
+                            y,
+                            (FRONT.x + FRONT.w - x).min(w),
+                            (FRONT.y + FRONT.h - y).min(w),
                             color,
                             opacity,
                         ));
@@ -377,8 +391,8 @@ mod tests {
         for pair in counts.windows(2) {
             assert!(pair[0] > pair[1], "counts descending: {counts:?}");
         }
-        // Thin vertical bars at the front panel width of 208, period 8.
-        assert_eq!(counts[0], (208.0_f64 / 8.0).ceil() as usize);
+        // Thin vertical bars at the front panel width of 248, period 8.
+        assert_eq!(counts[0], (FRONT.w / 8.0).ceil() as usize);
 
         let checkers: Vec<usize> = (1..=5)
             .map(|step| pattern_shapes(PatternKind::Checker, pattern_cell(step), RED, 0.5).len())
@@ -418,8 +432,8 @@ mod tests {
     #[test]
     fn checker_alternates_cells() {
         let shapes = pattern_shapes(PatternKind::Checker, pattern_cell(5), RED, 1.0);
-        // With w=18 over 208×100: cols=12, rows=6, half filled = 36.
-        assert_eq!(shapes.len(), 36);
+        // With w=18 over 248×119: cols=14, rows=7, half filled = 49.
+        assert_eq!(shapes.len(), 49);
         // Opacity and color flow through.
         assert_eq!(shapes[0].opacity, 1.0);
         assert_eq!(shapes[0].fill, Fill::Solid(RED));

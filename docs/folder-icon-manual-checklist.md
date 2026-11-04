@@ -37,3 +37,42 @@ Notes for rows 5–12 (checkpoint 4B focus):
 - Row 12: in 4B there is no drag & drop yet — the folder picker can open
   the locations instead (e.g. pick C:\Windows directly, pick a file via
   the picker is not possible — use row 12 fully in 4C).
+
+---
+
+# Prompt 4.1 — refresh and size checks
+
+## Refresh table (Part A)
+
+Fill each cell with: **immediately** / **only after F5** / **only after
+explorer.exe restart** / **only after Windows restart**.
+
+| Situation | Result |
+|---|---|
+| First Apply on a fresh folder | [ ] |
+| Re-Apply with another color, a File Explorer window open | [ ] |
+| The same on a Desktop subfolder | [ ] |
+| Restore | [ ] |
+| 5 folders at once — no freezing, no heavy flicker | [ ] |
+| The "Refresh icons" button (after clearing the list) | [ ] |
+
+## Size checklist (Part B)
+
+Compare ours with a FolderIco folder AND a plain Windows folder, at the
+same icon size. Ours should look the same size as both.
+
+| View | Ours vs FolderIco | Ours vs plain Windows folder |
+|---|---|---|
+| Desktop, large icons | [ ] | [ ] |
+| Desktop, medium icons | [ ] | [ ] |
+| Desktop, small icons | [ ] | [ ] |
+| File Explorer, Details (16 px) | [ ] | [ ] |
+| File Explorer, List | [ ] | [ ] |
+| File Explorer, Medium icons | [ ] | [ ] |
+| File Explorer, Large icons | [ ] | [ ] |
+
+Also: apply a pattern and a pure white or pure black color — confirm
+nothing is clipped (tab, corners, highlight) and the pattern stays inside
+the front panel. Note: folders customized BEFORE this fix keep their old
+smaller look until re-applied (new content gets a new file name
+automatically).

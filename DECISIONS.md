@@ -556,3 +556,49 @@ order): a longer/multiple deferred retries (e.g. 300 ms + 1.5 s), sending
 `SHCNE_RENAMEFOLDER` (renaming a folder in place), or SHCNE_ASSOCCHANGED
 per folder — the last one is exactly what the Refresh button already
 covers manually.
+
+### Folder icon cell fill (Prompt 4.1, Part B)
+
+- **B1 — measured BEFORE:** the opaque bounding box of our rendered icon
+  was 208×156 px on the 256 canvas (81.25% width, 60.9% height; 24 px
+  side margins, 50 px top/bottom) — visibly smaller than Windows' own
+  folder glyphs, which fill the cell far more. (Measured programmatically
+  by rendering each .ico size and scanning alpha > 0; the owner's
+  screenshot at C:\dev\size-compare.png told the same story.)
+- **B2 — AFTER:** the artwork is rescaled to **248 × 186 px** (a uniform
+  ×1.1923; the 4:3 folder aspect is kept) = **96.875% of the canvas
+  width**, side margins 4 px. Placement: **vertically centered** (35 px
+  top and bottom clearance) — Windows' own folder glyphs sit optically
+  centered in their cell, and with our wider-than-tall shape centering
+  keeps the tab from crowding the cell's top edge at 16 px, where the
+  whole folder is ~15 px wide and a 1 px placement difference is
+  imperceptible. Corner radii and the tab slope were scaled with the
+  artwork (PANEL_RADIUS 14 → 17), so tab, corners and highlight are not
+  clipped — pinned by tests (exact 256 bbox 4..251 × 35..220; tab top
+  edge drawn; corner arc shows anti-aliased partial pixels).
+- **B3 — native rendering with pixel snapping:** every .ico frame is
+  rendered from the vector geometry at its own size (never downscaled
+  from 256 — that was already true); additionally every path point is
+  now snapped to the integer device grid after scaling (`device_path`),
+  so panel edges land exactly on pixel boundaries and small sizes stay
+  crisp. The 256 frame is unaffected (scale 1 snaps to the design's own
+  integer grid). A checkerboard quirk this exposed: the last row/column
+  of checker cells now clamp to the panel edge instead of overhanging
+  the canvas (cell sizes 13/18 do not divide 248 evenly).
+- **B4 — one geometry:** preview SVG and all .ico frames still come from
+  the same `Drawing` (both consume `IconParams::drawing*()`), so preview,
+  .ico and Explorer agree. The small 16/32/48 px previews remain the
+  exact .ico frame bitmaps.
+- **B5 — measured AFTER (opaque bbox incl. anti-aliased edge pixels):**
+  16 px → 16×12 (margins 0), 24 → 24×18 (0), 32 → 32×24 (0), 48 → 48×36
+  (0), 64 → 62×48 (1), 128 → 124×94 (2), 256 → 248×186 (4). Tests assert
+  ≥95% width at every size, ≤1 px side margin at 16/24/32, the 248:186
+  aspect (±1 px + 3% snapping tolerance), bbox strictly inside the
+  canvas, and the exact 256 bbox. Pattern and color behavior unchanged:
+  patterns still clip to the front panel (a new test pins the bar/gap
+  pixels at 16 and 256 with the snapped geometry), extreme colors keep
+  the minimum panel lightness difference (tests untouched and passing).
+- **B6 — existing icons:** folders already customized keep their old
+  (smaller) look until re-applied — the on-disk .ico is only replaced
+  when the user applies again, and the new content automatically gets a
+  new file name, so no stale cache is possible.

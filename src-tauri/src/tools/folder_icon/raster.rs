@@ -242,16 +242,16 @@ mod tests {
             "back strip must be the exact back color"
         );
 
-        // Front panel center (canvas 128, 136): base color under the
+        // Front panel center (canvas 128, 160): base color under the
         // highlight fade.
-        let center = pixmap.pixel(128, 136).unwrap().demultiply();
+        let center = pixmap.pixel(128, 160).unwrap().demultiply();
         let expected = blend_over(
             Rgb {
                 r: 255,
                 g: 255,
                 b: 255,
             },
-            highlight_alpha_at(136.0),
+            highlight_alpha_at(160.0),
             BASE,
         );
         assert!(
@@ -340,10 +340,14 @@ mod tests {
             g: 255,
             b: 255,
         };
+        // With the snapped geometry the bars sit at device 0-2 and 4-6:
+        // pixels 1 and 5 are full bars, pixel 3 is a full gap. The
+        // highlight overlay sits on top, so bars are the pattern color
+        // under it.
         let expected_bar = blend_over(white, highlight_alpha_at(136.0), black);
-        let bar = pixmap.pixel(2, 8).unwrap().demultiply();
-        let gap = pixmap.pixel(4, 8).unwrap().demultiply();
-        let bar2 = pixmap.pixel(6, 8).unwrap().demultiply();
+        let bar = pixmap.pixel(1, 8).unwrap().demultiply();
+        let gap = pixmap.pixel(3, 8).unwrap().demultiply();
+        let bar2 = pixmap.pixel(5, 8).unwrap().demultiply();
         for bar_pixel in [&bar, &bar2] {
             assert!(
                 (i16::from(bar_pixel.red()) - i16::from(expected_bar[0])).abs() <= 1
@@ -369,17 +373,90 @@ mod tests {
                 g: 255,
                 b: 255,
             },
-            highlight_alpha_at(156.0),
+            highlight_alpha_at(160.0),
             black,
         );
-        let bar = pixmap.pixel(26, 156).unwrap().demultiply();
+        let bar = pixmap.pixel(6, 160).unwrap().demultiply();
         assert!(
             (i16::from(bar.red()) - i16::from(expected_bar[0])).abs() <= 1
                 && (i16::from(bar.green()) - i16::from(expected_bar[1])).abs() <= 1
                 && (i16::from(bar.blue()) - i16::from(expected_bar[2])).abs() <= 1,
             "bar {bar:?} vs {expected_bar:?}"
         );
-        let gap = pixmap.pixel(30, 156).unwrap().demultiply();
+        let gap = pixmap.pixel(10, 160).unwrap().demultiply();
         assert!(gap.green() > 100);
+    }
+    /// Bounding box of all pixels with any opacity.
+    fn opaque_bbox(pixmap: &Pixmap) -> (u32, u32, u32, u32) {
+        let mut min_x = pixmap.width();
+        let mut max_x = 0;
+        let mut min_y = pixmap.height();
+        let mut max_y = 0;
+        for y in 0..pixmap.height() {
+            for x in 0..pixmap.width() {
+                if pixmap.pixel(x, y).unwrap().alpha() > 0 {
+                    min_x = min_x.min(x);
+                    max_x = max_x.max(x);
+                    min_y = min_y.min(y);
+                    max_y = max_y.max(y);
+                }
+            }
+        }
+        (min_x, max_x, min_y, max_y)
+    }
+
+    #[test]
+    fn opaque_bbox_fills_the_cell_like_windows_folder_icons() {
+        // Spec 4.1-B2/B5: the opaque width covers ~96.9% of the canvas at
+        // every size (Windows' own folder glyphs fill their cell the same
+        // way), the 4:3 folder aspect is kept, and nothing is clipped.
+        let p = params(PatternKind::None, BLACK, 1, 1.0);
+        for size in FRAME_SIZES {
+            let pixmap = render_pixmap(&p, size).unwrap();
+            let (min_x, max_x, min_y, max_y) = opaque_bbox(&pixmap);
+            let width = max_x - min_x + 1;
+            let height = max_y - min_y + 1;
+            assert!(
+                f64::from(width) >= 0.95 * f64::from(size),
+                "size {size}: opaque width {width} below 95%"
+            );
+            assert!(width <= size, "size {size}: wider than the canvas");
+            // Small sizes: at most 1 px total side margin.
+            if size <= 32 {
+                assert!(size - width <= 1, "size {size}: margin {}", size - width);
+            }
+            // Height tracks the 248:186 aspect (tolerance for snapping).
+            let expected_height = f64::from(width) * 186.0 / 248.0;
+            assert!(
+                (f64::from(height) - expected_height).abs() <= 1.0 + 0.03 * expected_height,
+                "size {size}: width {width} height {height}, expected ~{expected_height}"
+            );
+            assert!(min_x < max_x && min_y < max_y);
+        }
+        // At 256 the bbox matches the design exactly (no clipping, correct
+        // placement): x 4..251, y 35..220.
+        let (min_x, max_x, min_y, max_y) = opaque_bbox(&render_pixmap(&p, 256).unwrap());
+        assert_eq!((min_x, max_x, min_y, max_y), (4, 251, 35, 220));
+    }
+
+    #[test]
+    fn tab_and_rounded_corners_render_unclipped() {
+        // Spec 4.1-B2: highlights, tab and rounded corners must survive.
+        // The tab's top edge is present...
+        let pixmap = render_pixmap(&params(PatternKind::None, BLACK, 1, 1.0), 256).unwrap();
+        let top_edge_opaque = (18..92)
+            .filter(|&x| pixmap.pixel(x, 35).unwrap().alpha() == 255)
+            .count();
+        assert!(top_edge_opaque > 60, "tab top edge must be drawn");
+        // ...and the tab's rounded top-left corner shows anti-aliasing
+        // (partial pixels along the curve - not cut off square).
+        let partial = (4..18)
+            .flat_map(move |x| (33..49).map(move |y| (x, y)))
+            .filter(|&(x, y)| {
+                let a = pixmap.pixel(x, y).unwrap().demultiply().alpha();
+                a > 0 && a < 255
+            })
+            .count();
+        assert!(partial > 0, "corner arc must anti-alias");
     }
 }

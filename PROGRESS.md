@@ -10,6 +10,28 @@ ARM64 cross-check passed, 190 Rust tests.
 
 ## PROMPT 4.1 STATUS
 
+- Checkpoints **4.1-A and 4.1-B done.** A: write order fixed (folder
+  attribute LAST), full per-folder notification set (UPDATEITEM +
+  ATTRIBUTES + UPDATEDIR folder/parent, path AND PIDL forms, SHCNF_FLUSH;
+  PIDL = SHCNF_IDLIST — no SHCNF_PIDW exists), deferred 300 ms retry on a
+  bounded daemon worker thread, one ASSOCCHANGED per finished batch,
+  "Refresh icons" button, constants in `notification.rs`, A0 "before"
+  recorded in DECISIONS.md. B: opaque bbox was 81.25% of the cell width —
+  rescaled to 248×186 (96.875% width, 4:3 kept, vertically centered),
+  every frame rendered natively with integer pixel snapping, checker
+  cells clamped to the panel edge, preview still from the same geometry;
+  bbox tests pin ≥95% width at every size, ≤1 px margin at 16/24/32 and
+  the exact 256 bbox. 196 tests. Gates + ARM64 green.
+- NEXT STEP: owner runs the 4.1 manual tables (refresh + size) appended
+  to docs/folder-icon-manual-checklist.md. If some refresh rows still
+  need F5, the documented escalation order is: longer/multiple deferred
+  retries, SHCNE_RENAMEFOLDER, or per-folder ASSOCCHANGED (the Refresh
+  button already covers the last one manually).
+- Known issues: folders customized before 4.1-B keep the old smaller
+  look until re-applied (expected; new content gets a new file name).
+
+Previous status (Prompt 4 body):
+
 - Checkpoint **4.1-A done** (A0–A6 implemented in one pass, as the prompt
   instructs): write order fixed (folder attribute LAST), full per-folder
   notification set (UPDATEITEM + ATTRIBUTES + UPDATEDIR folder/parent,
