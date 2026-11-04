@@ -8,7 +8,49 @@ relative path survives rename/move); the 4C experience (drag & drop,
 list, batch) awaits the owner's checklist run.** All quality gates pass,
 ARM64 cross-check passed, 190 Rust tests.
 
-## PROMPT 4.2 STATUS
+## PROMPT 4.2 STATUS (latest: bisect fix adopted)
+
+- **Bisect done by the owner (five worktree builds): the heavy 4.1-A
+  notification layer is the regression that made F5 useless** (L0 and the
+  minimal WIP layer both give "F5 fixes it"; L1/L2/L3 all break it).
+  Earlier "notification layer exonerated" statement was wrong - the
+  "not instant" symptom was the wrong discriminator; F5-reliability was
+  the real signal. Adopted: the minimal notification layer (one
+  UPDATEITEM PATHW|FLUSHNOWAIT per folder, one ASSOCCHANGED
+  IDLIST|FLUSHNOWAIT per batch) as ONE local commit, keeping all 4.1/4.2
+  improvements. UI hint now says "press F5 in the Explorer window (or on
+  the Desktop)". Honest status: **not instant; F5 reliably refreshes**;
+  FolderIco is instant (its EnumWindows + window messages + InvalidateRect
+  + COM init + rename mechanisms are a possible future improvement, not
+  implemented - see DECISIONS.md Future improvements). Unproven
+  hypothesis recorded: the blocking-FLUSH storm + deferred second wave
+  poisoned Explorer's cached icon evaluation. Bisect worktrees
+  (C:\dev\bisect) and C:\dev\wip-current.patch kept until the owner
+  confirms cleanup.
+- NEXT STEP: owner acceptance test (restart Explorer, apply to 2 fresh
+  folders, press F5). Then Encrypted Notes, installers.
+- Known issues: not instant by design of Windows 11's handling; F5 is the
+  documented workaround in the UI.
+
+Older 4.2 status (notification experiment):
+
+- **Notification experiment implemented (uncommitted).** Disk comparison
+  of C:\dev\FolderIcon vs C:\dev\OurIcon showed structurally identical
+  artifacts, so only the Shell notification layer changed to the minimal
+  reference pattern: one UPDATEITEM (PATHW | FLUSHNOWAIT) per folder, one
+  ASSOCCHANGED (IDLIST | FLUSHNOWAIT) per batch; ATTRIBUTES/UPDATEDIR/
+  PIDL duplication, blocking FLUSH and the 300 ms deferred retry removed.
+  Also removed from the previous round (owner's UX direction): the
+  "Refresh icons" button/command and the debug probe + Restart Manager
+  feature (regression probes for tests kept); honest helper text below
+  the options. Disk path untouched. 197 tests, gates green. NOT proven
+  fixed until the owner's manual test.
+- NEXT STEP: owner runs the working-tree build, applies to two fresh
+  folders with the app open, reports immediate / after F5.
+- Known issues: Explorer behavior unproven; DECISIONS.md records the
+  experiment as hypothesis aligned with reference behavior.
+
+Previous 4.2 status (diagnosis + ReplaceFileW fix):
 
 - Checkpoints **4.2-A (diagnosis) and 4.2-B (fix) done.** Conclusion:
   **H2 confirmed** — during a re-apply the old desktop.ini had its

@@ -288,9 +288,8 @@ export default function FolderIconChanger() {
           (summary.skipped > 0 ? `, ${summary.skipped} skipped` : "") +
           (summary.failed > 0 ? `, ${summary.failed} failed (see the list).` : ".") +
           // Honest note (spec 4.2-B4): the files are written and verified
-          // on disk, but Windows itself does not always repaint the icon
-          // immediately in every view.
-          " If Explorer still shows the old icon, press F5 or use Refresh icons.",
+          // on disk, but Windows does not always repaint immediately.
+          " If an icon does not update right away, press F5 in the Explorer window (or on the Desktop).",
       );
     } catch (error) {
       // Validation ran before any folder was touched — reset the rows.
@@ -316,17 +315,6 @@ export default function FolderIconChanger() {
     }
   }
 
-  /** The on-demand global refresh (spec 4.1-A5): one association-changed
-   * broadcast. Heavy — Explorer may flicker briefly — so it is only a
-   * button, never an automatic per-folder action. */
-  async function refreshIcons() {
-    try {
-      await invoke("folder_icon_refresh_icons");
-      setNote("Explorer was asked to rebuild its icon associations.");
-    } catch (error) {
-      setNote(errorText(error));
-    }
-  }
 
   const previewArea = (() => {
     if (preview.status === "error") {
@@ -458,15 +446,6 @@ export default function FolderIconChanger() {
             until you press Apply icon.
           </p>
         )}
-        <button
-          type="button"
-          className="button-secondary fi-refresh-button"
-          onClick={refreshIcons}
-          disabled={busy !== null}
-          title="Ask Explorer to rebuild its icon associations (use if an icon still looks stale)"
-        >
-          Refresh icons
-        </button>
         {note !== null && (
           <p className="fi-note" role="status">
             {note}
@@ -515,6 +494,11 @@ export default function FolderIconChanger() {
             disabled={pattern === "none"}
           />
         </div>
+
+        <p className="fi-hint">
+          Tip: If the new icon does not appear right away, press F5 in the
+          Explorer window (or on the Desktop).
+        </p>
       </section>
     </div>
   );

@@ -35,7 +35,7 @@ tiny-skia = "0.12"
 # QR Code Generator: embedding the logo PNG into the SVG as a data URL.
 # Folder Icon: PNG data URLs for the small previews.
 base64 = "0.22"
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_RestartManager"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Com"] }
 
 [dev-dependencies]
 # QR read-back tests only — never ships in the app binary.

@@ -19,6 +19,9 @@ pub mod ini;
 pub mod notification;
 #[cfg(windows)]
 pub mod platform;
+
+#[cfg(test)]
+mod live_probe_test;
 pub mod probe;
 pub mod raster;
 pub mod settings;

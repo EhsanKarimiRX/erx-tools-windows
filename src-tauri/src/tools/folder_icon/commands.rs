@@ -205,28 +205,6 @@ struct BatchCounters {
     failed: usize,
 }
 
-/// DEBUG-ONLY diagnosis probe (spec 4.2-A2): checks who holds the given
-/// paths/folders open (exclusive-open probe, folder-rename probe,
-/// Restart Manager listing). NOT registered in release builds.
-#[cfg(debug_assertions)]
-#[tauri::command]
-pub fn folder_icon_debug_probe(
-    paths: Vec<String>,
-) -> Result<Vec<super::probe::ProbeResult>, ToolError> {
-    Ok(paths
-        .iter()
-        .map(|path| super::probe::probe_path(std::path::Path::new(path)))
-        .collect())
-}
-
-/// Sends the global association-changed broadcast on demand (the
-/// "Refresh icons" button). Heavy: every Explorer window rebuilds its
-/// icon associations; there may be a brief flicker.
-#[tauri::command]
-pub fn folder_icon_refresh_icons() {
-    super::notification::notify_all_associations();
-}
-
 /// Asks the running batch to stop starting new folders (folders already
 /// processed keep their result). Safe to call when nothing is running.
 #[tauri::command]

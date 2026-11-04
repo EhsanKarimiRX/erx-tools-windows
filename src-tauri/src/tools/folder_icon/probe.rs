@@ -1,7 +1,11 @@
 //! Lock probes for the 4.2 diagnosis (H1: is anything still holding the
-//! folder, desktop.ini or the .ico open?). Used by a cfg(test) test and by
-//! the debug-only `folder_icon_debug_probe` command (never registered in
-//! release builds). No handle opened here outlives its function.
+//! folder, desktop.ini or the .ico open?). Consumed only by the
+//! `nothing_holds_the_files_after_apply` regression test in apply.rs.
+//! No handle opened here outlives its function.
+
+// Consumed only by tests (same pattern as error.rs's allow(dead_code));
+// remove if the regression test ever goes away.
+#![allow(dead_code)]
 
 use std::path::Path;
 
@@ -47,122 +51,5 @@ pub fn try_folder_rename(folder: &Path) -> Result<bool, String> {
         Err(error) => Err(format!(
             "the probe renamed the folder but could not rename it back: {error}"
         )),
-    }
-}
-
-/// One probe result line for the debug command.
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProbeResult {
-    pub path: String,
-    pub exclusive_open: String,
-    pub folder_rename: String,
-    /// Process names the Restart Manager reports as holding the file
-    /// (empty when the API is unavailable or nothing was found).
-    pub restart_manager: Vec<String>,
-}
-
-/// Full probe of one path: exclusive open, folder rename, Restart Manager.
-pub fn probe_path(path: &Path) -> ProbeResult {
-    let exclusive = match try_exclusive_open(path) {
-        Ok(true) => "openable (nothing holds it)".to_string(),
-        Ok(false) => "SHARING VIOLATION (something holds it)".to_string(),
-        Err(error) => format!("probe error: {error}"),
-    };
-    let rename = if path.is_dir() {
-        match try_folder_rename(path) {
-            Ok(true) => "renamable (nothing holds the folder)".to_string(),
-            Ok(false) => "SHARING VIOLATION (something holds the folder)".to_string(),
-            Err(error) => format!("probe error: {error}"),
-        }
-    } else {
-        String::new()
-    };
-    ProbeResult {
-        path: path.to_string_lossy().into_owned(),
-        exclusive_open: exclusive,
-        folder_rename: rename,
-        restart_manager: restart_manager_holders(path).unwrap_or_default(),
-    }
-}
-
-/// Asks the Restart Manager which processes hold the given file
-/// (RmStartSession / RmRegisterResources / RmGetList / RmEndSession,
-/// verified against windows-sys 0.61 and learn.microsoft.com). Returns
-/// None when the session could not be started.
-fn restart_manager_holders(path: &Path) -> Option<Vec<String>> {
-    use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
-    use windows_sys::Win32::System::RestartManager::{
-        RM_PROCESS_INFO, RmEndSession, RmGetList, RmRegisterResources, RmStartSession,
-    };
-
-    unsafe {
-        let mut session: u32 = 0;
-        // The session key must be a non-empty string; any unique text.
-        let mut key: Vec<u16> = format!("erx-probe-{}", std::process::id())
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
-        if RmStartSession(&mut session, 0, key.as_mut_ptr()) != 0 {
-            return None;
-        }
-        let mut holders = Vec::new();
-        let wide: Vec<u16> = path
-            .as_os_str()
-            .to_string_lossy()
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
-        let files: [*const u16; 1] = [wide.as_ptr()];
-        let registered = RmRegisterResources(
-            session,
-            1,
-            files.as_ptr(),
-            0,
-            std::ptr::null(),
-            0,
-            std::ptr::null(),
-        );
-        if registered == 0 {
-            let mut needed: u32 = 0;
-            // Grow until the list fits (ERROR_MORE_DATA = 234).
-            loop {
-                let mut infos: Vec<RM_PROCESS_INFO> = if needed > 0 {
-                    vec![std::mem::zeroed(); needed as usize]
-                } else {
-                    Vec::new()
-                };
-                let mut count: u32 = infos.capacity() as u32;
-                let error = RmGetList(
-                    session,
-                    &mut needed,
-                    &mut count,
-                    if infos.is_empty() {
-                        std::ptr::null_mut()
-                    } else {
-                        infos.as_mut_ptr()
-                    },
-                    std::ptr::null_mut(),
-                );
-                if error == 0 {
-                    infos.truncate(count as usize);
-                    for info in &infos {
-                        let name_len = info
-                            .strAppName
-                            .iter()
-                            .position(|&c| c == 0)
-                            .unwrap_or(info.strAppName.len());
-                        holders.push(String::from_utf16_lossy(&info.strAppName[..name_len]));
-                    }
-                    break;
-                }
-                if error == ERROR_MORE_DATA && needed > 0 {
-                    continue;
-                }
-                break;
-            }
-        }
-        RmEndSession(session);
-        Some(holders)
     }
 }

@@ -34,9 +34,6 @@ pub fn run() {
             tools::folder_icon::commands::folder_icon_apply_batch,
             tools::folder_icon::commands::folder_icon_restore_batch,
             tools::folder_icon::commands::folder_icon_cancel_batch,
-            tools::folder_icon::commands::folder_icon_refresh_icons,
-            #[cfg(debug_assertions)]
-            tools::folder_icon::commands::folder_icon_debug_probe,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

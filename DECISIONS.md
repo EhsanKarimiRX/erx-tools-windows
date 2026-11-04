@@ -740,3 +740,91 @@ before the folder, or per-folder ASSOCCHANGED (the Refresh button
 already covers it manually). The Restart Manager probe is available in
 debug builds if a third-party process (e.g. a sync client) turns out to
 hold the files.
+
+### Notification experiment: minimal reference pattern (Prompt 4.2 follow-up)
+
+Based on the read-only comparison of C:\dev\FolderIcon (FolderIco) and
+C:\dev\OurIcon (ours): the disk artifacts are structurally equivalent
+(identical desktop.ini shape, relative IconResource, same folder/file
+attributes), so the visible-update difference can only come from the
+app-behavior layer. The working open-source reference
+(IconSwapperGui's ShellIconRefreshService) sends exactly two
+notifications: one SHCNE_UPDATEITEM (SHCNF_PATHW | SHCNF_FLUSHNOWAIT) for
+the item and one SHCNE_ASSOCCHANGED (SHCNF_IDLIST | SHCNF_FLUSHNOWAIT).
+
+**This is a focused EXPERIMENT, not a proven root cause.** Changed:
+`send_folder_events` reduced to ONE SHCNE_UPDATEITEM (full Unicode path,
+SHCNF_PATHW | SHCNF_FLUSHNOWAIT) per folder; ASSOCCHANGED switched from
+blocking SHCNF_FLUSH to SHCNF_FLUSHNOWAIT; removed the duplicate
+SHCNE_ATTRIBUTES / SHCNE_UPDATEDIR / PIDL-form notifications, the
+blocking SHCNF_FLUSH on every call, and the 300 ms deferred retry (the
+retry was a 4.1 mitigation tied to no documented Shell behavior; the
+reference apps have none). The disk path (ReplaceFileW, attributes on
+the temp before the swap, skip-identical, verification read-back) is
+UNTOUCHED, as agreed from the comparison. Per the SHChangeNotify docs,
+plain SHCNF_FLUSH modifies the thread used to deliver notifications and
+can deadlock; the reference implementations use only the NOWAIT form.
+The previous helper text (navigate away and back) and the removed
+Refresh button are unchanged. Explorer behavior remains UNPROVEN until
+the owner's manual test: two fresh folders, app stays open, icons
+immediate or after F5.
+
+### Bisect result: the heavy notification layer broke F5-refresh (4.2 follow-up)
+
+**The owner ran a five-build git bisect in isolated worktrees** (L0 =
+Prompt 4 final `c4f545b`, L1 = 4.1-A `c1e391d`, L2 = 4.1-B `bf0b199`,
+L3 = 4.2 `8b9b336`, WIP = the minimal-notification experiment). Two fresh
+folders per build:
+
+| Build | Notification layer | Not instant | F5 fixes |
+|---|---|---|---|
+| L0 | 2 calls: UPDATEITEM(PATHW) + UPDATEDIR(parent, PATHW), no flush | yes | **yes** |
+| L1 (4.1-A) | 7+ blocking calls: UPDATEITEM+ATTRIBUTES+UPDATEDIR x2 in path AND PIDL form, all SHCNF_FLUSH, per-batch ASSOCCHANGED(FLUSH), 300 ms deferred second wave, Refresh button | yes | **no** |
+| L2 (4.1-B) | same as L1 | yes | no |
+| L3 (4.2) | same as L1 + ReplaceFileW/verify | yes | inconsistent |
+| WIP | minimal: UPDATEITEM(PATHW\|FLUSHNOWAIT) + batch ASSOCCHANGED(IDLIST\|FLUSHNOWAIT) | yes | **yes** (isolated worktree; a main-folder retest showed "never updated" - shell state from earlier heavy builds may contaminate later sessions, unproven) |
+
+**Conclusion: the heavy notification layer introduced in 4.1-A is the
+regression that made F5 useless.** The earlier statement that the
+notification layer was "exonerated" was wrong: "not instant" was the
+wrong discriminator - the F5-reliability difference was the real signal,
+and the bisect caught it. The notification layer is NOT exonerated; the
+MINIMAL layer restores the L0 behavior and is now the adopted baseline.
+
+**Unproven hypothesis (why the heavy layer breaks F5):** the blocking
+SHCNF_FLUSH storm (7+ synchronous calls per folder, repeated by the
+deferred worker 300 ms later - a second wave that can land after the
+user's F5) and the ATTRIBUTES/UPDATEDIR-on-folder events make Explorer
+re-evaluate and cache an intermediate/negative icon state; F5 then trusts
+the poisoned cache. With the minimal NOWAIT set, the Shell's own lazy
+re-evaluation still works and F5 picks it up. Which element (FLUSH,
+ATTRIBUTES, UPDATEDIR, PIDL duplication, deferred wave) does the damage
+was not isolated - not worth more investigation while the minimal layer
+works.
+
+**Adopted baseline (one commit):** the minimal notification layer + the
+dev-only trace (off by default) + the handle-free real-flow regression
+test, keeping every other 4.1/4.2 improvement (icon geometry/size,
+ReplaceFileW with attributes on the temp, skip-identical rewrites,
+verification read-back, multi-folder batch). UI hint after Apply/Restore:
+"If an icon does not update right away, press F5 in the Explorer window
+(or on the Desktop)."
+
+### Future improvements (not implemented)
+
+- **Instant refresh like FolderIco:** FolderIco updates immediately where
+  our app needs F5. Its binary imports a repaint-forcing arsenal we do
+  not use: `EnumWindows` + `RegisterWindowMessageW` +
+  `SendMessageW`/`PostMessageW` (direct desktop list-view messaging),
+  `InvalidateRect` (forced repaint), `CoInitializeEx` (COM-initialized
+  threads), `MoveFileW` (rename events). Any of these - or the rename
+  nudge - is a candidate for a future instant-refresh experiment, with
+  the rename nudge as the least invasive candidate. Community threads
+  (SO 16347805, AutoHotkey 134992) document rename events as the known
+  trigger for desktop.ini icon re-reads on Windows 11.
+- **Diagnostic instrument warning:** `SHGetFileInfo(SHGFI_ICONLOCATION)`
+  is BLIND for desktop.ini folder icons (it returns the default
+  imageres.dll entry even for visibly customized folders) - never use it
+  again to judge folder-icon state.
+- The deferred-worker / blocking-FLUSH / PIDL-duplication code was removed
+  with the bisect fix; do not reintroduce it.
