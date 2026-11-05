@@ -222,7 +222,6 @@ pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
 
     // 7. Notify: one UPDATEITEM per the reference pattern (4.2 experiment).
     super::notification::notify_folder_now(&resolved);
-    super::notification::nudge_folder_by_rename(&resolved);
     Ok(())
 }
 
@@ -293,7 +292,6 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
             delete_our_icon_files(&resolved, None);
             let _ = clear_readonly(&resolved);
             super::notification::notify_folder_now(&resolved);
-            super::notification::nudge_folder_by_rename(&resolved);
             return Ok(RestoreOutcome::AlreadyDefault);
         }
         Err(error) => return Err(friendly_io_error(&error, "desktop.ini could not be read.")),
@@ -315,7 +313,6 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
             .map_err(|error| friendly_io_error(&error, "desktop.ini could not be removed."))?;
         let _ = clear_readonly(&resolved);
         super::notification::notify_folder_now(&resolved);
-        super::notification::nudge_folder_by_rename(&resolved);
         return Ok(RestoreOutcome::Restored);
     }
 
@@ -324,7 +321,6 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
     replace_file(&ini_path, &ini.serialize())?;
     set_attributes(&ini_path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)?;
     super::notification::notify_folder_now(&resolved);
-    super::notification::nudge_folder_by_rename(&resolved);
     if had_icon_key {
         Ok(RestoreOutcome::Restored)
     } else {
@@ -912,6 +908,40 @@ mod tests {
         assert!(verify_applied(&folder, &name).is_err());
         restore_icon(&folder).expect("restore");
         cleanup(&folder);
+    }
+
+    /// Prompt 4.3: apply and restore must never rename the folder and must
+    /// never create sibling files or folders in the parent directory.
+    #[test]
+    fn apply_and_restore_never_change_names_or_siblings() {
+        let base = make_dir("name-stability-base");
+        let folder = base.join("target");
+        std::fs::create_dir_all(&folder).unwrap();
+        let listing = |p: &Path| {
+            let mut names: Vec<String> = std::fs::read_dir(p)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        let before = listing(&base);
+        assert_eq!(before, vec!["target".to_string()]);
+
+        apply_icon(&folder, &BLUE).expect("apply");
+        assert_eq!(
+            listing(&base),
+            before,
+            "apply must not rename or add siblings"
+        );
+
+        restore_icon(&folder).expect("restore");
+        assert_eq!(
+            listing(&base),
+            before,
+            "restore must not rename or add siblings"
+        );
+        cleanup(&base);
     }
 
     #[test]
