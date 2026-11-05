@@ -8,7 +8,30 @@ relative path survives rename/move); the 4C experience (drag & drop,
 list, batch) awaits the owner's checklist run.** All quality gates pass,
 ARM64 cross-check passed, 190 Rust tests.
 
-## PROMPT 4.2 STATUS (latest: ROOT CAUSE FIXED - rename nudge)
+## PROMPT 4.2 STATUS (FINAL - Prompt 4.3)
+
+- **Prompt 4.3 done (four commits):** (1) the rename nudge REMOVED -
+  never rename user folders; a temp-dir test proves apply/restore never
+  rename the folder or create siblings; (2) ONE best-effort view refresh
+  per batch (`refresh_shell_views`: post the shell view's Refresh command
+  0x7103 to every open Explorer view and the Desktop via PostMessageW,
+  behind SEND_VIEW_REFRESH=true, fails safe); (3) calm honest UI note
+  after batches + the Apply-button fix (Applied/Failed/Skipped rows
+  re-arm to Ready when the design changes; Apply targets every
+  non-blocked row - re-apply is a no-op via skip-identical); (4) honest
+  docs (DECISIONS "Icon refresh investigation (final)" corrects the
+  earlier root-cause claims; README states the delay and Win11-only
+  testing). **Final honest status: not always instant; usually after
+  reopening the folder, sometimes a minute, restart as last resort;
+  FolderIco behaves the same on a first apply.** 202 tests, all gates
+  green including ARM64. Bisect worktrees and C:/dev/bisect-target
+  removed; C:/dev/wip-current.patch + wip-untracked kept for the owner.
+- NEXT STEP: owner runs the 4.3 acceptance table. Then Encrypted Notes,
+  installers.
+- Known issues: icon refresh delay is Windows 11 behavior (unproven
+  cause); documented honestly in the UI and README.
+
+## PROMPT 4.2 STATUS (rename nudge - SUPERSEDED, see above)
 
 - **A/B experiment verdict (owner verified): the rename event is the
   trigger.** Two folders, identical apply; B with a real rename

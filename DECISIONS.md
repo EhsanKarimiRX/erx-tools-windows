@@ -607,9 +607,15 @@ covers manually.
 
 ### Conclusion first (spec 4.2-A5)
 
-**H2 is confirmed: Explorer was observing broken intermediate states of
-desktop.ini. H1 is NOT confirmed: a full handle/lock audit found nothing
-held open by our code.** During a re-apply on a folder that already had a
+**[CORRECTED 2026-11-05: this explanation did not hold up - see
+"Icon refresh investigation (final)" below. The intermediate-state fix
+(ReplaceFileW) is still a good hardening and was kept, but it was not
+the root cause, and the visible delay remained.]**
+
+At the time this diagnosis was written it read: **H2 is confirmed:
+Explorer was observing broken intermediate states of desktop.ini. H1 is
+NOT confirmed: a full handle/lock audit found nothing held open by our
+code.** During a re-apply on a folder that already had a
 custom icon, the OLD desktop.ini had its Hidden+System attributes CLEARED
 first (needed for the rename-replace), and the renamed-in file lacked its
 final attributes until a moment later. The folder itself was still
@@ -829,9 +835,17 @@ verification read-back, multi-folder batch). UI hint after Apply/Restore:
 - The deferred-worker / blocking-FLUSH / PIDL-duplication code was removed
   with the bisect fix; do not reintroduce it.
 
-### Root cause found and fixed: the rename nudge (4.2 final)
+### The rename nudge experiment (later REMOVED - did not hold up)
 
-**Decisive A/B experiment (2026-11-05, owner verified with one look):**
+**[CORRECTED 2026-11-05: the A/B test below showed one instant result
+for the rename-and-KEEP variant, but the owner's later tests showed the
+same delayed behavior with the shipped away-and-back implementation, and
+a file-system-watcher comparison showed FolderIco never renames folders
+at all. The rename theory is unproven and the nudge was removed in
+Prompt 4.3 - see "Icon refresh investigation (final)".]**
+
+The original experiment record: **Decisive A/B experiment (2026-11-05,
+owner verified with one look):**
 two fresh folders, identical apply code and notifications; folder A got
 the current minimal notifications only - stayed on the default icon;
 folder B additionally got a REAL rename (`MoveFileW` to its own name with
@@ -857,3 +871,56 @@ verdict; the handle-free real-flow regression test stays.
 F5 hint remains as the documented fallback. Future instant-refresh
 alternatives (FolderIco's window-message/InvalidateRect machinery) stay
 in Future improvements.
+
+## Icon refresh investigation (final - Prompt 4.3)
+
+The honest summary after four rounds of experiments (write-order changes,
+the full notification set, the minimal notification set, the rename
+nudge, handle probes, lock probes, a five-build bisect, and a
+file-system-watcher comparison against FolderIco):
+
+**What the owner's tests established:**
+- The files we write are always correct on disk (desktop.ini, .ico,
+  attributes verified repeatedly, including by read-back).
+- Windows 11 shows the new icon with an inconsistent delay: usually after
+  leaving and re-entering the folder, sometimes only after about a
+  minute, always after a restart of the app or Explorer.
+- A plain Python script that writes the same files with NO notifications
+  behaves the same way - this is Windows behavior, not a bug in our write
+  logic.
+- The five-build bisect: the minimal notification layer restores
+  "F5 reliably refreshes" (the Prompt 4 final behavior); the heavy layer
+  (blocking SHCNF_FLUSH storm, ATTRIBUTES/UPDATEDIR/PIDL duplicates,
+  deferred second wave) actively made it worse and was removed.
+- FolderIco (observed live with a file-system watcher): it NEVER renames
+  folders; it writes a random-named .ico, sets the folder Read-only
+  attribute, then writes/edits desktop.ini in place - the same shape as
+  ours. Its FIRST apply on a fresh folder is also not always instant.
+- A Refresh message (the F5 command, WM_COMMAND 0x7103) posted to the
+  Desktop and Explorer views made all earlier folders show their icons
+  at once in one case, but not reliably in the others.
+- The rename-nudge experiment (rename to an invisible-suffixed name and
+  keep it) appeared instant once, but was not reproducible in the shipped
+  flow and was removed. Renaming user folders is forbidden by the owner.
+
+**What remains UNPROVEN:** the actual internal cause of the delay
+(Explorer's folder-icon evaluation policy on Windows 11 is not
+documented); whether the 0x7103 view-refresh message reliably helps (one
+positive observation, several neutral ones); whether anything an
+third-party process can do makes the first apply instant.
+
+**Final decision (Prompt 4.3):** stop root-cause hunting. Keep correct
+writes (ReplaceFileW with attributes on the temp, skip-identical,
+verification read-back), keep the minimal notification layer (one
+UPDATEITEM per folder, one ASSOCCHANGED per batch, FLUSHNOWAIT only), add
+ONE best-effort view refresh per batch (`refresh_shell_views`: post the
+shell view's internal Refresh command 0x7103 to every open Explorer view
+and the Desktop hosts via PostMessageW - fails safe if ignored), and
+tell the user honestly in the UI what to do when an icon is late.
+`SEND_VIEW_REFRESH` is a constant set to true; set it to false if the
+message ever causes trouble.
+
+**windows-sys feature added (named per the rules):**
+`Win32_UI_WindowsAndMessaging` - needed for `EnumWindows`,
+`EnumChildWindows`, `GetClassNameW`, `PostMessageW` and `WM_COMMAND` in
+`refresh_shell_views`. ARM64 check stays green.
