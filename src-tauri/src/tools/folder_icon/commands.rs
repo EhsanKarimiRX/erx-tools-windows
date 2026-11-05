@@ -312,6 +312,8 @@ pub fn folder_icon_apply_batch(
     // One global broadcast for the WHOLE batch (never per folder): heavy,
     // may flicker briefly, but guarantees every view re-reads associations.
     super::notification::notify_all_associations();
+    // One best-effort view refresh per finished batch (after the broadcast).
+    super::notification::refresh_shell_views();
     Ok(BatchSummaryDto {
         done: counters.done,
         skipped: counters.skipped,
@@ -354,6 +356,8 @@ pub fn folder_icon_restore_batch(
     }
     let counters = counters.into_inner().expect("single thread");
     super::notification::notify_all_associations();
+    // One best-effort view refresh per finished batch (after the broadcast).
+    super::notification::refresh_shell_views();
     Ok(BatchSummaryDto {
         done: counters.done,
         skipped: counters.skipped,
