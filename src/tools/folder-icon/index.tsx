@@ -24,11 +24,20 @@ const DEBOUNCE_MS = 50;
  * successful folder. Plain, calm, honest - Windows 11 does not always
  * repaint custom folder icons immediately. */
 const REFRESH_NOTE =
-  "Icons can take a few seconds to update. If a folder still shows its " +
-  "old icon, open a different folder and then come back to it. On the " +
-  "Desktop, you can also right-click an empty area and choose Refresh. " +
-  "If nothing changes after a minute, restart your computer and the new " +
-  "icon will appear.";
+  "Icons can take up to 45 seconds to update. If a folder still shows " +
+  "its old icon, open a different folder and then come back to it. On " +
+  "the Desktop, you can also right-click an empty area and choose " +
+  "Refresh. If nothing changes after a minute, restart your computer " +
+  "and the new icon will appear.";
+
+/** Shown with the refresh note: deleting a customized folder makes
+ * Windows warn about desktop.ini. That is expected and harmless - the
+ * file only stores the icon settings. */
+const DELETE_NOTE =
+  "If you delete a folder that has a custom icon, Windows may warn you " +
+  'that the file "desktop.ini" is a system file. This is normal: that ' +
+  "small file only stores the icon settings, and deleting it together " +
+  "with the folder will not cause any problems.";
 
 /** Turns anything thrown by invoke into a short display string. */
 function errorText(error: unknown): string {
@@ -480,9 +489,14 @@ export default function FolderIconChanger() {
           </p>
         )}
         {showRefreshNote && (
-          <p className="fi-hint" role="note">
-            {REFRESH_NOTE}
-          </p>
+          <>
+            <p className="fi-hint" role="note">
+              {REFRESH_NOTE}
+            </p>
+            <p className="fi-hint" role="note">
+              {DELETE_NOTE}
+            </p>
+          </>
         )}
       </section>
 

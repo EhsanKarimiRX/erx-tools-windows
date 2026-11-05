@@ -18,11 +18,13 @@ folders and are lazy-loaded only when opened — see
 - **Folder Icon Changer** — recolor Windows folder icons in any color,
   with optional stripe/checker patterns; applies a multi-size .ico plus
   desktop.ini to selected folders and restores the default icon again.
-  Fully offline, no admin rights. Note: Windows may take a few seconds to
-  show a new folder icon; if one is late, reopen the folder or right-click
-  an empty area and choose Refresh (a restart shows it in every case).
-  Tested on Windows 11 only; Windows 10 is untested. No claim of instant
-  refresh.
+  Fully offline, no admin rights. Note: Windows may take up to
+  45 seconds to show a new folder icon; if one is late, reopen the folder
+  or right-click an empty area and choose Refresh (a restart shows it in
+  every case). Deleting a customized folder may show a Windows warning
+  about the file \desktop.ini\: that is normal and harmless, the file
+  only stores the icon settings. Tested on Windows 11 only; Windows 10 is
+  untested. No claim of instant refresh.
 - **Encrypted Notes** — planned (placeholder tile).
 
 ## Development
