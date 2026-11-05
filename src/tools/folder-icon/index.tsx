@@ -20,6 +20,16 @@ import "./folder-icon.css";
 /** Preview refresh delay: rapid slider/typing changes don't spam Rust. */
 const DEBOUNCE_MS = 50;
 
+/** Shown after every finished Apply/Restore batch with at least one
+ * successful folder. Plain, calm, honest - Windows 11 does not always
+ * repaint custom folder icons immediately. */
+const REFRESH_NOTE =
+  "Icons can take a few seconds to update. If a folder still shows its " +
+  "old icon, open a different folder and then come back to it. On the " +
+  "Desktop, you can also right-click an empty area and choose Refresh. " +
+  "If nothing changes after a minute, restart your computer and the new " +
+  "icon will appear.";
+
 /** Turns anything thrown by invoke into a short display string. */
 function errorText(error: unknown): string {
   if (typeof error === "string") return error;
@@ -63,6 +73,34 @@ export default function FolderIconChanger() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
+  const [showRefreshNote, setShowRefreshNote] = useState(false);
+
+  // Changing the design re-arms rows that were already processed: Applied,
+  // Failed and Skipped rows go back to Ready (Blocked rows stay Blocked)
+  // so Apply is enabled again without removing and re-adding folders.
+  const designSignatureRef = useRef("");
+  useEffect(() => {
+    const signature = [
+      baseColor,
+      pattern,
+      patternColor,
+      patternSize,
+      patternOpacity,
+    ].join("|");
+    const first = designSignatureRef.current === "";
+    const changed = designSignatureRef.current !== signature;
+    designSignatureRef.current = signature;
+    if (first || !changed) return;
+    setFolders((list) =>
+      list.map((item) =>
+        item.status === "applied" ||
+        item.status === "failed" ||
+        item.status === "skipped"
+          ? { ...item, status: "ready", detail: null }
+          : item,
+      ),
+    );
+  }, [baseColor, pattern, patternColor, patternSize, patternOpacity]);
 
   // Live preview: regenerate (debounced) whenever the design changes. A
   // request counter drops responses that arrive out of order.
@@ -194,13 +232,13 @@ export default function FolderIconChanger() {
     setFolders([]);
   }
 
-  /** Applies the current design to every Ready/Warning folder through the
-   * Rust batch command: strictly sequential, per-folder events update the
-   * rows live, cancellable, capped at 100 in Rust. */
+  /** Applies the current design to every folder that can receive an icon
+   * (Ready, Warning, already Applied, Failed or Skipped - re-applying is a
+   * no-op through the skip-identical logic) through the Rust batch
+   * command: strictly sequential, per-folder events update the rows live,
+   * cancellable, capped at 100 in Rust. */
   async function applyAll() {
-    const targets = folders.filter(
-      (entry) => entry.status === "ready" || entry.status === "warning",
-    );
+    const targets = folders.filter((entry) => isApplyable(entry.status));
     if (targets.length === 0) return;
     const settings: IconSettingsInput = {
       baseColor,
@@ -212,14 +250,10 @@ export default function FolderIconChanger() {
     await runBatch("folder_icon_apply_batch", targets, { settings });
   }
 
-  /** Restores the default icon on every eligible folder. */
+  /** Restores the default icon on every eligible folder (restoring a
+   * folder without our icon is a harmless no-op). */
   async function restoreAll() {
-    const targets = folders.filter(
-      (entry) =>
-        entry.status === "ready" ||
-        entry.status === "warning" ||
-        entry.status === "applied",
-    );
+    const targets = folders.filter((entry) => isApplyable(entry.status));
     if (targets.length === 0) return;
     await runBatch("folder_icon_restore_batch", targets, {});
   }
@@ -235,6 +269,7 @@ export default function FolderIconChanger() {
   ) {
     setBusy(command === "folder_icon_apply_batch" ? "apply" : "restore");
     setNote(null);
+    setShowRefreshNote(false);
     setProgress({ done: 0, total: targets.length });
     setFolders((list) =>
       list.map((item) =>
@@ -286,11 +321,9 @@ export default function FolderIconChanger() {
       setNote(
         `${verb} ${summary.done} of ${targets.length}` +
           (summary.skipped > 0 ? `, ${summary.skipped} skipped` : "") +
-          (summary.failed > 0 ? `, ${summary.failed} failed (see the list).` : ".") +
-          // Honest note (spec 4.2-B4): the files are written and verified
-          // on disk, but Windows does not always repaint immediately.
-          " If an icon does not update right away, press F5 in the Explorer window (or on the Desktop).",
+          (summary.failed > 0 ? `, ${summary.failed} failed (see the list).` : "."),
       );
+      if (summary.done > 0) setShowRefreshNote(true);
     } catch (error) {
       // Validation ran before any folder was touched — reset the rows.
       setNote(errorText(error));
@@ -355,15 +388,8 @@ export default function FolderIconChanger() {
     );
   })();
 
-  const readyCount = folders.filter(
-    (entry) => entry.status === "ready" || entry.status === "warning",
-  ).length;
-  const restorableCount = folders.filter(
-    (entry) =>
-      entry.status === "ready" ||
-      entry.status === "warning" ||
-      entry.status === "applied",
-  ).length;
+  const applicableCount = folders.filter((entry) => isApplyable(entry.status))
+    .length;
   const working = busy !== null;
 
   return (
@@ -410,9 +436,11 @@ export default function FolderIconChanger() {
                 type="button"
                 className="button-primary"
                 onClick={applyAll}
-                disabled={working || readyCount === 0}
+                disabled={working || applicableCount === 0}
                 title={
-                  readyCount === 0 ? "No ready folders in the list" : undefined
+                  applicableCount === 0
+                    ? "No applicable folders in the list"
+                    : undefined
                 }
               >
                 {busy === "apply" ? "Applying…" : "Apply icon"}
@@ -421,10 +449,10 @@ export default function FolderIconChanger() {
                 type="button"
                 className="button-secondary"
                 onClick={restoreAll}
-                disabled={working || restorableCount === 0}
+                disabled={working || applicableCount === 0}
                 title={
-                  restorableCount === 0
-                    ? "No restorable folders in the list"
+                  applicableCount === 0
+                    ? "No applicable folders in the list"
                     : undefined
                 }
               >
@@ -449,6 +477,11 @@ export default function FolderIconChanger() {
         {note !== null && (
           <p className="fi-note" role="status">
             {note}
+          </p>
+        )}
+        {showRefreshNote && (
+          <p className="fi-hint" role="note">
+            {REFRESH_NOTE}
           </p>
         )}
       </section>
@@ -495,12 +528,21 @@ export default function FolderIconChanger() {
           />
         </div>
 
-        <p className="fi-hint">
-          Tip: If the new icon does not appear right away, press F5 in the
-          Explorer window (or on the Desktop).
-        </p>
       </section>
     </div>
+  );
+}
+
+/** A folder can receive an Apply or Restore when it is not blocked and
+ * not already being processed. Re-applying an applied folder is a no-op
+ * through the Rust skip-identical logic. */
+function isApplyable(status: FolderEntry["status"]): boolean {
+  return (
+    status === "ready" ||
+    status === "warning" ||
+    status === "applied" ||
+    status === "failed" ||
+    status === "skipped"
   );
 }
 
