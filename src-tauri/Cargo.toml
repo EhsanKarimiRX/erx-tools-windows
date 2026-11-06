@@ -43,6 +43,11 @@ tiny-skia = "0.12"
 # Folder Icon: PNG data URLs for the small previews.
 base64 = "0.22"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_System_Power", "Win32_System_Registry", "Win32_Security", "Win32_System_SystemInformation", "Win32_System_Time"] }
+# Image Converter / HEIC: callable WIC COM interfaces. windows-sys 0.61.2 ships
+# no Graphics/Imaging module at all (no feature, no types), so the official
+# `windows` crate is required. It is the same 0.62.x version Tauri already
+# pulls in, so this only merges extra features — no new crate in the tree.
+windows = { version = "0.62", default-features = false, features = ["Win32_Graphics_Imaging", "Win32_System_Com", "Win32_Foundation"] }
 kamadak-exif = "0.6.2"
 
 [dev-dependencies]
