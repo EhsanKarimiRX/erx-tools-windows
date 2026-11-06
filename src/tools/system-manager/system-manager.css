@@ -1,0 +1,97 @@
+/* System Manager tool styles. Imported by the tool component, so Vite
+   loads them lazily with the tool's chunk. Uses the theme variables from
+   src/styles/theme.css (automatic light/dark). */
+
+.sm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+}
+
+/* ----- Section card ----- */
+
+.sm-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sm-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.sm-card-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ----- Notes ----- */
+
+.sm-note-info {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.sm-note-warn {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #ffd166 18%, var(--surface));
+  border: 1px solid color-mix(in srgb, #ffd166 55%, var(--border));
+  font-size: 13px;
+}
+
+/* ----- Banner ----- */
+
+.sm-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.sm-banner-info {
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+}
+
+.sm-banner-warning {
+  background: color-mix(in srgb, #ffd166 18%, var(--surface));
+  border: 1px solid color-mix(in srgb, #ffd166 55%, var(--border));
+}
+
+.sm-banner-error {
+  background: color-mix(in srgb, var(--error) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--error) 50%, var(--border));
+}
+
+.sm-banner-message {
+  flex: 1;
+}
+
+.sm-banner-dismiss {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.sm-banner-dismiss:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}

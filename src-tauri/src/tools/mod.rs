@@ -10,5 +10,6 @@ pub mod error;
 pub mod folder_icon;
 pub mod image_convert;
 pub mod qr_code;
+pub mod system_manager;
 
 pub use error::ToolError;

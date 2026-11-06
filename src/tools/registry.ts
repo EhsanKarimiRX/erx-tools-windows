@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Folder,
   Image as ImageIcon,
+  MonitorCog,
   NotebookPen,
   QrCode,
 } from "lucide-react";
@@ -63,6 +64,14 @@ export const tools: readonly ToolDefinition[] = [
     description: "Keep private notes, encrypted on disk",
     icon: NotebookPen,
     load: () => import("./notes"),
+    status: "ready",
+  },
+  {
+    id: "system-manager",
+    name: "System Manager",
+    description: "Awake, desktop icons, organizer and quick launchers.",
+    icon: MonitorCog,
+    load: () => import("./system-manager"),
     status: "ready",
   },
 ];
