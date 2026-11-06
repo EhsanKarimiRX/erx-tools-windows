@@ -14,7 +14,7 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 | 5b-3 | Awake: runtime, commands, thread, exit | DONE | commands wired in lib.rs; close interception + 5s thread; notification plugin added (Rust-side only) |
 | 5b-4 | Awake: UI | DONE | toggle/status/warn/drawer/banners/close dialog; chunk lazy-loads |
 | 5b-5 | Awake: live verification | DONE | 3 live tests pass; G9 snapshot verified unchanged afterwards |
-| 5c | Desktop Icons | NOT STARTED | |
+| 5c | Desktop Icons | DONE | 5 toggles + refresh; live test passed; snapshot intact; owner mirror test pending |
 | 5d-1 | Organize: pure logic | NOT STARTED | |
 | 5d-2 | Organize: scan | NOT STARTED | |
 | 5d-3 | Organize: execute, manifest, undo | NOT STARTED | |
@@ -54,6 +54,15 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 - Desktop machine (no battery in use; DC values present but inactive).
 - Rule: after every live test, re-run the queries and confirm these values are unchanged.
 
+### Desktop Icons registry values, 2026-11-06, BEFORE any 5c live test
+Key: HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel
+- {20D04FE0-3AEA-1069-A2D8-08002B30309D} (This PC) = REG_DWORD 0x0 (present, shown)
+- {645FF040-5081-101B-9F08-00AA002F954E} (Recycle Bin) = ABSENT (default: shown)
+- {5399E694-6CE5-4D6D-8792-F8F34E1E2E6F} (Control Panel) = ABSENT (default: hidden)
+- {F02C1A0D-BE21-4350-88B0-7367FC96EF3C} (Network) = ABSENT (default: hidden)
+- {59031a47-3f72-44a7-89c5-5595fe6b30ee} (User's Files) = ABSENT (default: hidden)
+- Only ONE value existed before any 5c work (This PC). The live test restores values AND absence exactly (RegDeleteValueW is used ONLY by the test's restore step for values the test itself created).
+
 ## Verified facts ([VERIFY] items)
 - ARM64 check command = `cargo check --target aarch64-pc-windows-msvc` (root DECISIONS.md, commit fbb413d; target present in rustup).
 - `lucide-react` 1.66.0 has `MonitorCog` (icon for the System Manager tile).
@@ -64,11 +73,14 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 - Live tests are serialized with a shared mutex (they all change the same real power scheme; parallel runs race).
 - windows-sys 0.61 quirks learned: GUID fields are lowercase (data1…data4); Power* functions are gated behind the Win32_System_Registry feature (HKEY param), not Win32_System_Power alone; LocalFree lives in Win32::Foundation; PowerWriteDCValueIndex exists (needs explicit import).
 - Crash simulation (kill app → restart → resumed banner) is an OWNER CHECKLIST item (needs the real UI); the backend logic is covered by unit tests (app-start reconcile → resumed flag / timer-while-closed wording).
+- Desktop Icons CLSIDs (2026-11-06): This PC CLSID CONFIRMED by an existing registry value on this machine ({20D04FE0-…} = 0x0). The other four CLSIDs match the spec table and the live round trip wrote/read them correctly, but the DECISIVE per-icon verification (Windows Settings ↔ app mirroring) is the OWNER's checklist test in 5c.
+- Live desktop-icons test (cargo test -- --ignored): This PC shown → read-back shown → hidden → read-back hidden; Recycle Bin explicit write verified; Drop guard restored values AND absence exactly (This PC back to 0x0, others absent — verified with reg query afterwards).
+- Desktop refresh layers shipped: layer 1 = one SHCNE_ASSOCCHANGED (SHCNF_IDLIST | SHCNF_FLUSHNOWAIT); layer 2 (const SEND_DESKTOP_VIEW_REFRESH=true, easy to disable) = PostMessageW WM_COMMAND 0x7103 to the DESKTOP's SHELLDLL_DefView under Progman/WorkerW only (not CabinetWClass — this section changes only the desktop). Which layer actually repaints instantly is an OWNER observation; the UI carries the F5 note.
 
 ## Open issues / questions for the owner
 
 ## Dependencies / permissions / windows-sys features added so far
 - Cargo: tauri-plugin-notification = "2" (Awake best-effort native toast; Rust-side only, no webview permission granted, no network crates in tree).
 - Cargo: serde_json = "1" moved from dev-dependencies to dependencies (Awake state file).
-- windows-sys features: Win32_System_Power, Win32_System_Registry (required by the Power* functions' HKEY param; the memory feature proved unnecessary — LocalFree is in Foundation).
+- windows-sys features: Win32_System_Power, Win32_System_Registry, Win32_Security (RegCreateKeyExW is gated on it — SECURITY_ATTRIBUTES param).
 - Tauri capabilities: UNCHANGED (still core:default only). Events (awake://*) need no extra permission. No CSP change.

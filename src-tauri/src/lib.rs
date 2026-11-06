@@ -66,6 +66,8 @@ pub fn run() {
             tools::system_manager::awake::commands::awake_disable,
             tools::system_manager::awake::commands::awake_set_options,
             tools::system_manager::awake::commands::awake_exit,
+            tools::system_manager::desktop_icons::commands::desktop_icons_get,
+            tools::system_manager::desktop_icons::commands::desktop_icons_set,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

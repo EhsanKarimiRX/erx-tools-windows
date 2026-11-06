@@ -5,3 +5,4 @@
 //! command layer, mirroring the other tools' split.
 
 pub mod awake;
+pub mod desktop_icons;

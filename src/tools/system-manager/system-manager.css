@@ -275,3 +275,34 @@
   background: var(--surface-hover);
   border-color: var(--border-strong);
 }
+
+/* ----- Desktop Icons section ----- */
+
+.sm-icon-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.sm-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.sm-icon-row:last-child {
+  border-bottom: none;
+}
+
+.sm-icon-row-name {
+  flex: 1;
+  font-size: 14px;
+}
+
+.sm-icon-row-error {
+  margin: 0;
+  color: var(--error);
+  font-size: 13px;
+}

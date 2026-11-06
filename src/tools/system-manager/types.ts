@@ -58,3 +58,11 @@ export const TIMER_CHOICES: ReadonlyArray<{ label: string; hours: number }> = [
   { label: "After 2 hours", hours: 2 },
   { label: "After 4 hours", hours: 4 },
 ];
+
+/** One Desktop Icons row, as read back from the registry by the backend
+ * (desktop_icons/commands.rs). `visible` is always the read-back state. */
+export interface DesktopIconState {
+  id: "this_pc" | "recycle_bin" | "control_panel" | "network" | "user_files";
+  name: string;
+  visible: boolean;
+}
