@@ -21,14 +21,14 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 | 5d-4 | Organize: UI | DONE | segmented control, plain-words preview, honest progress, report, undo; read-only live scan of real Desktop/Downloads OK |
 | 5e | Quick Launch | DONE | allowlist ids, ShellExecuteExW, PowerShell flavor, PC Manager installed-path LIVE-VERIFIED |
 | 5f | Command Tips | DONE | all 11 commands verified on this machine; badge decisions recorded below |
-| 5g | Final polish + verification | NOT STARTED | |
+| 5g | Final polish + verification | DONE | placeholder removed, order verified, UI_TEXT + SYSTEM_MANAGER docs written, audit clean |
 (Status values: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner)
 
 ## Gates (last run)
-- npm run build: PASS (2026-11-06, step 5a)
+- npm run build: PASS (2026-11-06, step 5g — final)
 - cargo fmt --check: PASS
 - cargo clippy -- -D warnings: PASS
-- cargo test (count): 202 passed, 0 failed
+- cargo test (count): 309 passed, 0 failed (5 ignored live tests also pass on demand)
 - ARM64 check: PASS (cargo check --target aarch64-pc-windows-msvc)
 
 ## Conventions found (filled in 5a-1)
@@ -93,6 +93,9 @@ Key: HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\Ne
   * The spec's tip-10 note was truncated in the pasted spec ("In the UI show a real `…"); interpreted as showing the pipeline as ONE copyable line — implemented that way, flagged for 5g wording review.
 
 ## Open issues / questions for the owner
+- ALL STEPS 5a-5g ARE DONE. The owner now reviews wording in docs/SYSTEM_MANAGER_UI_TEXT.md,
+  hand-tests 5a-5f with the per-step checklists, and pushes personally. Wording edits are
+  applied to the code as a follow-up after the owner marks them.
 
 ## Dependencies / permissions / windows-sys features added so far
 - Cargo: tauri-plugin-notification = "2" (Awake best-effort native toast; Rust-side only, no webview permission granted, no network crates in tree).

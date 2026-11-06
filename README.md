@@ -25,6 +25,17 @@ folders and are lazy-loaded only when opened — see
   about the file \desktop.ini\: that is normal and harmless, the file
   only stores the icon settings. Tested on Windows 11 only; Windows 10 is
   untested. No claim of instant refresh.
+- **System Manager** — five sections on one page: an **Awake** toggle that
+  keeps the PC (and screen) awake by temporarily setting the Windows power
+  plan timeouts to Never and restoring them afterwards; **Desktop Icons**
+  show/hide switches for the five classic desktop icons; an **Organize**
+  tool that tidies loose files on the Desktop, in Downloads or in a chosen
+  folder into category folders (plain-words preview, nothing deleted or
+  overwritten, honest skip reasons, per-target Undo); **Quick Launch**
+  buttons for common Windows tools (with "Run as administrator" for
+  Command Prompt and PowerShell); and **Command Tips**, a copy-only list
+  of verified commands. Fully offline, no admin rights needed; details and
+  known limits: docs/SYSTEM_MANAGER.md.
 - **Encrypted Notes** — planned (placeholder tile).
 
 ## Development
