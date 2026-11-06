@@ -168,6 +168,34 @@ fn enable_with_failing_activation_rolls_back_everything() {
 }
 
 #[test]
+fn damaged_state_file_is_removed_and_reported_then_awake_works_again() {
+    let dir = temp_dir("damaged");
+    let fake = FakePower::new(DEFAULT_SCHEME).with_originals();
+    let path = state_file::state_path(&dir);
+    fs::write(&path, "{not json").expect("write garbage");
+
+    // Reconcile recovers honestly: AutoOff with the damaged-file reason,
+    // the file is gone, and NO power values were touched.
+    let outcome = reconcile(&fake, &dir, 1000, true).expect("reconcile");
+    match outcome {
+        ReconcileOutcome::AutoOff {
+            reason, message, ..
+        } => {
+            assert_eq!(reason, AutoOffReason::StateFileDamaged);
+            assert!(message.contains("damaged"), "{message}");
+        }
+        other => panic!("expected AutoOff, got {other:?}"),
+    }
+    assert_eq!(state_file::load(&path), Ok(None));
+    assert_eq!(fake.write_count(), 0);
+
+    // Enabling afterwards just works.
+    let status = enable(&fake, &dir, options(true, None), 2000).expect("enable after recovery");
+    assert_eq!(status.state, "on");
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn enable_with_failed_verification_rolls_back_everything() {
     let dir = temp_dir("rollback-verify");
     let fake = FakePower::new(DEFAULT_SCHEME).with_originals();

@@ -122,6 +122,23 @@ export default function AwakeSection() {
     return () => window.clearInterval(interval);
   }, [timerEndsAt]);
 
+  // While Awake is ON the drawer mirrors the backend (a resumed session may
+  // have different options than the local defaults). While OFF the local
+  // choices are the pending ones sent with enable.
+  useEffect(() => {
+    if (status?.state !== "on") return;
+    let timerHours = 0;
+    if (status.endsAtUnix !== null) {
+      const remainingHours = (status.endsAtUnix - Math.floor(Date.now() / 1000)) / 3600;
+      timerHours = Math.max(1, Math.round(remainingHours));
+    }
+    setOptions((current) =>
+      current.keepScreenOn === status.keepScreenOn && current.timerHours === timerHours
+        ? current
+        : { keepScreenOn: status.keepScreenOn, timerHours },
+    );
+  }, [status]);
+
   const toggle = useCallback(async () => {
     if (status === null || busy) return;
     setBusy(true);
@@ -164,14 +181,21 @@ export default function AwakeSection() {
     }
   }, [status, busy, options, addBanner]);
 
-  /** Drawer changes apply instantly while ON (R5), are pending while OFF. */
+  /** Drawer changes apply instantly while ON (R5), are pending while OFF.
+   * A timer change restarts the countdown; changing only the screen
+   * checkbox preserves the timer that is already running. */
   const applyOptions = useCallback(
     async (next: DrawerOptions) => {
       setOptions(next);
       if (status?.state !== "on") return;
       try {
-        const endsAtUnix =
-          next.timerHours > 0 ? Math.floor(Date.now() / 1000) + next.timerHours * 3600 : null;
+        let endsAtUnix: number | null;
+        if (next.timerHours !== options.timerHours) {
+          endsAtUnix =
+            next.timerHours > 0 ? Math.floor(Date.now() / 1000) + next.timerHours * 3600 : null;
+        } else {
+          endsAtUnix = status.endsAtUnix;
+        }
         const newStatus = await invoke<AwakeStatus>("awake_set_options", {
           options: { keepScreenOn: next.keepScreenOn, endsAtUnix },
         });
@@ -180,7 +204,7 @@ export default function AwakeSection() {
         addBanner("error", errorText(error));
       }
     },
-    [status, addBanner],
+    [status, options, addBanner],
   );
 
   const chooseOnExit = useCallback(async (choice: "restore_and_close" | "keep_and_close" | "cancel") => {
@@ -234,7 +258,7 @@ export default function AwakeSection() {
         {status === null
           ? "Checking Awake…"
           : isOn
-            ? options.keepScreenOn || status.keepScreenOn
+            ? status.keepScreenOn
               ? "Awake is ON — sleep and screen-off are set to Never (plugged in and on battery)."
               : "Awake is ON — sleep is set to Never (plugged in and on battery). The screen can still turn off."
             : "Awake is off."}
@@ -314,7 +338,7 @@ export default function AwakeSection() {
             <p className="sm-dialog-text">
               Awake is keeping this PC awake. What should happen?
             </p>
-            {options.timerHours > 0 && (
+            {status?.state === "on" && status.endsAtUnix !== null && (
               <p className="sm-dialog-text">
                 Note: the timer only runs while ERX Tools is open.
               </p>

@@ -25,9 +25,12 @@ pub fn enable(
     now_unix: i64,
 ) -> Result<AwakeStatus, String> {
     let path = state_file::state_path(state_dir);
-    if state_file::load(&path)?.is_some() {
+    let (existing, _recovered) = load_recovering(&path)?;
+    if existing.is_some() {
         return Err("Awake is already on.".into());
     }
+    // A recovered damaged file was already reported by reconcile; enabling
+    // proceeds fresh.
     let scheme = backend.active_scheme()?;
 
     // R1: read all six originals first. A key that cannot be read is
@@ -153,7 +156,8 @@ pub fn disable(
     state_dir: &Path,
 ) -> Result<(AwakeStatus, RestoreReport), String> {
     let path = state_file::state_path(state_dir);
-    let Some(state) = state_file::load(&path)? else {
+    let (state, _recovered) = load_recovering(&path)?;
+    let Some(state) = state else {
         return Ok((status_off(), RestoreReport::default()));
     };
 
@@ -235,8 +239,9 @@ pub fn set_options(
     options: AwakeOptions,
 ) -> Result<AwakeStatus, String> {
     let path = state_file::state_path(state_dir);
-    let state = state_file::load(&path)?
-        .ok_or_else(|| "Awake is not on, so there are no options to change.".to_string())?;
+    let (state, _recovered) = load_recovering(&path)?;
+    let state =
+        state.ok_or_else(|| "Awake is not on, so there are no options to change.".to_string())?;
     let scheme = state.scheme_guid.as_str();
 
     let mut new_state = state.clone();
@@ -312,7 +317,15 @@ pub fn reconcile(
     at_app_start: bool,
 ) -> Result<ReconcileOutcome, String> {
     let path = state_file::state_path(state_dir);
-    let Some(state) = state_file::load(&path)? else {
+    let (state, recovered) = load_recovering(&path)?;
+    if recovered {
+        return Ok(ReconcileOutcome::AutoOff {
+            reason: AutoOffReason::StateFileDamaged,
+            message: auto_off_message(AutoOffReason::StateFileDamaged, &RestoreReport::default()),
+            report: RestoreReport::default(),
+        });
+    }
+    let Some(state) = state else {
         return Ok(ReconcileOutcome::NotOn);
     };
 
@@ -408,11 +421,29 @@ pub fn auto_off_message(reason: AutoOffReason, report: &RestoreReport) -> String
         AutoOffReason::TimerExpiredWhileClosed => {
             "The Awake timer finished while ERX Tools was closed. Your settings were restored.".to_string()
         }
+        AutoOffReason::StateFileDamaged => {
+            "Awake's state file was damaged and has been reset. Your power settings were not touched by Awake, but if the sleep settings look wrong, set them again in Windows.".to_string()
+        }
     };
     if !report.failed.is_empty() {
         message.push_str(" Some settings could not be restored automatically; turning Awake off again will retry.");
     }
     message
+}
+
+/// Loads the state file, recovering from an unreadable one: the file is
+/// deleted so a damaged file can never permanently lock the Awake section.
+/// The `recovered` flag lets callers say so honestly (reconcile reports it
+/// as `StateFileDamaged`); the power settings themselves are not touched.
+fn load_recovering(path: &Path) -> Result<(Option<AwakeStateFile>, bool), String> {
+    match state_file::load(path) {
+        Ok(state) => Ok((state, false)),
+        Err(error) => {
+            eprintln!("Awake state file was unreadable and has been removed: {error}");
+            state_file::delete(path)?;
+            Ok((None, true))
+        }
+    }
 }
 
 /// The outcome of one reconcile pass, for the command layer to act on.

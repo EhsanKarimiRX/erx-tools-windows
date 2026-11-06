@@ -204,6 +204,10 @@ pub enum AutoOffReason {
     TimerExpired,
     /// The auto-off timer ran out while ERX Tools was closed.
     TimerExpiredWhileClosed,
+    /// The state file exists but cannot be read; it was removed so Awake
+    /// works again. Nothing is restored (the originals are unknowable) and
+    /// the power settings themselves were not touched by this decision.
+    StateFileDamaged,
 }
 
 /// The persisted Awake state (state file `awake_state.json`, version 1).

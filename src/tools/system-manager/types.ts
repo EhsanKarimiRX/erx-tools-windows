@@ -19,7 +19,8 @@ export type AutoOffReason =
   | "manual_change"
   | "scheme_gone"
   | "timer_expired"
-  | "timer_expired_while_closed";
+  | "timer_expired_while_closed"
+  | "state_file_damaged";
 
 export interface PendingAutoOff {
   reason: AutoOffReason;

@@ -181,6 +181,10 @@ fn auto_off_notification_body(reason: AutoOffReason) -> String {
             "Awake was switched off because the Windows power plan it changed no longer exists."
                 .into()
         }
+        AutoOffReason::StateFileDamaged => {
+            "Awake's state file was damaged and has been reset. Your power settings were not touched by Awake."
+                .into()
+        }
     }
 }
 
