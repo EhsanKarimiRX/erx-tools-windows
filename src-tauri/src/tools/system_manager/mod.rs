@@ -7,3 +7,4 @@
 pub mod awake;
 pub mod desktop_icons;
 pub mod organize;
+pub mod quick_launch;

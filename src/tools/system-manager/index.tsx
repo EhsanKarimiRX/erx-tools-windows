@@ -1,6 +1,7 @@
 import AwakeSection from "./AwakeSection";
 import DesktopIconsSection from "./DesktopIconsSection";
 import OrganizeSection from "./OrganizeSection";
+import QuickLaunchSection from "./QuickLaunchSection";
 import "./system-manager.css";
 
 /** System Manager: one scrolling page of section cards (Awake, Desktop
@@ -14,6 +15,7 @@ export default function SystemManager() {
       <AwakeSection />
       <DesktopIconsSection />
       <OrganizeSection />
+      <QuickLaunchSection />
       <p className="tool-placeholder">System Manager is being built section by section.</p>
     </div>
   );

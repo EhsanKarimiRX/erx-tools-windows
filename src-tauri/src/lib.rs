@@ -73,6 +73,8 @@ pub fn run() {
             tools::system_manager::organize::commands::organize_run,
             tools::system_manager::organize::commands::organize_undo_info,
             tools::system_manager::organize::commands::organize_undo,
+            tools::system_manager::quick_launch::commands::quick_launch_info,
+            tools::system_manager::quick_launch::commands::quick_launch_open,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

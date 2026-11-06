@@ -102,3 +102,17 @@ export interface RunReport {
   moved: number;
   skipped: OrganizeSkippedFile[];
 }
+
+// ----- Quick Launch (mirror of quick_launch/commands.rs DTOs) -----
+
+export interface PcManagerInfo {
+  installed: boolean;
+  family: string | null;
+  appId: string | null;
+}
+
+export interface QuickLaunchInfo {
+  /** "PowerShell 7" or "Windows PowerShell". */
+  powershellLabel: string;
+  pcManager: PcManagerInfo;
+}

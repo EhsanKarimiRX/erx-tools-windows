@@ -19,7 +19,7 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 | 5d-2 | Organize: scan | DONE | known folders via SHGetKnownFolderPath; top-level only; OneDrive + Public Desktop notes |
 | 5d-3 | Organize: execute, manifest, undo | DONE | MoveFileExW flags 0, JSONL manifest per target, reverse-order undo; 296 tests total |
 | 5d-4 | Organize: UI | DONE | segmented control, plain-words preview, honest progress, report, undo; read-only live scan of real Desktop/Downloads OK |
-| 5e | Quick Launch | NOT STARTED | |
+| 5e | Quick Launch | DONE | allowlist ids, ShellExecuteExW, PowerShell flavor, PC Manager installed-path LIVE-VERIFIED |
 | 5f | Command Tips | NOT STARTED | |
 | 5g | Final polish + verification | NOT STARTED | |
 (Status values: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner)
@@ -78,6 +78,10 @@ Key: HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\Ne
 - Desktop refresh layers shipped: layer 1 = one SHCNE_ASSOCCHANGED (SHCNF_IDLIST | SHCNF_FLUSHNOWAIT); layer 2 (const SEND_DESKTOP_VIEW_REFRESH=true, easy to disable) = PostMessageW WM_COMMAND 0x7103 to the DESKTOP's SHELLDLL_DefView under Progman/WorkerW only (not CabinetWClass — this section changes only the desktop). Which layer actually repaints instantly is an OWNER observation; the UI carries the F5 note.
 - Organize read-only live scan (cargo test -- --ignored --nocapture, 2026-11-06): Desktop resolved to C:\Users\EhsanRX\Desktop (7 files would move into 2 folders, 1 skipped, OneDrive: false); Downloads to C:\Users\EhsanRX\Downloads (6 files into 4 folders, 0 skipped, OneDrive: false). No writes performed anywhere (G9).
 - windows-sys 0.61: FOLDERID_Desktop/FOLDERID_Downloads are GUID consts in Win32::UI::Shell; SHGetKnownFolderPath returns HRESULT; MoveFileExW flags 0 = plain rename that cannot replace; FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS/RECALL_ON_OPEN/OFFLINE all present in Win32::Storage::FileSystem.
+- Quick Launch PC Manager (2026-11-06): PC Manager IS INSTALLED on this machine (Microsoft.MicrosoftPCManager_3.23.0.0_x64__8wekyb3d8bbwe) — the spec's "not installed, mark NOT live-tested" case did NOT apply. Live-verified END TO END: Repository\Packages layout confirmed (shape Name_Version_Arch_ResourceId_PublisherId, resource id may be EMPTY → double underscore); PackageRootFolder value name confirmed on a real package (REG_SZ, e.g. C:\Program Files\Mp3tag); PC Manager manifest has FOUR <Application> entries and the FIRST (Id="App", MSPCManager.exe) is the main app; `explorer.exe shell:AppsFolder\Microsoft.MicrosoftPCManager_8wekyb3d8bbwe!App` LAUNCHED THE APP (MSPCManager.exe seen in tasklist).
+- PowerShell on this machine: PowerShell 7 NOT installed → the caption shows "Windows PowerShell" (fallback path System32\WindowsPowerShell\v1.0\powershell.exe). The pwsh-detection paths are unit-tested, not all live.
+- ERROR_CANCELLED = 1223 (user dismissed UAC) handled as a neutral "Cancelled." message; admin variants NOT auto-launched in tests (G9) — owner tests them.
+- windows-sys additions: GetSystemDirectoryW/GetWindowsDirectoryW need Win32_System_SystemInformation; SHELLEXECUTEINFOW has a Default impl (feature-gated on Win32_System_Registry); ShellExecuteExW with SEE_MASK_NOASYNC|SEE_MASK_FLAG_NO_UI returns errors instead of system dialogs.
 
 ## Open issues / questions for the owner
 
