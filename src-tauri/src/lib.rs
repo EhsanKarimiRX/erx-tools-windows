@@ -68,6 +68,11 @@ pub fn run() {
             tools::system_manager::awake::commands::awake_exit,
             tools::system_manager::desktop_icons::commands::desktop_icons_get,
             tools::system_manager::desktop_icons::commands::desktop_icons_set,
+            tools::system_manager::organize::commands::organize_pick_folder,
+            tools::system_manager::organize::commands::organize_scan,
+            tools::system_manager::organize::commands::organize_run,
+            tools::system_manager::organize::commands::organize_undo_info,
+            tools::system_manager::organize::commands::organize_undo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

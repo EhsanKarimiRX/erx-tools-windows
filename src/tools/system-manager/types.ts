@@ -66,3 +66,39 @@ export interface DesktopIconState {
   name: string;
   visible: boolean;
 }
+
+// ----- Organize (mirror of organize/commands.rs DTOs) -----
+
+export type OrganizeTargetId = "desktop" | "downloads" | "custom";
+
+export interface OrganizePlannedFile {
+  name: string;
+  size: number;
+  modifiedUnix: number;
+}
+
+export interface OrganizeCategory {
+  name: string;
+  files: OrganizePlannedFile[];
+}
+
+export interface OrganizeSkippedFile {
+  name: string;
+  reason: string;
+}
+
+/** The read-only scan result. Nothing has moved yet. */
+export interface ScanPlan {
+  target: OrganizeTargetId;
+  root: string;
+  onOnedrive: boolean;
+  categories: OrganizeCategory[];
+  skipped: OrganizeSkippedFile[];
+  /** Custom target only: files deliberately left where they are. */
+  leftInPlace: number;
+}
+
+export interface RunReport {
+  moved: number;
+  skipped: OrganizeSkippedFile[];
+}

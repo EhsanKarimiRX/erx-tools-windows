@@ -15,10 +15,10 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 | 5b-4 | Awake: UI | DONE | toggle/status/warn/drawer/banners/close dialog; chunk lazy-loads |
 | 5b-5 | Awake: live verification | DONE | 3 live tests pass; G9 snapshot verified unchanged afterwards |
 | 5c | Desktop Icons | DONE | 5 toggles + refresh; live test passed; snapshot intact; owner mirror test pending |
-| 5d-1 | Organize: pure logic | NOT STARTED | |
-| 5d-2 | Organize: scan | NOT STARTED | |
-| 5d-3 | Organize: execute, manifest, undo | NOT STARTED | |
-| 5d-4 | Organize: UI | NOT STARTED | |
+| 5d-1 | Organize: pure logic | DONE | categories, skip rules, unique_name, protected paths; 42 new tests |
+| 5d-2 | Organize: scan | DONE | known folders via SHGetKnownFolderPath; top-level only; OneDrive + Public Desktop notes |
+| 5d-3 | Organize: execute, manifest, undo | DONE | MoveFileExW flags 0, JSONL manifest per target, reverse-order undo; 296 tests total |
+| 5d-4 | Organize: UI | DONE | segmented control, plain-words preview, honest progress, report, undo; read-only live scan of real Desktop/Downloads OK |
 | 5e | Quick Launch | NOT STARTED | |
 | 5f | Command Tips | NOT STARTED | |
 | 5g | Final polish + verification | NOT STARTED | |
@@ -76,6 +76,8 @@ Key: HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\Ne
 - Desktop Icons CLSIDs (2026-11-06): This PC CLSID CONFIRMED by an existing registry value on this machine ({20D04FE0-…} = 0x0). The other four CLSIDs match the spec table and the live round trip wrote/read them correctly, but the DECISIVE per-icon verification (Windows Settings ↔ app mirroring) is the OWNER's checklist test in 5c.
 - Live desktop-icons test (cargo test -- --ignored): This PC shown → read-back shown → hidden → read-back hidden; Recycle Bin explicit write verified; Drop guard restored values AND absence exactly (This PC back to 0x0, others absent — verified with reg query afterwards).
 - Desktop refresh layers shipped: layer 1 = one SHCNE_ASSOCCHANGED (SHCNF_IDLIST | SHCNF_FLUSHNOWAIT); layer 2 (const SEND_DESKTOP_VIEW_REFRESH=true, easy to disable) = PostMessageW WM_COMMAND 0x7103 to the DESKTOP's SHELLDLL_DefView under Progman/WorkerW only (not CabinetWClass — this section changes only the desktop). Which layer actually repaints instantly is an OWNER observation; the UI carries the F5 note.
+- Organize read-only live scan (cargo test -- --ignored --nocapture, 2026-11-06): Desktop resolved to C:\Users\EhsanRX\Desktop (7 files would move into 2 folders, 1 skipped, OneDrive: false); Downloads to C:\Users\EhsanRX\Downloads (6 files into 4 folders, 0 skipped, OneDrive: false). No writes performed anywhere (G9).
+- windows-sys 0.61: FOLDERID_Desktop/FOLDERID_Downloads are GUID consts in Win32::UI::Shell; SHGetKnownFolderPath returns HRESULT; MoveFileExW flags 0 = plain rename that cannot replace; FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS/RECALL_ON_OPEN/OFFLINE all present in Win32::Storage::FileSystem.
 
 ## Open issues / questions for the owner
 
