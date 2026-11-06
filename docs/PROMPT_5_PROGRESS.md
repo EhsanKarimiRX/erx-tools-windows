@@ -20,7 +20,7 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 | 5d-3 | Organize: execute, manifest, undo | DONE | MoveFileExW flags 0, JSONL manifest per target, reverse-order undo; 296 tests total |
 | 5d-4 | Organize: UI | DONE | segmented control, plain-words preview, honest progress, report, undo; read-only live scan of real Desktop/Downloads OK |
 | 5e | Quick Launch | DONE | allowlist ids, ShellExecuteExW, PowerShell flavor, PC Manager installed-path LIVE-VERIFIED |
-| 5f | Command Tips | NOT STARTED | |
+| 5f | Command Tips | DONE | all 11 commands verified on this machine; badge decisions recorded below |
 | 5g | Final polish + verification | NOT STARTED | |
 (Status values: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner)
 
@@ -82,6 +82,15 @@ Key: HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\Ne
 - PowerShell on this machine: PowerShell 7 NOT installed → the caption shows "Windows PowerShell" (fallback path System32\WindowsPowerShell\v1.0\powershell.exe). The pwsh-detection paths are unit-tested, not all live.
 - ERROR_CANCELLED = 1223 (user dismissed UAC) handled as a neutral "Cancelled." message; admin variants NOT auto-launched in tests (G9) — owner tests them.
 - windows-sys additions: GetSystemDirectoryW/GetWindowsDirectoryW need Win32_System_SystemInformation; SHELLEXECUTEINFOW has a Default impl (feature-gated on Win32_System_Registry); ShellExecuteExW with SEE_MASK_NOASYNC|SEE_MASK_FLAG_NO_UI returns errors instead of system dialogs.
+- Command Tips verification (2026-11-06, non-admin shell on Win11 Pro 26300):
+  * winget upgrade — RUN, works (real list of available updates shown). winget upgrade --all — syntax via --help (-r,--recurse,--all); NOT executed (would update apps).
+  * tree "<folder>" /f — RUN on a temp tree, works.
+  * powercfg /batteryreport /output — RUN with a temp output, works, non-admin. %USERPROFILE% EXPANDS IN CMD, STAYS LITERAL IN POWERSHELL (verified) → shell badge = Command Prompt, exactly as the spec suspected.
+  * sfc — even /? demands admin ("You must be an administrator...") → Needs administrator = TRUE. DISM — error 740 "Elevated permissions are required" even for /Online /Cleanup-Image /? on this build → syntax is the documented standard, admin badge TRUE.
+  * ipconfig /flushdns — RUN → "The requested operation requires elevation." ON THIS BUILD → admin badge = TRUE (reality overruled the table's guess).
+  * systeminfo — RUN, works. Get-Volume — RUN, works (HealthStatus/SizeRemaining/Size). Get-FileHash — RUN on a temp file, SHA256. Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 — RUN, works.
+  * netsh wlan show profiles — RUN (profile NAMES only, no key output). netsh wlan show profile /? — syntax confirmed (name=, key=clear documented). key=clear NEVER executed — no Wi-Fi password printed or saved anywhere.
+  * The spec's tip-10 note was truncated in the pasted spec ("In the UI show a real `…"); interpreted as showing the pipeline as ONE copyable line — implemented that way, flagged for 5g wording review.
 
 ## Open issues / questions for the owner
 

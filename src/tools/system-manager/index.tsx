@@ -1,4 +1,5 @@
 import AwakeSection from "./AwakeSection";
+import CommandTipsSection from "./CommandTipsSection";
 import DesktopIconsSection from "./DesktopIconsSection";
 import OrganizeSection from "./OrganizeSection";
 import QuickLaunchSection from "./QuickLaunchSection";
@@ -16,6 +17,7 @@ export default function SystemManager() {
       <DesktopIconsSection />
       <OrganizeSection />
       <QuickLaunchSection />
+      <CommandTipsSection />
       <p className="tool-placeholder">System Manager is being built section by section.</p>
     </div>
   );
