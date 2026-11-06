@@ -95,3 +95,183 @@
   background: var(--surface-hover);
   border-color: var(--border-strong);
 }
+
+.sm-banners {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ----- Awake section ----- */
+
+.sm-awake-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sm-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sm-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sm-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: left 0.15s ease, background 0.15s ease;
+}
+
+.sm-switch-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.sm-switch-on .sm-switch-knob {
+  left: 22px;
+  background: var(--on-accent);
+}
+
+.sm-awake-toggle-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sm-awake-status {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* ----- Options drawer ----- */
+
+.sm-awake-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sm-awake-options-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.sm-awake-options-toggle:hover {
+  background: var(--surface-hover);
+}
+
+.sm-awake-options-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-hover);
+}
+
+.sm-awake-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sm-awake-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.sm-awake-select select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  max-width: 320px;
+}
+
+/* ----- Close dialog (R7) ----- */
+
+.sm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.sm-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.sm-dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.sm-dialog-text {
+  margin: 0;
+  font-size: 14px;
+}
+
+.sm-dialog-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.sm-dialog-button {
+  padding: 7px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.sm-dialog-button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}

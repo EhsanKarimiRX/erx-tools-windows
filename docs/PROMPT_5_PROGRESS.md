@@ -9,11 +9,11 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 | Step | Description | Status | Notes |
 |---|---|---|---|
 | 5a | Foundation (tile, docs) | DONE | gates green; committed locally |
-| 5b-1 | Awake: pure logic + state file | NOT STARTED | |
-| 5b-2 | Awake: Windows power backend | NOT STARTED | |
-| 5b-3 | Awake: runtime, commands, thread, exit | NOT STARTED | |
-| 5b-4 | Awake: UI | NOT STARTED | |
-| 5b-5 | Awake: live verification | NOT STARTED | |
+| 5b-1 | Awake: pure logic + state file | DONE | 43 new tests; 245 total pass |
+| 5b-2 | Awake: Windows power backend | DONE | WindowsPower; GUIDs verified via powercfg -aliases |
+| 5b-3 | Awake: runtime, commands, thread, exit | DONE | commands wired in lib.rs; close interception + 5s thread; notification plugin added (Rust-side only) |
+| 5b-4 | Awake: UI | DONE | toggle/status/warn/drawer/banners/close dialog; chunk lazy-loads |
+| 5b-5 | Awake: live verification | DONE | 3 live tests pass; G9 snapshot verified unchanged afterwards |
 | 5c | Desktop Icons | NOT STARTED | |
 | 5d-1 | Organize: pure logic | NOT STARTED | |
 | 5d-2 | Organize: scan | NOT STARTED | |
@@ -46,11 +46,29 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 ## Owner snapshots — do not lose
 (Original power values, desktop icon registry values, etc. recorded BEFORE live tests.)
 
+### Power values, 2026-11-06, BEFORE any Awake work (powercfg -query SCHEME_CURRENT)
+- Active scheme: 381b4222-f694-41f0-9685-ff5bb260df2e (Balanced)
+- STANDBYIDLE (sleep after): AC 0x00000000 (0 = Never), DC 0x00000384 (900 s)
+- HIBERNATEIDLE (hibernate after): AC 0x00000000 (0 = Never), DC 0x00002a30 (10800 s)
+- VIDEOIDLE (turn off display after): AC 0x00000000 (0 = Never), DC 0x0000012c (300 s)
+- Desktop machine (no battery in use; DC values present but inactive).
+- Rule: after every live test, re-run the queries and confirm these values are unchanged.
+
 ## Verified facts ([VERIFY] items)
 - ARM64 check command = `cargo check --target aarch64-pc-windows-msvc` (root DECISIONS.md, commit fbb413d; target present in rustup).
 - `lucide-react` 1.66.0 has `MonitorCog` (icon for the System Manager tile).
+- Power GUIDs (2026-11-06, powercfg -aliases): SUB_SLEEP 238c9fa8-0aad-41ed-83f4-97be242c8f20, STANDBYIDLE 29f6c1db-86da-48c5-9fdb-f2b67b1f44da, HIBERNATEIDLE 9d7815a6-7ee4-497e-8888-515a05f02364, SUB_VIDEO 7516b95f-f776-4464-8c53-06167f40cc99, VIDEOIDLE 3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e — ALL match the spec table exactly.
+- Per-user power writes need NO admin on this machine (live enable succeeded as normal user; no UAC).
+- Reading a NONEXISTENT scheme via PowerReadACValueIndex returns ERROR_FILE_NOT_FOUND (2) — the scheme_exists probe is correct (live probe test).
+- Live tests (cargo test -- --ignored, 2026-11-06): enable set all six to Never and read-back verified; disable restored the exact snapshot; a manual change to sleep-ac 1200 s was detected by reconcile, KEPT, and the other five keys restored. G9 final check: all six values equal the snapshot afterwards.
+- Live tests are serialized with a shared mutex (they all change the same real power scheme; parallel runs race).
+- windows-sys 0.61 quirks learned: GUID fields are lowercase (data1…data4); Power* functions are gated behind the Win32_System_Registry feature (HKEY param), not Win32_System_Power alone; LocalFree lives in Win32::Foundation; PowerWriteDCValueIndex exists (needs explicit import).
+- Crash simulation (kill app → restart → resumed banner) is an OWNER CHECKLIST item (needs the real UI); the backend logic is covered by unit tests (app-start reconcile → resumed flag / timer-while-closed wording).
 
 ## Open issues / questions for the owner
 
 ## Dependencies / permissions / windows-sys features added so far
-None yet.
+- Cargo: tauri-plugin-notification = "2" (Awake best-effort native toast; Rust-side only, no webview permission granted, no network crates in tree).
+- Cargo: serde_json = "1" moved from dev-dependencies to dependencies (Awake state file).
+- windows-sys features: Win32_System_Power, Win32_System_Registry (required by the Power* functions' HKEY param; the memory feature proved unnecessary — LocalFree is in Foundation).
+- Tauri capabilities: UNCHANGED (still core:default only). Events (awake://*) need no extra permission. No CSP change.

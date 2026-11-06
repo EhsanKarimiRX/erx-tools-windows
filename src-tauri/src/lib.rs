@@ -1,5 +1,7 @@
 mod tools;
 
+use tauri::{Emitter, Manager};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -9,8 +11,33 @@ pub fn run() {
         // "Open output folder" support (reveal in Explorer). Also used from
         // Rust commands only; the webview gets no opener permission.
         .plugin(tauri_plugin_opener::init())
+        // System Manager / Awake: best-effort native notifications when
+        // Awake switches itself off. Rust-side only; the webview gets no
+        // notification permission.
+        .plugin(tauri_plugin_notification::init())
         .manage(tools::image_convert::commands::BatchState::default())
         .manage(tools::folder_icon::commands::BatchState::default())
+        .manage(tools::system_manager::awake::commands::AwakeRuntime::default())
+        .setup(|app| {
+            // Awake startup: resolve the state folder, run the app-start
+            // reconcile (R4) and start the 5-second background thread.
+            tools::system_manager::awake::commands::init(&app.handle().clone());
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Awake R7: closing the app while Awake is on must ask the user
+            // first. This is the app's only window-event handler (nothing to
+            // chain with today).
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "main"
+                && tools::system_manager::awake::commands::is_on_for_close_check(
+                    window.app_handle(),
+                )
+            {
+                api.prevent_close();
+                let _ = window.app_handle().emit("awake://close-requested", ());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             // Central command registry: every command the frontend can call
             // is listed here exactly once. Adding a tool backend means adding
@@ -34,6 +61,11 @@ pub fn run() {
             tools::folder_icon::commands::folder_icon_apply_batch,
             tools::folder_icon::commands::folder_icon_restore_batch,
             tools::folder_icon::commands::folder_icon_cancel_batch,
+            tools::system_manager::awake::commands::awake_get_status,
+            tools::system_manager::awake::commands::awake_enable,
+            tools::system_manager::awake::commands::awake_disable,
+            tools::system_manager::awake::commands::awake_set_options,
+            tools::system_manager::awake::commands::awake_exit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

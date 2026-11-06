@@ -21,12 +21,19 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
+# System Manager / Awake: state file (awake_state.json) serialization.
+# Already in the lockfile via Tauri; also used by DTO shape tests.
+serde_json = "1"
 # Image Converter: decoding/encoding. The `ico` feature (Folder Icon) only
 # enables bmp+png code paths that are already on — it adds the ICO container
 # encoder plus the independent decoder used by the read-back tests.
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp", "ico"] }
 tauri-plugin-dialog = "2.8.4"
 tauri-plugin-opener = "2.7.2"
+# System Manager / Awake: best-effort native Windows notifications when
+# Awake switches itself off. Local toast only; used from Rust commands, so
+# the webview needs no notification permission.
+tauri-plugin-notification = "2"
 # QR Code Generator: QR matrix generation (pure Rust, zero dependencies).
 qrcodegen = "1.8"
 # QR Code Generator: PNG rasterization of the shared QR geometry (pure Rust).
@@ -35,13 +42,11 @@ tiny-skia = "0.12"
 # QR Code Generator: embedding the logo PNG into the SVG as a data URL.
 # Folder Icon: PNG data URLs for the small previews.
 base64 = "0.22"
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_System_Power", "Win32_System_Registry"] }
 
 [dev-dependencies]
 # QR read-back tests only — never ships in the app binary.
 rqrr = "0.11"
-# DTO shape tests only (already in the lockfile via Tauri).
-serde_json = "1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
