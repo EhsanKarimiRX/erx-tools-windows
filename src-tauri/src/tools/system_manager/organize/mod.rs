@@ -8,6 +8,7 @@
 
 pub mod commands;
 pub mod core;
+pub mod dates;
 pub mod engine;
 #[cfg(test)]
 pub mod engine_test;
@@ -15,5 +16,6 @@ pub mod engine_test;
 #[cfg(test)]
 mod live_test;
 pub mod manifest;
+pub mod modes;
 pub mod protected;
 pub mod scan;

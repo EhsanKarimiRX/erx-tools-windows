@@ -22,6 +22,11 @@ Read docs/PROMPT_5_SPEC.md (full prompt) and docs/PROMPT_5_DECISIONS.md. Continu
 | 5e | Quick Launch | DONE | allowlist ids, ShellExecuteExW, PowerShell flavor, PC Manager installed-path LIVE-VERIFIED |
 | 5f | Command Tips | DONE | all 11 commands verified on this machine; badge decisions recorded below |
 | 5g | Final polish + verification | DONE | placeholder removed, order verified, UI_TEXT + SYSTEM_MANAGER docs written, audit clean |
+| 5h-1 | Organize: pure logic (modes) | DONE | Mode/DateSource/Granularity, size buckets, EXIF parser, calendar math; 13 mode tests |
+| 5h-2 | Organize: dates, EXIF, sizes in scan | DONE | EXIF via kamadak-exif (Original→Digitized, raw ASCII, never plain DateTime); cloud-only skipped BEFORE any read; scan progress events; fixture tests via experimental::Writer |
+| 5h-3 | Organize: engine + manifest integration | DONE | plan-carried categories; run-line mode (missing=format, old manifests undo); Desktop refusal in Folder tab; Date/Size run+undo tests |
+| 5h-4 | Organize: UI restructure | DONE | two tabs, Sort by selector, date options, mode sentences, option changes clear the preview |
+| 5h-5 | Final gates + docs | DONE | UI_TEXT + SYSTEM_MANAGER + DECISIONS + README updated; audit clean |
 (Status values: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner)
 
 ## Gates (last run)
@@ -93,6 +98,15 @@ Key: HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\Ne
   * The spec's tip-10 note was truncated in the pasted spec ("In the UI show a real `…"); interpreted as showing the pipeline as ONE copyable line — implemented that way, flagged for 5g wording review.
 
 ## Open issues / questions for the owner
+- Prompt 5h (2026-11-07): kamadak-exif 0.6.2 added — license BSD-2-Clause (its one dependency
+  mutate_once is also BSD-2-Clause), dependency tree contains NO network-capable crates.
+  windows-sys feature Win32_System_Time added (FileTimeToSystemTime + SystemTimeToTzSpecificLocalTime
+  for DST-correct LOCAL year/month; the pure UTC math is unit-tested and cross-checked).
+  The Organize scan now runs on a blocking thread with progress events ("Scanning… N files checked").
+  The manifest run line carries "mode" (missing = format, old manifests keep undoing — tested).
+  EXIF order: DateTimeOriginal then DateTimeDigitized; the plain DateTime tag is NEVER used (tested).
+  The spec's "Date not found" applies in PhotoTaken mode to every non-photo and to files whose
+  Windows date is unavailable; in Created/Modified modes a missing OS date is treated the same.
 - ALL STEPS 5a-5g ARE DONE. The owner now reviews wording in docs/SYSTEM_MANAGER_UI_TEXT.md,
   hand-tests 5a-5f with the per-step checklists, and pushes personally. Wording edits are
   applied to the code as a follow-up after the owner marks them.

@@ -357,6 +357,28 @@
   word-break: break-all;
 }
 
+.sm-org-sortby {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sm-org-sortby-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sm-org-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-hover);
+}
+
 .sm-org-scan {
   align-self: flex-start;
 }

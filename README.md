@@ -29,13 +29,15 @@ folders and are lazy-loaded only when opened — see
   keeps the PC (and screen) awake by temporarily setting the Windows power
   plan timeouts to Never and restoring them afterwards; **Desktop Icons**
   show/hide switches for the five classic desktop icons; an **Organize**
-  tool that tidies loose files on the Desktop, in Downloads or in a chosen
-  folder into category folders (plain-words preview, nothing deleted or
-  overwritten, honest skip reasons, per-target Undo); **Quick Launch**
-  buttons for common Windows tools (with "Run as administrator" for
-  Command Prompt and PowerShell); and **Command Tips**, a copy-only list
-  of verified commands. Fully offline, no admin rights needed; details and
-  known limits: docs/SYSTEM_MANAGER.md.
+  tool with two tabs — **Desktop** (Apps/Documents/More) and **Folder**
+  (any folder, sorted by **Format**, **Date** (EXIF photo date / created /
+  modified, into year or year-and-month folders) or **Size**), with a
+  plain-words preview, nothing deleted or overwritten, honest skip
+  reasons, and per-target Undo; **Quick Launch** buttons for common
+  Windows tools (with "Run as administrator" for Command Prompt and
+  PowerShell); and **Command Tips**, a copy-only list of verified
+  commands. Fully offline, no admin rights needed; details and known
+  limits: docs/SYSTEM_MANAGER.md.
 - **Encrypted Notes** — planned (placeholder tile).
 
 ## Development

@@ -50,3 +50,15 @@ Owner decisions, with reasons. Do not reverse any of these without asking the ow
 
 ## Global
 - Windows 10 and 11. No permanent admin. No silent failures. Honest reports. English UI. Final wording reviewed by the owner at 5g. The owner pushes to git; the agent never does.
+
+## Organize restructure (Prompt 5h, owner decision 2026-11-07)
+- Organize now has two tabs: Desktop and Folder.
+- Desktop tab: unchanged behavior — loose files only, three folders: Apps (programs and shortcuts), Documents (Word, PDF, Excel and similar), More (the rest). Windows virtual icons are ignored.
+- Folder tab: the user picks any folder (or the Downloads quick button) and chooses "Sort by": Format, Date or Size (the owner preferred one selector over separate sub-groups).
+- Date mode exists mainly for sorting family photo folders by the year they were taken. Date sources: photo date taken (EXIF), date created, date modified. Folders by year (default) or year and month. Files with no usable date go into a folder named "Date not found".
+- Size mode uses fixed buckets: Under 1 MB, 1-10 MB, 10-100 MB, 100 MB-1 GB, Over 1 GB (binary units).
+- Only the top level of the chosen folder is organized; sub-folders are never entered or changed (unchanged safety rule).
+- In folders other than Downloads, program/runtime files and shortcuts stay in place in Date and Size modes.
+- Photo date taken uses the pure-Rust crate kamadak-exif (offline). Cloud-only OneDrive files are never opened for reading.
+- The Desktop folder cannot be chosen in the Folder tab (use the Desktop tab).
+- Nothing else about safety changed: no deletes, no overwrites, preview first, undo for the last run per target.

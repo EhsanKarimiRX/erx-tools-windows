@@ -20,6 +20,10 @@ pub enum ManifestLine {
         version: u32,
         target: String,
         root: String,
+        /// "format" | "date" | "size"; missing on old manifests, which are
+        /// always Format — undo needs no mode-specific logic either way.
+        #[serde(default = "default_mode")]
+        mode: String,
         started_at: i64,
     },
     #[serde(rename = "mkdir")]
@@ -32,6 +36,10 @@ pub enum ManifestLine {
 
 pub const MANIFEST_VERSION: u32 = 1;
 
+fn default_mode() -> String {
+    "format".to_string()
+}
+
 /// `<app data dir>/organize_<target>.jsonl`.
 pub fn manifest_path(state_dir: &Path, target: super::core::OrganizeTarget) -> PathBuf {
     state_dir.join(format!("organize_{}.jsonl", target.id()))
@@ -43,6 +51,7 @@ pub fn start(
     path: &Path,
     target: super::core::OrganizeTarget,
     root: &Path,
+    mode: &str,
     started_at: i64,
 ) -> Result<ManifestWriter, String> {
     if let Some(parent) = path.parent() {
@@ -61,6 +70,7 @@ pub fn start(
             version: MANIFEST_VERSION,
             target: target.id().to_string(),
             root: root.to_string_lossy().into_owned(),
+            mode: mode.to_string(),
             started_at,
         },
     )?;
@@ -111,6 +121,7 @@ pub struct Manifest {
     pub target: String,
     pub root: PathBuf,
     pub started_at: i64,
+    pub mode: String,
     pub moves: Vec<(PathBuf, PathBuf)>,
     pub mkdirs: Vec<PathBuf>,
 }
@@ -137,12 +148,14 @@ pub fn read(path: &Path) -> Result<Manifest, String> {
             ManifestLine::Run {
                 target,
                 root,
+                mode,
                 started_at,
                 ..
             } => {
                 manifest = Some(Manifest {
                     target,
                     root: PathBuf::from(&root),
+                    mode,
                     started_at,
                     moves: Vec::new(),
                     mkdirs: Vec::new(),
@@ -185,6 +198,7 @@ pub fn rewrite(path: &Path, manifest: &Manifest) -> Result<(), String> {
             version: MANIFEST_VERSION,
             target: manifest.target.clone(),
             root: manifest.root.to_string_lossy().into_owned(),
+            mode: manifest.mode.clone(),
             started_at: manifest.started_at,
         },
     )?;
@@ -238,8 +252,14 @@ mod tests {
     #[test]
     fn round_trip_through_writer_and_reader() {
         let path = temp_path("roundtrip");
-        let mut writer =
-            start(&path, OrganizeTarget::Desktop, Path::new("C:\\root"), 100).expect("start");
+        let mut writer = start(
+            &path,
+            OrganizeTarget::Desktop,
+            Path::new("C:\\root"),
+            "format",
+            100,
+        )
+        .expect("start");
         writer
             .record_mkdir(Path::new("C:\\root\\Documents"))
             .expect("mkdir");
@@ -268,8 +288,14 @@ mod tests {
     #[test]
     fn missing_end_line_is_still_undoable() {
         let path = temp_path("noend");
-        let mut writer =
-            start(&path, OrganizeTarget::Downloads, Path::new("C:\\r"), 1).expect("start");
+        let mut writer = start(
+            &path,
+            OrganizeTarget::Downloads,
+            Path::new("C:\\r"),
+            "format",
+            1,
+        )
+        .expect("start");
         writer
             .record_move(Path::new("C:\\r\\x"), Path::new("C:\\r\\More\\x"))
             .expect("move");
@@ -307,8 +333,14 @@ mod tests {
     #[test]
     fn rewrite_keeps_only_remaining_entries_or_deletes() {
         let path = temp_path("rewrite");
-        let mut writer =
-            start(&path, OrganizeTarget::Custom, Path::new("C:\\r"), 7).expect("start");
+        let mut writer = start(
+            &path,
+            OrganizeTarget::Custom,
+            Path::new("C:\\r"),
+            "format",
+            7,
+        )
+        .expect("start");
         writer
             .record_move(Path::new("C:\\r\\a"), Path::new("C:\\r\\Documents\\a"))
             .expect("m1");

@@ -1,11 +1,16 @@
-//! The read-only scan: resolve the real folder (known-folder API for
-//! Desktop/Downloads), list the TOP LEVEL only, map every entry onto the
-//! pure logic types, and build the plan the preview shows. Never writes.
+//! The read-only scan: resolve the real folder (known-folder API for the
+//! Desktop and for the Downloads quick button), list the TOP LEVEL only,
+//! map every entry onto the pure logic types, and build the plan the
+//! preview shows. Never writes. Cloud-only OneDrive placeholders are
+//! skipped BEFORE any content read (an EXIF attempt must never trigger a
+//! download).
 
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use super::core::{Destination, EntryFlags, OrganizeEntry, OrganizeTarget, classify, skip_reason};
+use super::core::{Destination, EntryFlags, OrganizeEntry, OrganizeTarget, skip_reason};
+use super::dates;
+use super::modes::{DateSource, Mode, ModeMetadata, classify_entry, extension_of};
 use super::protected::is_protected;
 
 /// One file that WOULD move, as the preview shows it.
@@ -17,11 +22,17 @@ pub struct PlannedFile {
     /// so files changed since the preview are skipped, and files that
     /// appeared after the preview are never moved.
     pub modified_unix: i64,
+    /// The LOCAL (year, month) the file's chosen date resolves to — only
+    /// meaningful in Date mode (None elsewhere or when undetermined).
+    pub date_ym: Option<(i32, u8)>,
+    /// The destination folder decided by the scan; the run re-checks the
+    /// file but trusts this decision (a preview always matches the plan).
+    pub category: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedCategory {
-    pub name: &'static str,
+    pub name: String,
     pub files: Vec<PlannedFile>,
 }
 
@@ -37,9 +48,12 @@ pub struct ScanPlan {
     pub target: OrganizeTarget,
     pub root: PathBuf,
     pub on_onedrive: bool,
+    /// "format" | "date" | "size" — the UI wording matches the mode.
+    pub mode_id: &'static str,
     pub categories: Vec<PlannedCategory>,
     pub skipped: Vec<SkippedFile>,
-    /// Custom target only: files deliberately left where they are.
+    /// Files deliberately left where they are (Custom target / protected
+    /// runtime types in Date and Size modes).
     pub left_in_place: u32,
 }
 
@@ -51,6 +65,15 @@ impl ScanPlan {
             .iter()
             .map(|category| category.files.len() as u32)
             .sum()
+    }
+}
+
+/// Wire id of a mode, for the manifest and the UI wording.
+pub fn mode_id(mode: &Mode) -> &'static str {
+    match mode {
+        Mode::Format => "format",
+        Mode::Date { .. } => "date",
+        Mode::Size => "size",
     }
 }
 
@@ -146,22 +169,36 @@ pub(crate) fn modified_seconds(metadata: &std::fs::Metadata) -> i64 {
         .unwrap_or(0)
 }
 
-/// Scans one folder (read-only, top level only). Real sub-folders are
-/// ignored completely — not moved, not reported; only loose files matter.
-pub fn scan_dir(root: &Path, target: OrganizeTarget) -> Result<ScanPlan, String> {
+/// The LOCAL (year, month) of a std SystemTime via the Windows time-zone
+/// machinery (DST-correct per file date).
+fn local_ym_of(time: std::time::SystemTime) -> Option<(i32, u8)> {
+    super::modes::filetime_to_local_ym(super::modes::system_time_to_filetime(time))
+}
+
+/// Scans one folder (read-only, top level only) for one mode. Real
+/// sub-folders are ignored completely — not moved, not reported. The
+/// `progress` callback reports how many files have been checked so far
+/// (a scan of many photos can take seconds; no fake percentages).
+pub fn scan_dir(
+    root: &Path,
+    target: OrganizeTarget,
+    mode: &Mode,
+    progress: &mut dyn FnMut(u32),
+) -> Result<ScanPlan, String> {
     let read =
         std::fs::read_dir(root).map_err(|error| format!("Couldn't read that folder: {error}"))?;
 
     let mut categories: Vec<PlannedCategory> = Vec::new();
     let mut skipped: Vec<SkippedFile> = Vec::new();
     let mut left_in_place: u32 = 0;
+    let mut checked: u32 = 0;
 
-    let mut category_files = |name: &'static str, file: PlannedFile| {
-        if let Some(category) = categories.iter_mut().find(|c| c.name == name) {
-            category.files.push(file);
+    let mut category_files = |category: String, file: PlannedFile| {
+        if let Some(existing) = categories.iter_mut().find(|c| c.name == category) {
+            existing.files.push(file);
         } else {
             categories.push(PlannedCategory {
-                name,
+                name: category,
                 files: vec![file],
             });
         }
@@ -188,6 +225,9 @@ pub fn scan_dir(root: &Path, target: OrganizeTarget) -> Result<ScanPlan, String>
             // not part of the plan at all.
             continue;
         }
+        // Safety rules FIRST: hidden/system/reparse/partial/cloud-only
+        // files are skipped before any content read, so a cloud-only
+        // OneDrive placeholder is never opened for its EXIF data.
         let flags = flags_from_attributes(raw_attributes(&metadata));
         let organize_entry = OrganizeEntry {
             name: name.clone(),
@@ -201,25 +241,60 @@ pub fn scan_dir(root: &Path, target: OrganizeTarget) -> Result<ScanPlan, String>
             });
             continue;
         }
-        let planned = PlannedFile {
-            name: name.clone(),
-            size: metadata.len(),
-            modified_unix: modified_seconds(&metadata),
+
+        // What the mode needs to know about this file.
+        let size = metadata.len();
+        let date_ym = match mode {
+            Mode::Date {
+                source: DateSource::PhotoTaken,
+                ..
+            } => {
+                let extension = extension_of(&name).unwrap_or_default();
+                if dates::exif_eligible(&extension) {
+                    dates::photo_date_taken(&root.join(&name))
+                } else {
+                    None
+                }
+            }
+            Mode::Date {
+                source: DateSource::Created,
+                ..
+            } => metadata.created().ok().and_then(local_ym_of),
+            Mode::Date {
+                source: DateSource::Modified,
+                ..
+            } => metadata.modified().ok().and_then(local_ym_of),
+            Mode::Format | Mode::Size => None,
         };
-        match classify(&name, target) {
-            Destination::Category(category) => category_files(category, planned),
+
+        match classify_entry(&name, target, mode, &ModeMetadata { size, date_ym }) {
+            Destination::Category(category) => {
+                category_files(
+                    category.clone(),
+                    PlannedFile {
+                        name: name.clone(),
+                        size,
+                        modified_unix: modified_seconds(&metadata),
+                        date_ym,
+                        category,
+                    },
+                );
+            }
             Destination::LeaveInPlace => left_in_place += 1,
             Destination::Skip(reason) => skipped.push(SkippedFile {
                 name,
                 reason: reason.text().to_string(),
             }),
         }
+        checked += 1;
+        progress(checked);
     }
 
     Ok(ScanPlan {
         target,
         root: root.to_path_buf(),
         on_onedrive: on_onedrive(root),
+        mode_id: mode_id(mode),
         categories,
         skipped,
         left_in_place,
@@ -266,32 +341,53 @@ pub fn known_folder(target: OrganizeTarget) -> Result<PathBuf, String> {
     }
 }
 
-/// The folder a target would organize, refusing protected locations for
-/// the Custom target. Desktop/Downloads come from Windows itself.
-pub fn resolve_root(target: OrganizeTarget, custom_path: Option<&str>) -> Result<PathBuf, String> {
-    match target {
-        OrganizeTarget::Desktop | OrganizeTarget::Downloads => {
-            #[cfg(windows)]
-            return known_folder(target);
-            #[cfg(not(windows))]
-            return Err("ERX Tools System Manager needs Windows.".into());
+/// The Desktop tab's folder (always Format-style three-category logic).
+pub fn resolve_desktop_root() -> Result<PathBuf, String> {
+    #[cfg(windows)]
+    return known_folder(OrganizeTarget::Desktop);
+    #[cfg(not(windows))]
+    return Err("ERX Tools System Manager needs Windows.".into());
+}
+
+/// Case-insensitive comparison text for "is this the same folder".
+fn canonical_text(path: &Path) -> String {
+    path.to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .to_ascii_lowercase()
+}
+
+/// Resolves the Folder tab's chosen folder: refuses the user's Desktop
+/// folder (that is what the Desktop tab is for), and classifies the result
+/// as the Downloads target (same trust level as Format mode there — chosen
+/// via the quick button or by picking that folder) or the Custom target.
+pub fn resolve_folder_tab_root(
+    custom_path: Option<&str>,
+) -> Result<(PathBuf, OrganizeTarget), String> {
+    let raw = custom_path.ok_or_else(|| "Please choose a folder first.".to_string())?;
+    let chosen = PathBuf::from(raw);
+    if !chosen.is_dir() {
+        return Err("That folder could not be found. Please choose a normal folder.".into());
+    }
+    // Refuse system locations (drive roots, Windows, Program Files,
+    // ProgramData, profile root, AppData) with one plain message.
+    if is_protected(&chosen, &super::protected::machine_protected_roots()) {
+        return Err("This folder is protected. Please choose a normal folder.".into());
+    }
+    #[cfg(windows)]
+    {
+        let chosen_text = canonical_text(&chosen);
+        if let Ok(desktop) = known_folder(OrganizeTarget::Desktop)
+            && canonical_text(&desktop) == chosen_text
+        {
+            return Err("This is your Desktop. Use the Desktop tab for it.".into());
         }
-        OrganizeTarget::Custom => {
-            let raw = custom_path.ok_or_else(|| "Please choose a folder first.".to_string())?;
-            let chosen = PathBuf::from(raw);
-            if !chosen.is_dir() {
-                return Err(
-                    "That folder could not be found. Please choose a normal folder.".into(),
-                );
-            }
-            // Refuse system locations (drive roots, Windows, Program Files,
-            // ProgramData, profile root, AppData) with one plain message.
-            if is_protected(&chosen, &super::protected::machine_protected_roots()) {
-                return Err("This folder is protected. Please choose a normal folder.".into());
-            }
-            Ok(chosen)
+        if let Ok(downloads) = known_folder(OrganizeTarget::Downloads)
+            && canonical_text(&downloads) == chosen_text
+        {
+            return Ok((chosen, OrganizeTarget::Downloads));
         }
     }
+    Ok((chosen, OrganizeTarget::Custom))
 }
 
 #[cfg(test)]
@@ -313,6 +409,8 @@ mod tests {
         dir
     }
 
+    fn no_progress(_checked: u32) {}
+
     fn category_files(plan: &ScanPlan, name: &str) -> Vec<String> {
         plan.categories
             .iter()
@@ -328,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_files_of_every_kind() {
+    fn scan_files_of_every_kind_format_mode() {
         let dir = temp_dir("kinds");
         fs::write(dir.join("report.pdf"), b"pdf").expect("write");
         fs::write(dir.join("photo.jpg"), b"jpg").expect("write");
@@ -338,7 +436,14 @@ mod tests {
         fs::write(dir.join("app.exe"), b"exe").expect("write");
         fs::write(dir.join("strange.xyz"), b"xyz").expect("write");
 
-        let plan = scan_dir(&dir, OrganizeTarget::Downloads).expect("scan");
+        let plan = scan_dir(
+            &dir,
+            OrganizeTarget::Downloads,
+            &Mode::Format,
+            &mut no_progress,
+        )
+        .expect("scan");
+        assert_eq!(plan.mode_id, "format");
         assert_eq!(plan.total_would_move(), 7);
         assert_eq!(category_files(&plan, "Documents"), vec!["report.pdf"]);
         assert_eq!(category_files(&plan, "Images"), vec!["photo.jpg"]);
@@ -377,7 +482,13 @@ mod tests {
         }
         fs::write(dir.join("still.crdownload"), b"partial").expect("write");
 
-        let plan = scan_dir(&dir, OrganizeTarget::Desktop).expect("scan");
+        let plan = scan_dir(
+            &dir,
+            OrganizeTarget::Desktop,
+            &Mode::Format,
+            &mut no_progress,
+        )
+        .expect("scan");
         assert_eq!(
             plan.total_would_move(),
             0,
@@ -395,6 +506,96 @@ mod tests {
     }
 
     #[test]
+    fn scan_date_mode_uses_modified_time_and_progress_counts() {
+        let dir = temp_dir("dates");
+        // Two known modified dates (whole seconds, local-time tolerant:
+        // the assertion accepts either year only around New Year edges,
+        // which these dates are far from).
+        let file_2019 = dir.join("old.txt");
+        fs::write(&file_2019, b"old").expect("write");
+        let file_2024 = dir.join("new.txt");
+        fs::write(&file_2024, b"new").expect("write");
+        // 2019-06-15 12:00:00 UTC and 2024-03-01 12:00:00 UTC as system times.
+        let time_2019 = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_560_590_400);
+        let time_2024 = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_709_294_400);
+        file_2019
+            .metadata()
+            .and_then(|_| {
+                std::fs::File::options()
+                    .write(true)
+                    .open(&file_2019)
+                    .and_then(|file| {
+                        file.set_times(
+                            std::fs::FileTimes::new()
+                                .set_modified(time_2019)
+                                .set_accessed(time_2019),
+                        )
+                    })
+            })
+            .expect("set 2019 modified time");
+        std::fs::File::options()
+            .write(true)
+            .open(&file_2024)
+            .and_then(|file| {
+                file.set_times(
+                    std::fs::FileTimes::new()
+                        .set_modified(time_2024)
+                        .set_accessed(time_2024),
+                )
+            })
+            .expect("set 2024 modified time");
+
+        let mut seen: Vec<u32> = Vec::new();
+        let plan = scan_dir(
+            &dir,
+            OrganizeTarget::Custom,
+            &Mode::Date {
+                source: DateSource::Modified,
+                granularity: super::super::modes::Granularity::Year,
+            },
+            &mut |checked| seen.push(checked),
+        )
+        .expect("scan");
+        assert_eq!(plan.mode_id, "date");
+        assert_eq!(seen.last(), Some(&2), "progress reported for every file");
+        assert_eq!(category_files(&plan, "2019"), vec!["old.txt"]);
+        assert_eq!(category_files(&plan, "2024"), vec!["new.txt"]);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn scan_photo_taken_mode_sends_non_photos_to_date_not_found() {
+        let dir = temp_dir("photo-taken");
+        fs::write(dir.join("notes.txt"), b"text").expect("write");
+        let plan = scan_dir(
+            &dir,
+            OrganizeTarget::Custom,
+            &Mode::Date {
+                source: DateSource::PhotoTaken,
+                granularity: super::super::modes::Granularity::Year,
+            },
+            &mut no_progress,
+        )
+        .expect("scan");
+        // A .txt has no EXIF: "Date not found".
+        assert_eq!(category_files(&plan, "Date not found"), vec!["notes.txt"]);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn scan_size_mode_buckets_real_files() {
+        let dir = temp_dir("sizes");
+        fs::write(dir.join("tiny.txt"), vec![0u8; 10]).expect("write");
+        fs::write(dir.join("small.bin"), vec![0u8; 2_000_000]).expect("write");
+        let plan =
+            scan_dir(&dir, OrganizeTarget::Custom, &Mode::Size, &mut no_progress).expect("scan");
+        assert_eq!(plan.mode_id, "size");
+        assert_eq!(category_files(&plan, "Under 1 MB"), vec!["tiny.txt"]);
+        assert_eq!(category_files(&plan, "1-10 MB"), vec!["small.bin"]);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn on_onedrive_by_path_segment() {
         // A path with a OneDrive segment is detected without any env vars.
         assert!(on_onedrive(Path::new("C:\\Users\\x\\OneDrive\\Desktop")));
@@ -408,18 +609,49 @@ mod tests {
     }
 
     #[test]
-    fn resolve_root_refuses_protected_custom_paths() {
+    fn folder_tab_root_refusals() {
+        // Protected locations still refused.
+        let error = resolve_folder_tab_root(Some("C:\\Windows")).expect_err("must refuse");
+        assert!(error.contains("protected"), "{error}");
+        let error = resolve_folder_tab_root(Some("C:\\")).expect_err("must refuse");
+        assert!(error.contains("protected"), "{error}");
         let error =
-            resolve_root(OrganizeTarget::Custom, Some("C:\\Windows")).expect_err("must refuse");
-        assert!(error.contains("protected"), "{error}");
-        let error = resolve_root(OrganizeTarget::Custom, Some("C:\\")).expect_err("must refuse");
-        assert!(error.contains("protected"), "{error}");
-        let error = resolve_root(OrganizeTarget::Custom, Some("Z:\\nonexistent-erx-test"))
-            .expect_err("must refuse");
+            resolve_folder_tab_root(Some("Z:\\nonexistent-erx-test")).expect_err("must refuse");
         assert!(error.contains("could not be found"), "{error}");
         assert!(
-            resolve_root(OrganizeTarget::Custom, None).is_err(),
+            resolve_folder_tab_root(None).is_err(),
             "no path chosen is an error"
         );
+        // The Desktop folder is refused with a pointer to the Desktop tab.
+        #[cfg(windows)]
+        if let Ok(desktop) = known_folder(OrganizeTarget::Desktop) {
+            let error = resolve_folder_tab_root(Some(&desktop.to_string_lossy()))
+                .expect_err("the Desktop must be refused in the Folder tab");
+            assert!(error.contains("Desktop tab"), "{error}");
+        }
+    }
+
+    #[test]
+    fn folder_tab_classifies_downloads_folder() {
+        // A non-Downloads folder resolves to the Custom target. The scratch
+        // folder must NOT live under the temp dir: it is inside AppData,
+        // which the protected-locations rule refuses (per spec).
+        let dir = std::env::current_dir()
+            .expect("cwd")
+            .join("target")
+            .join(format!("erx-folder-tab-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("mkdir");
+        let (root, target) =
+            resolve_folder_tab_root(Some(&dir.to_string_lossy())).expect("resolve");
+        assert_eq!(target, OrganizeTarget::Custom);
+        assert_eq!(root, dir);
+        fs::remove_dir_all(&dir).ok();
+        // …and the real Downloads folder (if resolvable) to the Downloads target.
+        #[cfg(windows)]
+        if let Ok(downloads) = known_folder(OrganizeTarget::Downloads) {
+            let (_, target) = resolve_folder_tab_root(Some(&downloads.to_string_lossy()))
+                .expect("resolve downloads");
+            assert_eq!(target, OrganizeTarget::Downloads);
+        }
     }
 }

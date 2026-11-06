@@ -55,32 +55,51 @@ Personalization → Themes → Desktop icon settings.
 
 ## Organize
 
-Tidy loose files into category folders — one engine, three targets:
-**Desktop** (Apps / Documents / More), **Downloads** (Documents / Images /
-Videos / Music / Archives / Installers / More), and **Custom folder…**
-(content types only; executables, libraries, scripts and unknown types are
-left in place on purpose).
+Tidy loose files into category folders. Two tabs: **Desktop** and
+**Folder**.
 
-- **Safety:** top level only; real folders are never touched; hidden or
-  system files (desktop.ini), Office `~$` lock files, links/reparse points,
-  partial downloads (`.crdownload`, `.part`, …) and cloud-only OneDrive
-  files are skipped with a reason. **Nothing is ever deleted or
-  overwritten** — name conflicts get "report (2).pdf" style names; moves
-  use a Windows API that cannot replace an existing file.
-- **Preview first:** a read-only scan explains in plain words what will
-  happen before anything moves; the run re-checks every file (size +
-  modified time) and skips anything changed since the preview.
-- **Undo:** every move is journaled; the most recent run per target can be
-  undone (reverse order; only EMPTY folders the tool created are removed;
-  files the user moved or deleted are reported "not found").
-- **Custom folder protection:** drive roots, the Windows folder, Program
-  Files, ProgramData, the user profile root itself and anything under
-  AppData are refused with a plain message.
+- **Desktop tab** — organizes only the loose files of your Desktop folder
+  into exactly three folders: **Apps** (programs and shortcuts),
+  **Documents** (Word, PDF, Excel and similar) and **More** (everything
+  else). Windows' virtual icons (This PC, Recycle Bin, …) are not files
+  and are never touched.
+- **Folder tab** — any folder you choose (or the **Use Downloads folder**
+  quick button), with a **Sort by** selector:
+  - **Format** — Downloads keeps its 7 categories (Documents, Images,
+    Videos, Music, Archives, Installers, More); any other folder uses the
+    5 content categories and leaves executables/runtime files and unknown
+    types in place.
+  - **Date** — folders named by **year** ("2023") or **year and month**
+    ("2023-05"), flat. The date can come from the photo's own camera data
+    (EXIF `DateTimeOriginal`, falling back to `DateTimeDigitized` — the
+    last-edit time is never used), from the Windows created date, or from
+    the modified date. Files whose date cannot be determined (including
+    every non-photo in "Photo date taken" mode) go into a folder named
+    exactly **`Date not found`**.
+  - **Size** — fixed buckets with binary units: Under 1 MB, 1-10 MB,
+    10-100 MB, 100 MB-1 GB, Over 1 GB.
+- **Safety (all tabs):** top level only; real folders are never touched;
+  hidden/system files (desktop.ini), Office `~$` lock files, links and
+  reparse points, partial downloads (`.crdownload`, `.part`, …) and
+  cloud-only OneDrive placeholders are skipped with a reason — placeholders
+  are never opened, so nothing is downloaded. **Nothing is ever deleted or
+  overwritten** ("report (2).pdf" names; a Windows move API that cannot
+  replace). Every file is re-checked at run time (size + modified time).
+- **Program files stay put in Date and Size modes** outside Downloads:
+  exe, dll, sys, ini, msi, msix, appx, bat, cmd, ps1, vbs, com, scr, drv,
+  cpl, ocx, lnk, url are left in place (moving program files by date or
+  size could break a program if the wrong folder was picked). In the
+  Downloads folder all non-skipped files may move.
+- **Your Desktop folder cannot be chosen in the Folder tab** — use the
+  Desktop tab for it.
+- **Undo:** every move is journaled; the most recent run per target
+  (desktop / downloads / custom) can be undone — reverse order, only EMPTY
+  folders the tool created are removed, and files the user moved or
+  deleted are reported "not found".
 - **OneDrive honesty:** if the folder lives in OneDrive (including
-  "OneDrive - Company" layouts), the preview says so; online-only files
-  are skipped; OneDrive settings are never changed.
-- Icons from the shared **Public Desktop** folder are not part of your
-  Desktop folder and are left alone.
+  "OneDrive - Company" layouts) the preview says so; cloud-only files are
+  skipped; OneDrive settings are never changed. Icons from the shared
+  **Public Desktop** folder are left alone (Desktop tab).
 
 ## Quick Launch
 

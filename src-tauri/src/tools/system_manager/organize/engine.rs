@@ -5,10 +5,11 @@
 
 use std::path::{Path, PathBuf};
 
-use super::core::{OrganizeTarget, classify, unique_name};
+use super::core::{OrganizeTarget, unique_name};
 use super::manifest::{self, Manifest};
+use super::modes::Mode;
 use super::scan::{
-    PlannedFile, SkippedFile, flags_from_attributes, modified_seconds, raw_attributes,
+    PlannedFile, SkippedFile, flags_from_attributes, mode_id, modified_seconds, raw_attributes,
 };
 
 /// The honest result of one run: how many moved and why each skipped one
@@ -88,23 +89,26 @@ fn skip_report(name: &str, reason: String, skipped: &mut Vec<SkippedFile>) {
 /// Executes a scanned plan. The backend re-checks every planned file (it
 /// must still exist with the same size and modified time); anything that
 /// changed since the preview is skipped, and files that appeared after the
-/// preview are never moved (only the planned list is processed).
+/// preview are never moved (only the planned list is processed). The
+/// destination folder per file was decided by the scan — the run trusts it
+/// so a preview always matches what happens.
 pub fn run(
     target: OrganizeTarget,
     root: &Path,
     planned: &[PlannedFile],
     manifest_file: &Path,
+    mode: &Mode,
     now_unix: i64,
     progress: &mut dyn FnMut(u32, u32),
 ) -> Result<RunReport, String> {
-    let mut writer = manifest::start(manifest_file, target, root, now_unix)?;
+    let mut writer = manifest::start(manifest_file, target, root, mode_id(mode), now_unix)?;
     let total = planned.len() as u32;
     let mut moved: u32 = 0;
     let mut skipped: Vec<SkippedFile> = Vec::new();
 
     // Per-category folder state, decided once and cached: Ready(dir) or
     // Err(reason) for the whole category.
-    let mut category_dirs: Vec<(&'static str, Result<PathBuf, String>)> = Vec::new();
+    let mut category_dirs: Vec<(String, Result<PathBuf, String>)> = Vec::new();
 
     for (index, file) in planned.iter().enumerate() {
         progress(index as u32, total);
@@ -129,22 +133,15 @@ pub fn run(
             }
         }
 
-        let category = match classify(&file.name, target) {
-            super::core::Destination::Category(name) => name,
-            super::core::Destination::LeaveInPlace => continue,
-            super::core::Destination::Skip(reason) => {
-                skip_report(&file.name, reason.text().to_string(), &mut skipped);
-                continue;
-            }
-        };
+        let category = file.category.clone();
 
         // The category folder: reuse an existing real folder, create one,
         // or skip the whole category on a name conflict.
         let dir = match category_dirs.iter().find(|(name, _)| *name == category) {
             Some((_, cached)) => cached.clone(),
             None => {
-                let status = ensure_category_dir(root, category, &mut writer);
-                category_dirs.push((category, status.clone()));
+                let status = ensure_category_dir(root, &category, &mut writer);
+                category_dirs.push((category.clone(), status.clone()));
                 status
             }
         };
@@ -227,7 +224,7 @@ pub fn run(
 /// reparse point.
 fn ensure_category_dir(
     root: &Path,
-    category: &'static str,
+    category: &str,
     writer: &mut manifest::ManifestWriter,
 ) -> Result<PathBuf, String> {
     let dir = root.join(category);
@@ -308,6 +305,7 @@ pub fn undo(manifest_file: &Path) -> Result<UndoReport, String> {
         target,
         root,
         started_at,
+        mode,
     } = manifest::read(manifest_file)?;
     let mut report = UndoReport::default();
 
@@ -390,6 +388,7 @@ pub fn undo(manifest_file: &Path) -> Result<UndoReport, String> {
         target,
         root,
         started_at,
+        mode,
         moves: remaining_moves,
         mkdirs: remaining_mkdirs,
     };

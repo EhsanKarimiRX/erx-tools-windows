@@ -69,12 +69,28 @@ export interface DesktopIconState {
 
 // ----- Organize (mirror of organize/commands.rs DTOs) -----
 
+/** The two tabs (Prompt 5h). */
+export type OrganizeTab = "desktop" | "folder";
+/** The backend target kind (manifest granularity). */
 export type OrganizeTargetId = "desktop" | "downloads" | "custom";
+export type SortMode = "format" | "date" | "size";
+export type DateSourceId = "photo_taken" | "created" | "modified";
+export type GranularityId = "year" | "year_month";
+
+export interface OrganizeModeInput {
+  mode: SortMode;
+  dateSource?: DateSourceId;
+  granularity?: GranularityId;
+}
 
 export interface OrganizePlannedFile {
   name: string;
   size: number;
   modifiedUnix: number;
+  /** LOCAL (year, month) for Date mode; null otherwise or undetermined. */
+  dateYm: [number, number] | null;
+  /** The destination folder the scan decided. */
+  category: string;
 }
 
 export interface OrganizeCategory {
@@ -92,9 +108,10 @@ export interface ScanPlan {
   target: OrganizeTargetId;
   root: string;
   onOnedrive: boolean;
+  mode: SortMode;
   categories: OrganizeCategory[];
   skipped: OrganizeSkippedFile[];
-  /** Custom target only: files deliberately left where they are. */
+  /** Files deliberately left where they are (Custom / protected types). */
   leftInPlace: number;
 }
 

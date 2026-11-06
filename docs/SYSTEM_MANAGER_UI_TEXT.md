@@ -81,41 +81,54 @@ for strings produced by Rust — the file that owns them.
 | Read-back mismatch (Rust) | The setting was written but reads back as shown/hidden. Please try again. |
 | Written but unreadable (Rust) | The setting was written but could not be read back. |
 
-## Organize (OrganizeSection.tsx + organize/*.rs)
+## Organize (OrganizeSection.tsx + organize/*.rs) — RESTRUCTURED in Prompt 5h
 
-| Element | Text |
-|---|---|
-| Card title | Organize |
-| Card subtitle | Tidy loose files into folders. Nothing is deleted. |
-| Target segments | Desktop · Downloads · Custom folder… |
-| Custom: no folder | No folder chosen yet. |
-| Custom: picker button | Choose folder… |
-| Scan button | Scan |
-| Preview title | Ready to organize: {Desktop / Downloads / your chosen folder} |
-| Preview: nothing to do | There is nothing to move — every loose file here is skipped or left in place. |
-| Preview: what will happen | ERX Tools will move {n} loose file(s) into {m} folder(s): |
-| Category row | {Documents} — {n} file(s) |
-| File list overflow | and {n} more… |
-| Safety note | Nothing is deleted or overwritten. Folders are never touched. If a name already exists, the file is renamed like "report (2).pdf". |
-| Skipped summary row | {n} file(s) will be skipped (see why) |
-| Custom: left in place | {n} file(s) stay(s) where it is/they are (programs and unknown types are not moved in a chosen folder). |
-| OneDrive note (any target, when true) | This folder is stored in OneDrive. ERX Tools can organize it and OneDrive will sync the changes. Online-only files are skipped. ERX Tools never changes any OneDrive settings. |
-| Public Desktop note (Desktop target) | Icons from the shared Public Desktop folder are not part of your Desktop folder and are left alone. |
-| Undo promise | You can undo this afterwards. |
-| Run buttons | Organize now · Cancel |
-| Progress | Organizing… {done} of {total} files |
-| Report title | Done: {n} file(s) moved, {m} file(s) skipped. |
-| Report note | Nothing was deleted. You can undo this run below. |
-| Undo button (Desktop/Downloads) | Undo last organize |
-| Undo button (Custom) | Undo last organize in {folder name} |
-| Undo note | Only the most recent run for this target can be undone. |
-| Undo result | Undo finished: {summary} (+ any notes/failures appended) |
-| Custom: protected | This folder is protected. Please choose a normal folder. |
-| Custom: missing folder | That folder could not be found. Please choose a normal folder. |
-| Custom: none chosen | Please choose a folder first. |
+| Element | Text | Status |
+|---|---|---|
+| Card title | Organize | unchanged |
+| Card subtitle | Tidy loose files into folders. Nothing is deleted. | unchanged |
+| Tab segments (CHANGED from three targets) | Desktop · Folder | CHANGED |
+| Desktop tab description (NEW) | Moves the loose files on your Desktop into three folders: Apps (programs and shortcuts), Documents (Word, PDF, Excel and similar) and More (everything else). Windows icons such as This PC and Recycle Bin are not touched. | NEW |
+| Folder: no folder chosen | No folder chosen yet. | unchanged |
+| Folder: picker button | Choose folder… | unchanged |
+| Folder: quick button (NEW) | Use Downloads folder | NEW |
+| Sort-by label (NEW) | Sort by | NEW |
+| Sort-by segments (NEW) | Format · Date · Size | NEW |
+| Mode sentence: Format (NEW) | Groups files into folders such as Documents, Images, Videos, Music and Archives. | NEW |
+| Mode sentence: Date (NEW) | Groups files into folders by year (or by year and month). Files without a date go into a folder named “Date not found”. | NEW |
+| Mode sentence: Size (NEW) | Groups files into folders by size: Under 1 MB, 1-10 MB, 10-100 MB, 100 MB-1 GB and Over 1 GB. | NEW |
+| Date option label (NEW) | Which date? | NEW |
+| Date option values (NEW) | Photo date taken · Date created · Date modified | NEW |
+| Photo-taken note (NEW) | Read from the photo itself (camera data). Files that are not photos, or photos without this data, go to “Date not found”. | NEW |
+| Created/modified note (NEW) | These dates come from Windows and can change when files are copied or edited. | NEW |
+| Granularity label (NEW) | Folders by | NEW |
+| Granularity values (NEW) | Year · Year and month | NEW |
+| Subfolder note (NEW, always visible in Folder tab) | Only files directly inside this folder are organized. Existing sub-folders are left untouched. | NEW |
+| Protected-types note (NEW, Folder tab, Date/Size, non-Downloads) | Program files (such as .exe and .dll) and shortcuts are left in place in this folder. | NEW |
+| Scan button | Scan | unchanged |
+| Scan progress (NEW) | Scanning… {n} files checked | NEW |
+| Preview title (CHANGED: folder name) | Ready to organize: {Desktop / <folder name>} | CHANGED |
+| Preview: nothing to do | There is nothing to move — every loose file here is skipped or left in place. | unchanged |
+| Preview: what will happen (CHANGED) | ERX Tools will move {n} loose file(s) into {m} folder(s) — Format: `:`; Date: `named by year:` / `named by year and month:`; Size: `by size:` | CHANGED |
+| Category row | {name} — {n} file(s) | unchanged |
+| File list overflow | and {n} more… | unchanged |
+| Safety note (CHANGED example name) | Nothing is deleted or overwritten. Folders are never touched. If a name already exists, the file is renamed like "report (2).pdf". (Date mode: "photo (2).jpg".) | CHANGED |
+| Skipped summary row | {n} file(s) will be skipped (see why) | unchanged |
+| Left-in-place note (CHANGED wording) | {n} file(s) stay(s) where it is/they are (programs and unknown types are not moved here). | CHANGED |
+| OneDrive note (now any chosen folder) | This folder is stored in OneDrive. ERX Tools can organize it and OneDrive will sync the changes. Online-only files are skipped. ERX Tools never changes any OneDrive settings. | unchanged scope |
+| Public Desktop note (Desktop tab only) | Icons from the shared Public Desktop folder are not part of your Desktop folder and are left alone. | unchanged |
+| Undo promise | You can undo this afterwards. | unchanged |
+| Run buttons | Organize now · Cancel | unchanged |
+| Progress | Organizing… {done} of {total} files | unchanged |
+| Report title | Done: {n} file(s) moved, {m} file(s) skipped. | unchanged |
+| Report note | Nothing was deleted. You can undo this run below. | unchanged |
+| Undo buttons (CHANGED condition) | Undo last organize · Undo last organize in {folder name} | unchanged wording |
+| Undo note | Only the most recent run for this target can be undone. | unchanged |
+| Undo result | Undo finished: {summary} (+ any notes/failures appended) | unchanged |
+| Folder tab: Desktop refused (NEW, Rust) | This is your Desktop. Use the Desktop tab for it. | NEW |
+| Folder tab: Downloads quick path (Rust, no UI text) | resolves via the known-folder API | NEW |
 
-### Organize — skip/failure reasons (Rust, shown after file names)
-
+### Organize — skip/failure reasons (Rust, shown after file names) — unchanged
 | Reason | Text |
 |---|---|
 | Hidden or system attribute / desktop.ini | hidden or system file |

@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { Channel } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import InfoNote from "./InfoNote";
 import SectionCard from "./SectionCard";
-import type { OrganizeTargetId, RunReport, ScanPlan } from "./types";
+import type {
+  DateSourceId,
+  GranularityId,
+  OrganizeModeInput,
+  OrganizeTab,
+  RunReport,
+  ScanPlan,
+  SortMode,
+} from "./types";
 
 /** Turns anything thrown by invoke into a short display string. */
 function errorText(error: unknown): string {
@@ -14,11 +21,37 @@ function errorText(error: unknown): string {
 
 type Phase = "idle" | "scanning" | "preview" | "running" | "report";
 
-const TARGET_LABELS: Record<OrganizeTargetId, string> = {
+const TAB_LABELS: Record<OrganizeTab, string> = {
   desktop: "Desktop",
-  downloads: "Downloads",
-  custom: "Custom folder…",
+  folder: "Folder",
 };
+
+const SORT_LABELS: Record<SortMode, string> = {
+  format: "Format",
+  date: "Date",
+  size: "Size",
+};
+
+const DATE_SOURCE_LABELS: Record<DateSourceId, string> = {
+  photo_taken: "Photo date taken",
+  created: "Date created",
+  modified: "Date modified",
+};
+
+const GRANULARITY_LABELS: Record<GranularityId, string> = {
+  year: "Year",
+  year_month: "Year and month",
+};
+
+/** One plain sentence per mode (spec 5h-4). */
+const MODE_SENTENCE: Record<SortMode, string> = {
+  format: "Groups files into folders such as Documents, Images, Videos, Music and Archives.",
+  date: "Groups files into folders by year (or by year and month). Files without a date go into a folder named “Date not found”.",
+  size: "Groups files into folders by size: Under 1 MB, 1-10 MB, 10-100 MB, 100 MB-1 GB and Over 1 GB.",
+};
+
+const DESKTOP_TAB_TEXT =
+  "Moves the loose files on your Desktop into three folders: Apps (programs and shortcuts), Documents (Word, PDF, Excel and similar) and More (everything else). Windows icons such as This PC and Recycle Bin are not touched.";
 
 /** The preview lists at most this many names per category, then "and N more". */
 const PREVIEW_NAME_CAP = 200;
@@ -27,13 +60,33 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** Organize: scan (read-only) → plain-words preview → run with honest
- * progress → report → Undo. The backend re-checks every file before and
- * during the run; nothing is deleted or overwritten, ever. */
+function folderName(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  return trimmed.split(/[\\/]/).pop() ?? trimmed;
+}
+
+function modeInput(
+  mode: SortMode,
+  dateSource: DateSourceId,
+  granularity: GranularityId,
+): OrganizeModeInput {
+  return mode === "date" ? { mode, dateSource, granularity } : { mode };
+}
+
+/** Organize, restructured (Prompt 5h): a Desktop tab with the proven
+ * three-folder behavior and a Folder tab with a "Sort by" selector
+ * (Format | Date | Size). Scan → plain-words preview → run with honest
+ * progress → report → Undo. Nothing is deleted or overwritten, ever. */
 export default function OrganizeSection() {
-  const [target, setTarget] = useState<OrganizeTargetId>("desktop");
+  const [tab, setTab] = useState<OrganizeTab>("desktop");
   const [customPath, setCustomPath] = useState<string | null>(null);
+  const [cameFromDownloads, setCameFromDownloads] = useState(false);
+  const [mode, setMode] = useState<SortMode>("format");
+  const [dateSource, setDateSource] = useState<DateSourceId>("photo_taken");
+  const [granularity, setGranularity] = useState<GranularityId>("year");
+
   const [phase, setPhase] = useState<Phase>("idle");
+  const [scanCount, setScanCount] = useState<number | null>(null);
   const [plan, setPlan] = useState<ScanPlan | null>(null);
   const [report, setReport] = useState<RunReport | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -46,11 +99,11 @@ export default function OrganizeSection() {
 
   const busy = phase === "scanning" || phase === "running";
 
-  const refreshUndoInfo = useCallback(async (targetId: OrganizeTargetId) => {
+  const refreshUndoInfo = useCallback(async (target: string) => {
     try {
       const info = await invoke<{ undoable: boolean; root: string | null }>(
         "organize_undo_info",
-        { target: targetId },
+        { target },
       );
       setUndoInfo(info);
     } catch {
@@ -59,30 +112,43 @@ export default function OrganizeSection() {
   }, []);
 
   useEffect(() => {
-    if (target === "custom") {
-      void refreshUndoInfo("custom");
-    } else {
-      void refreshUndoInfo(target);
-    }
-  }, [target, refreshUndoInfo]);
+    void refreshUndoInfo(tab === "folder" ? "custom" : tab);
+  }, [tab, refreshUndoInfo]);
+
+  /** Changing any option clears the old preview: it must always match the
+   * visible options. */
+  const clearPreview = useCallback(() => {
+    setPlan(null);
+    setReport(null);
+    setUndoSummary(null);
+    setPhase("idle");
+  }, []);
 
   const scan = useCallback(async () => {
     setError(null);
     setReport(null);
     setUndoSummary(null);
+    setScanCount(0);
     setPhase("scanning");
     try {
+      const channel = new Channel<{ checked: number }>();
+      channel.onmessage = (event) => setScanCount(event.checked);
       const scanned = await invoke<ScanPlan>("organize_scan", {
-        target,
-        customPath: target === "custom" ? customPath : undefined,
+        tab,
+        customPath: tab === "folder" ? customPath : undefined,
+        mode: modeInput(mode, dateSource, granularity),
+        onProgress: channel,
       });
       setPlan(scanned);
       setPhase("preview");
+      void refreshUndoInfo(scanned.target);
     } catch (caught) {
       setError(errorText(caught));
       setPhase("idle");
+    } finally {
+      setScanCount(null);
     }
-  }, [target, customPath]);
+  }, [tab, customPath, mode, dateSource, granularity, refreshUndoInfo]);
 
   const run = useCallback(async () => {
     if (plan === null) return;
@@ -94,26 +160,28 @@ export default function OrganizeSection() {
       channel.onmessage = (event) => setProgress(event);
       const files = plan.categories.flatMap((category) => category.files);
       const result = await invoke<RunReport>("organize_run", {
-        target,
-        customPath: target === "custom" ? customPath : undefined,
+        target: plan.target,
+        customPath: tab === "folder" ? customPath : undefined,
+        mode: modeInput(mode, dateSource, granularity),
         files,
         onProgress: channel,
       });
       setReport(result);
       setPlan(null);
       setPhase("report");
-      void refreshUndoInfo(target);
+      void refreshUndoInfo(plan.target);
     } catch (caught) {
       setError(errorText(caught));
       setPhase("preview");
     } finally {
       setProgress(null);
     }
-  }, [plan, target, customPath, refreshUndoInfo]);
+  }, [plan, tab, customPath, mode, dateSource, granularity, refreshUndoInfo]);
 
   const undo = useCallback(async () => {
     setError(null);
     try {
+      const target = tab === "folder" ? "custom" : tab;
       const result = await invoke<{ summary: string; notes: string[]; failed: string[] }>(
         "organize_undo",
         { target },
@@ -128,7 +196,7 @@ export default function OrganizeSection() {
     } catch (caught) {
       setError(errorText(caught));
     }
-  }, [target, refreshUndoInfo]);
+  }, [tab, refreshUndoInfo]);
 
   const chooseFolder = useCallback(async () => {
     setError(null);
@@ -136,68 +204,173 @@ export default function OrganizeSection() {
       const picked = await invoke<string | null>("organize_pick_folder");
       if (picked !== null) {
         setCustomPath(picked);
-        setPlan(null);
-        setPhase("idle");
-        setReport(null);
+        setCameFromDownloads(false);
+        clearPreview();
       }
     } catch (caught) {
       setError(errorText(caught));
     }
-  }, []);
+  }, [clearPreview]);
 
-  const cancelPreview = useCallback(() => {
-    setPlan(null);
-    setPhase("idle");
+  const useDownloads = useCallback(async () => {
     setError(null);
-  }, []);
+    try {
+      const path = await invoke<string>("organize_downloads_path");
+      setCustomPath(path);
+      setCameFromDownloads(true);
+      clearPreview();
+    } catch (caught) {
+      setError(errorText(caught));
+    }
+  }, [clearPreview]);
 
   const totalToMove = plan?.categories.reduce((sum, category) => sum + category.files.length, 0) ?? 0;
   const totalSkipped = plan?.skipped.length ?? 0;
   const folderCount = plan?.categories.length ?? 0;
   const undoLabel =
-    target === "custom" && undoInfo.root !== null
-      ? `Undo last organize in ${undoInfo.root.split("\\").pop() ?? undoInfo.root}`
+    tab === "folder" && undoInfo.root !== null
+      ? `Undo last organize in ${folderName(undoInfo.root)}`
       : "Undo last organize";
+  // In the Folder tab, Date/Size leave program files in place everywhere
+  // except the Downloads folder (the scan corrects any guess).
+  const showProtectedNote =
+    tab === "folder" &&
+    mode !== "format" &&
+    customPath !== null &&
+    !cameFromDownloads &&
+    plan?.target !== "downloads";
 
   return (
     <SectionCard title="Organize" subtitle="Tidy loose files into folders. Nothing is deleted.">
       <div className="sm-org-segments" role="tablist" aria-label="Which folder to organize">
-        {(Object.keys(TARGET_LABELS) as OrganizeTargetId[]).map((id) => (
+        {(Object.keys(TAB_LABELS) as OrganizeTab[]).map((id) => (
           <button
             key={id}
             type="button"
             role="tab"
-            aria-selected={target === id}
-            className={`sm-org-segment ${target === id ? "sm-org-segment-active" : ""}`}
+            aria-selected={tab === id}
+            className={`sm-org-segment ${tab === id ? "sm-org-segment-active" : ""}`}
             disabled={busy}
             onClick={() => {
-              setTarget(id);
-              setPlan(null);
-              setReport(null);
+              setTab(id);
+              clearPreview();
               setError(null);
-              setPhase("idle");
-              setUndoSummary(null);
             }}
           >
-            {TARGET_LABELS[id]}
+            {TAB_LABELS[id]}
           </button>
         ))}
       </div>
 
-      {target === "custom" && (
-        <div className="sm-org-custom">
-          <span className="sm-org-custom-path">
-            {customPath ?? "No folder chosen yet."}
-          </span>
-          <button
-            type="button"
-            className="sm-dialog-button"
-            disabled={busy}
-            onClick={() => void chooseFolder()}
-          >
-            Choose folder…
-          </button>
-        </div>
+      {tab === "desktop" ? (
+        <InfoNote>{DESKTOP_TAB_TEXT}</InfoNote>
+      ) : (
+        <>
+          <div className="sm-org-custom">
+            <span className="sm-org-custom-path">
+              {customPath ?? "No folder chosen yet."}
+            </span>
+            <button
+              type="button"
+              className="sm-dialog-button"
+              disabled={busy}
+              onClick={() => void chooseFolder()}
+            >
+              Choose folder…
+            </button>
+            <button
+              type="button"
+              className="sm-dialog-button"
+              disabled={busy}
+              onClick={() => void useDownloads()}
+            >
+              Use Downloads folder
+            </button>
+          </div>
+
+          <div className="sm-org-sortby">
+            <span className="sm-org-sortby-label">Sort by</span>
+            <div className="sm-org-segments" role="tablist" aria-label="Sort by">
+              {(Object.keys(SORT_LABELS) as SortMode[]).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === id}
+                  className={`sm-org-segment ${mode === id ? "sm-org-segment-active" : ""}`}
+                  disabled={busy}
+                  onClick={() => {
+                    setMode(id);
+                    clearPreview();
+                  }}
+                >
+                  {SORT_LABELS[id]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="sm-note-info">{MODE_SENTENCE[mode]}</p>
+
+          {mode === "date" && (
+            <div className="sm-org-mode-options">
+              <label className="sm-awake-select">
+                <span>Which date?</span>
+                <select
+                  value={dateSource}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setDateSource(event.target.value as DateSourceId);
+                    clearPreview();
+                  }}
+                >
+                  {(Object.keys(DATE_SOURCE_LABELS) as DateSourceId[]).map((id) => (
+                    <option key={id} value={id}>
+                      {DATE_SOURCE_LABELS[id]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {dateSource === "photo_taken" ? (
+                <p className="sm-note-info">
+                  Read from the photo itself (camera data). Files that are not photos, or photos
+                  without this data, go to “Date not found”.
+                </p>
+              ) : (
+                <p className="sm-note-info">
+                  These dates come from Windows and can change when files are copied or edited.
+                </p>
+              )}
+              <label className="sm-awake-select">
+                <span>Folders by</span>
+                <select
+                  value={granularity}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setGranularity(event.target.value as GranularityId);
+                    clearPreview();
+                  }}
+                >
+                  {(Object.keys(GRANULARITY_LABELS) as GranularityId[]).map((id) => (
+                    <option key={id} value={id}>
+                      {GRANULARITY_LABELS[id]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          <InfoNote>
+            Only files directly inside this folder are organized. Existing sub-folders are left
+            untouched.
+          </InfoNote>
+          {showProtectedNote && (
+            <InfoNote>
+              Program files (such as .exe and .dll) and shortcuts are left in place in this
+              folder.
+            </InfoNote>
+          )}
+        </>
       )}
 
       {error !== null && (
@@ -210,17 +383,22 @@ export default function OrganizeSection() {
         <button
           type="button"
           className="button-primary sm-org-scan"
-          disabled={busy || (target === "custom" && customPath === null)}
+          disabled={busy || (tab === "folder" && customPath === null)}
           onClick={() => void scan()}
         >
           Scan
         </button>
       )}
 
+      {phase === "scanning" && scanCount !== null && (
+        <p className="sm-org-progress">Scanning… {scanCount} files checked</p>
+      )}
+
       {plan !== null && phase === "preview" && (
         <div className="sm-org-preview">
           <p className="sm-org-preview-title">
-            Ready to organize: {TARGET_LABELS[target] === "Custom folder…" ? "your chosen folder" : TARGET_LABELS[target]}
+            Ready to organize:{" "}
+            {tab === "desktop" ? "Desktop" : folderName(plan.root)}
           </p>
           {totalToMove === 0 ? (
             <p className="sm-note-info">
@@ -229,7 +407,14 @@ export default function OrganizeSection() {
           ) : (
             <p className="sm-org-preview-text">
               ERX Tools will move {plural(totalToMove, "loose file", "loose files")} into{" "}
-              {plural(folderCount, "folder", "folders")}:
+              {plural(folderCount, "folder", "folders")}
+              {plan.mode === "date"
+                ? plan.categories.some((category) => /^-?\d{4}-\d{2}$/.test(category.name))
+                  ? " named by year and month:"
+                  : " named by year:"
+                : plan.mode === "size"
+                  ? " by size:"
+                  : ":"}
             </p>
           )}
           <ul className="sm-org-categories">
@@ -253,7 +438,8 @@ export default function OrganizeSection() {
           </ul>
           <p className="sm-note-info">
             Nothing is deleted or overwritten. Folders are never touched. If a name already
-            exists, the file is renamed like "report (2).pdf".
+            exists, the file is renamed like "
+            {plan.mode === "date" ? "photo (2).jpg" : "report (2).pdf"}".
           </p>
           {totalSkipped > 0 && (
             <details className="sm-org-skipped">
@@ -273,7 +459,7 @@ export default function OrganizeSection() {
             <p className="sm-note-info">
               {plural(plan.leftInPlace, "file stays", "files stay")} where{" "}
               {plan.leftInPlace === 1 ? "it is" : "they are"} (programs and unknown types are
-              not moved in a chosen folder).
+              not moved here).
             </p>
           )}
           {plan.onOnedrive && (
@@ -283,7 +469,7 @@ export default function OrganizeSection() {
               OneDrive settings.
             </InfoNote>
           )}
-          {target === "desktop" && (
+          {tab === "desktop" && (
             <InfoNote>
               Icons from the shared Public Desktop folder are not part of your Desktop folder
               and are left alone.
@@ -299,7 +485,7 @@ export default function OrganizeSection() {
             >
               Organize now
             </button>
-            <button type="button" className="sm-dialog-button" onClick={cancelPreview}>
+            <button type="button" className="sm-dialog-button" onClick={clearPreview}>
               Cancel
             </button>
           </div>
@@ -331,13 +517,16 @@ export default function OrganizeSection() {
         </div>
       )}
 
-      {undoSummary !== null && (
-        <p className="sm-note-info">Undo finished: {undoSummary}</p>
-      )}
+      {undoSummary !== null && <p className="sm-note-info">Undo finished: {undoSummary}</p>}
 
       {undoInfo.undoable && phase !== "preview" && (
         <div className="sm-org-undo">
-          <button type="button" className="sm-dialog-button" disabled={busy} onClick={() => void undo()}>
+          <button
+            type="button"
+            className="sm-dialog-button"
+            disabled={busy}
+            onClick={() => void undo()}
+          >
             {undoLabel}
           </button>
           <InfoNote>Only the most recent run for this target can be undone.</InfoNote>

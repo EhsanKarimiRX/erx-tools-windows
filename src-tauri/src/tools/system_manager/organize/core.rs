@@ -78,7 +78,7 @@ impl SkipReason {
 /// into (existing folders are reused, never replaced).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Destination {
-    Category(&'static str),
+    Category(String),
     /// Custom folders only: executable/runtime/unknown files stay put. This
     /// is a decision, not an error ("left in place" in the preview).
     LeaveInPlace,
@@ -174,41 +174,41 @@ pub fn classify(file_name: &str, target: OrganizeTarget) -> Destination {
     match target {
         OrganizeTarget::Desktop => {
             if in_list(ext.as_deref(), EXT_APPS) {
-                Destination::Category("Apps")
+                Destination::Category("Apps".to_string())
             } else if in_list(ext.as_deref(), EXT_DOCUMENTS) {
-                Destination::Category("Documents")
+                Destination::Category("Documents".to_string())
             } else {
-                Destination::Category("More")
+                Destination::Category("More".to_string())
             }
         }
         OrganizeTarget::Downloads => {
             if in_list(ext.as_deref(), EXT_DOCUMENTS) {
-                Destination::Category("Documents")
+                Destination::Category("Documents".to_string())
             } else if in_list(ext.as_deref(), EXT_IMAGES) {
-                Destination::Category("Images")
+                Destination::Category("Images".to_string())
             } else if in_list(ext.as_deref(), EXT_VIDEOS) {
-                Destination::Category("Videos")
+                Destination::Category("Videos".to_string())
             } else if in_list(ext.as_deref(), EXT_MUSIC) {
-                Destination::Category("Music")
+                Destination::Category("Music".to_string())
             } else if in_list(ext.as_deref(), EXT_ARCHIVES) {
-                Destination::Category("Archives")
+                Destination::Category("Archives".to_string())
             } else if in_list(ext.as_deref(), EXT_INSTALLERS) {
-                Destination::Category("Installers")
+                Destination::Category("Installers".to_string())
             } else {
-                Destination::Category("More")
+                Destination::Category("More".to_string())
             }
         }
         OrganizeTarget::Custom => {
             if in_list(ext.as_deref(), EXT_DOCUMENTS) {
-                Destination::Category("Documents")
+                Destination::Category("Documents".to_string())
             } else if in_list(ext.as_deref(), EXT_IMAGES) {
-                Destination::Category("Images")
+                Destination::Category("Images".to_string())
             } else if in_list(ext.as_deref(), EXT_VIDEOS) {
-                Destination::Category("Videos")
+                Destination::Category("Videos".to_string())
             } else if in_list(ext.as_deref(), EXT_MUSIC) {
-                Destination::Category("Music")
+                Destination::Category("Music".to_string())
             } else if in_list(ext.as_deref(), EXT_ARCHIVES) {
-                Destination::Category("Archives")
+                Destination::Category("Archives".to_string())
             } else {
                 // Moving runtime files could break a program if the user
                 // picked the wrong folder — executables, libraries, scripts
@@ -270,32 +270,32 @@ mod tests {
     fn desktop_categories() {
         assert_eq!(
             classify("setup.EXE", OrganizeTarget::Desktop),
-            Destination::Category("Apps")
+            Destination::Category("Apps".to_string())
         );
         assert_eq!(
             classify("tool.lnk", OrganizeTarget::Desktop),
-            Destination::Category("Apps")
+            Destination::Category("Apps".to_string())
         );
         assert_eq!(
             classify("page.url", OrganizeTarget::Desktop),
-            Destination::Category("Apps")
+            Destination::Category("Apps".to_string())
         );
         assert_eq!(
             classify("notes.md", OrganizeTarget::Desktop),
-            Destination::Category("Documents")
+            Destination::Category("Documents".to_string())
         );
         // A .png on the Desktop goes to More (Desktop has no Images category).
         assert_eq!(
             classify("photo.png", OrganizeTarget::Desktop),
-            Destination::Category("More")
+            Destination::Category("More".to_string())
         );
         assert_eq!(
             classify("data.xyz", OrganizeTarget::Desktop),
-            Destination::Category("More")
+            Destination::Category("More".to_string())
         );
         assert_eq!(
             classify("noext", OrganizeTarget::Desktop),
-            Destination::Category("More")
+            Destination::Category("More".to_string())
         );
     }
 
@@ -303,36 +303,36 @@ mod tests {
     fn downloads_categories() {
         assert_eq!(
             classify("report.pdf", OrganizeTarget::Downloads),
-            Destination::Category("Documents")
+            Destination::Category("Documents".to_string())
         );
         assert_eq!(
             classify("p.jpg", OrganizeTarget::Downloads),
-            Destination::Category("Images")
+            Destination::Category("Images".to_string())
         );
         assert_eq!(
             classify("v.mkv", OrganizeTarget::Downloads),
-            Destination::Category("Videos")
+            Destination::Category("Videos".to_string())
         );
         assert_eq!(
             classify("s.mp3", OrganizeTarget::Downloads),
-            Destination::Category("Music")
+            Destination::Category("Music".to_string())
         );
         assert_eq!(
             classify("a.7z", OrganizeTarget::Downloads),
-            Destination::Category("Archives")
+            Destination::Category("Archives".to_string())
         );
         // Downloads .exe → Installers (not Apps; that list is Desktop-only).
         assert_eq!(
             classify("installer.exe", OrganizeTarget::Downloads),
-            Destination::Category("Installers")
+            Destination::Category("Installers".to_string())
         );
         assert_eq!(
             classify("bundle.msixbundle", OrganizeTarget::Downloads),
-            Destination::Category("Installers")
+            Destination::Category("Installers".to_string())
         );
         assert_eq!(
             classify("x.xyz", OrganizeTarget::Downloads),
-            Destination::Category("More")
+            Destination::Category("More".to_string())
         );
     }
 
@@ -340,23 +340,23 @@ mod tests {
     fn custom_categories_leave_runtime_and_unknown_files_in_place() {
         assert_eq!(
             classify("doc.pdf", OrganizeTarget::Custom),
-            Destination::Category("Documents")
+            Destination::Category("Documents".to_string())
         );
         assert_eq!(
             classify("i.png", OrganizeTarget::Custom),
-            Destination::Category("Images")
+            Destination::Category("Images".to_string())
         );
         assert_eq!(
             classify("v.mp4", OrganizeTarget::Custom),
-            Destination::Category("Videos")
+            Destination::Category("Videos".to_string())
         );
         assert_eq!(
             classify("m.flac", OrganizeTarget::Custom),
-            Destination::Category("Music")
+            Destination::Category("Music".to_string())
         );
         assert_eq!(
             classify("a.zip", OrganizeTarget::Custom),
-            Destination::Category("Archives")
+            Destination::Category("Archives".to_string())
         );
         // Everything else stays: executables, libraries, ini, scripts, unknown.
         for name in [
@@ -377,7 +377,7 @@ mod tests {
         // .tar.gz → by the last extension (gz → Archives).
         assert_eq!(
             classify("b.tar.gz", OrganizeTarget::Custom),
-            Destination::Category("Archives")
+            Destination::Category("Archives".to_string())
         );
     }
 
