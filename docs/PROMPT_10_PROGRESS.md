@@ -6,12 +6,12 @@ Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. 
 | Step | Description | Status | Notes |
 |---|---|---|---|
 | 10a | Setup, version 0.2.0, NSIS settings, static CRT, prerequisites | DONE | Commit d701c78; all gates green; STOP after this step per spec |
-| 10b | Third-party licenses (non-blocking) | SKIPPED — MPL-2.0 crates in Rust dependency tree (see Deviation notes) | cargo-about 0.9.3 installed and works; retry recipe recorded |
+| 10b | Third-party licenses (non-blocking) | DONE (redone after owner accepted MPL-2.0) | THIRD_PARTY_LICENSES.md in repo root + copy in release-artifacts; NOT bundled in installers (owner decision); commits 2afc56e (skip record), 15a838b |
 | 10c | Release build script | DONE | scripts/build-release.mjs (reference impl used verbatim); dry-run verified |
 | 10d | Build four installers | DONE | 5 files in release-artifacts/v0.2.0/; commit fe07c23 (ARM64 linker fix); see 10d verified facts |
 | 10e | Verify installers | DONE | all checks green incl. install/start/uninstall smoke test; no tracked files changed → no commit |
-| 10f | RELEASING.md, release notes, README | NOT STARTED | |
-| 10g | Final verification | NOT STARTED | |
+| 10f | RELEASING.md, release notes, README | DONE | incl. owner adjustments: license sentence in release notes, README edit 5 applied, publishing steps say SIX files; commit 7973986 |
+| 10g | Final verification | IN PROGRESS | owner additions applied: 10b redone with MPL-2.0, no src/ edits (Duration warning stays), THIRD_PARTY_LICENSES.md attached to release not bundled |
 (Status: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner / SKIPPED — reason)
 ## Gates (last run)
 2026-11-07, after 10a changes, with forced build-script re-run (`cargo clean -p erx-tools` first):
