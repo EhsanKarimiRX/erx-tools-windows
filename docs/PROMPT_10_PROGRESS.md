@@ -11,7 +11,7 @@ Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. 
 | 10d | Build four installers | DONE | 5 files in release-artifacts/v0.2.0/; commit fe07c23 (ARM64 linker fix); see 10d verified facts |
 | 10e | Verify installers | DONE | all checks green incl. install/start/uninstall smoke test; no tracked files changed → no commit |
 | 10f | RELEASING.md, release notes, README | DONE | incl. owner adjustments: license sentence in release notes, README edit 5 applied, publishing steps say SIX files; commit 7973986 |
-| 10g | Final verification | IN PROGRESS | owner additions applied: 10b redone with MPL-2.0, no src/ edits (Duration warning stays), THIRD_PARTY_LICENSES.md attached to release not bundled |
+| 10g | Final verification | DONE | all gates green (417 passed/0 failed) with forced re-run; git clean; versions 0.2.0 in all 5 places; checksums re-verified; ready to publish |
 (Status: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner / SKIPPED — reason)
 ## Gates (last run)
 2026-11-07, after 10a changes, with forced build-script re-run (`cargo clean -p erx-tools` first):
