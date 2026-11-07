@@ -2,7 +2,7 @@
 
 A small, offline toolbox for Windows. Every tool opens from a simple square tile on the home screen and does one job: convert images, make QR codes, recolor folder icons, keep the PC awake, tidy up folders, and open common Windows tools.
 
-> **Early beta.** ERX Tools is new and is being tested with friends. There is no installer yet (see [Download](#download)), and so far it has only been tested on Windows 11 (see [Tested on](#tested-on)).
+> **Early beta.** ERX Tools is new and is being tested with friends. Installers are on the [Releases page](https://github.com/EhsanKarimiRX/erx-tools-windows/releases) (see [Download](#download)). So far it has only been tested on Windows 11 (see [Tested on](#tested-on)).
 
 ## Why ERX Tools
 
@@ -42,7 +42,7 @@ Planned. Currently a placeholder tile.
 ## Requirements
 
 - Windows 10 or Windows 11 (x64 or ARM64).
-- Microsoft Edge WebView2 Runtime (included with Windows 11 and most up-to-date Windows 10 PCs).
+- Microsoft Edge WebView2 Runtime (included with Windows 11 and most up-to-date Windows 10 PCs). The standard installers download it during setup if it is missing; the "with-webview2" installers contain it.
 - For HEIC photos: Microsoft's HEIF Image Extensions and HEVC Video Extensions (see Image Converter).
 
 ## Tested on
@@ -57,7 +57,19 @@ If something does not work on your PC, please open an [issue](https://github.com
 
 ## Download
 
-No installer has been published yet. Setup files for x64 and ARM64 are planned and will appear on the [Releases page](https://github.com/EhsanKarimiRX/erx-tools-windows/releases).
+Download the installer for your PC from the [latest release](https://github.com/EhsanKarimiRX/erx-tools-windows/releases/latest):
+
+| Your PC | File |
+|---|---|
+| Most PCs (Intel or AMD, "x64") | `ERX-Tools-<version>-x64-setup.exe` |
+| Most PCs, installing without internet | `ERX-Tools-<version>-x64-setup-with-webview2.exe` |
+| Windows on ARM | `ERX-Tools-<version>-arm64-setup.exe` |
+| Windows on ARM, installing without internet | `ERX-Tools-<version>-arm64-setup-with-webview2.exe` |
+
+- The installers are **not code-signed**, so Windows SmartScreen may warn you ("Windows protected your PC"): click **More info** → **Run anyway**.
+- ERX Tools installs for your user account and does not need administrator rights.
+- If you use **Awake**, turn it off before uninstalling, otherwise your PC's sleep settings can stay on "Never".
+- Each release lists SHA-256 checksums so you can verify your download.
 
 ## Privacy and security
 
@@ -87,7 +99,7 @@ cargo clippy -- -D warnings   # Rust lints
 cargo test                    # Rust tests
 ```
 
-Building an installer is not set up yet (planned: NSIS setup `.exe` for x64 and ARM64, built with `npm run tauri build`).
+Building the installers (x64 and ARM64, two variants each) is described in [docs/RELEASING.md](docs/RELEASING.md).
 
 To add a tool, see [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md). Design decisions are recorded in [DECISIONS.md](DECISIONS.md).
 
@@ -122,3 +134,4 @@ The source code is released under the MIT License (see below). The **ERX Tools**
 ## License
 
 The source code is released under the [MIT License](LICENSE). The name and logo are not part of that license (see [Name and logo](#name-and-logo)).
+Third-party components and their licenses are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
