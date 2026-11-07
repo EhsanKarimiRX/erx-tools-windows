@@ -6,7 +6,7 @@ Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. 
 | Step | Description | Status | Notes |
 |---|---|---|---|
 | 10a | Setup, version 0.2.0, NSIS settings, static CRT, prerequisites | DONE | Commit d701c78; all gates green; STOP after this step per spec |
-| 10b | Third-party licenses (non-blocking) | NOT STARTED | cargo-about 0.9.3 already installed (--features cli needed) |
+| 10b | Third-party licenses (non-blocking) | SKIPPED — MPL-2.0 crates in Rust dependency tree (see Deviation notes) | cargo-about 0.9.3 installed and works; retry recipe recorded |
 | 10c | Release build script | NOT STARTED | |
 | 10d | Build four installers | NOT STARTED | |
 | 10e | Verify installers | NOT STARTED | |
@@ -47,3 +47,12 @@ Log: target/p10-gates.log (git-ignored).
 (none yet)
 ## Deviation notes
 - Spec command `cargo install cargo-about --locked` compiled cargo-about 0.9.3 but did NOT install the binary ("bin cargo-about requires the features: cli"). Re-ran with `cargo install cargo-about --locked --features cli` → installed, `cargo about --version` → cargo-about 0.9.3. Recorded here per R6.
+- 10b SKIPPED per the spec's own STOP rule ("if it is MPL, LGPL, GPL, AGPL, SSPL or 'unknown', STOP this step and report the crate name and license to the owner"). `cargo about generate` reported exactly 5 crates under **MPL-2.0**, all reachable from Tauri's dependency tree:
+  - cssparser 0.37.0
+  - cssparser-macros 0.7.1
+  - dtoa-short 0.3.5
+  - option-ext 0.2.0
+  - selectors 0.38.0
+  No THIRD_PARTY_LICENSES.md was created; no `bundle.resources` entry added. The scratch `about.toml`/`about.hbs` were deleted again so `git status` stays clean.
+  **Retry recipe (if the owner later accepts MPL-2.0):** in `src-tauri` run `cargo about init`, replace `about.toml` accepted list with ["MIT","Apache-2.0","BSD-2-Clause","BSD-3-Clause","ISC","Zlib","Unicode-3.0","Unicode-DFS-2016","0BSD","CC0-1.0","BSL-1.0","MPL-2.0"] plus `targets = ["x86_64-pc-windows-msvc","aarch64-pc-windows-msvc"]`, replace `about.hbs` with a Markdown template (sections: `### {{name}}`, used-by list of `{{crate.name}} {{crate.version}}`, fenced `{{text}}`), run `cargo about generate about.hbs`, then follow spec 10b-2..10b-4.
+  Consequence for later steps: installer contains no license file (10e-3 expectation adjusted); README edit 5 of 10f-3 does NOT apply; release notes unchanged (spec: "If 10b was skipped, nothing else changes").
