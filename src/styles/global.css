@@ -113,6 +113,124 @@ button {
   font-size: 12px;
 }
 
+/* ---------- Home screen: update badge (UpdateBadge component) ---------- */
+
+.update-badge {
+  position: relative;
+  display: inline-flex;
+}
+
+.update-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px 5px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.update-badge-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.update-badge-idle,
+.update-badge-checking,
+.update-badge-norelease {
+  background: var(--update-idle);
+}
+
+.update-badge-available {
+  background: var(--update-available);
+}
+
+.update-badge-uptodate {
+  background: var(--update-uptodate);
+}
+
+.update-badge-failed {
+  background: var(--update-failed);
+}
+
+.update-badge-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: update-badge-spin 0.8s linear infinite;
+}
+
+@keyframes update-badge-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduced motion: no spinning ring, a static "…" instead. */
+.update-badge-paused {
+  display: none;
+  font-size: 11px;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-badge-spinner {
+    display: none;
+  }
+
+  .update-badge-paused {
+    display: inline;
+  }
+}
+
+.update-badge-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: max-content;
+  max-width: 340px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  z-index: 10;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.update-badge-message {
+  margin: 0;
+}
+
+.update-badge-open {
+  margin-top: 8px;
+}
+
+.update-badge-open-error {
+  margin: 6px 0 0;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.update-badge-never {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
 /* ---------- Tool screens ---------- */
 
 .tool {

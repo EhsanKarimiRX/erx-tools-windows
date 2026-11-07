@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { tools } from "../tools/registry";
+import UpdateBadge from "./UpdateBadge";
 
 interface AppInfo {
   name: string;
@@ -64,7 +65,7 @@ export default function HomeScreen({
       </main>
 
       <footer className="home-footer">
-        {version !== null && <span>Version {version}</span>}
+        {version !== null && <UpdateBadge version={version} />}
       </footer>
     </div>
   );

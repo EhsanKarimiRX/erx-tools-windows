@@ -13,6 +13,12 @@
   --on-accent: #ffffff;
   --error: #c42b1c;
   --focus-ring: #0067c0;
+  /* Update badge circle colors (owner-set, identical in both themes; every
+     one keeps the white icon at >= 3:1 contrast, WCAG non-text). */
+  --update-idle: #6b7280;
+  --update-available: #2563eb;
+  --update-uptodate: #16a34a;
+  --update-failed: #dc2626;
 }
 
 @media (prefers-color-scheme: dark) {
