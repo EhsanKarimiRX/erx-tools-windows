@@ -3,5 +3,16 @@
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
 
+# Prompt 10d finding: the VS 18 BuildTools installation reports no packages to
+# vswhere, so rustc's MSVC discovery cannot locate the ARM64 cross-linker and
+# falls back to PATH, where Git Bash's GNU coreutils link.exe shadows MSVC's.
+# Pin the real linker and the ARM64 library directories explicitly.
+# Toolset 14.44.35207 is the complete one (14.51.36231 lacks ARM64 CRT libs).
 [target.aarch64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+linker = 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.44.35207\bin\Hostx64\arm64\link.exe'
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    "-C", 'link-arg=/LIBPATH:C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.44.35207\lib\arm64',
+    "-C", 'link-arg=/LIBPATH:C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\arm64',
+    "-C", 'link-arg=/LIBPATH:C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\ucrt\arm64',
+]

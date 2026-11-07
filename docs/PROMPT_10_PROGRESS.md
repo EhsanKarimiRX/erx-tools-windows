@@ -8,7 +8,7 @@ Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. 
 | 10a | Setup, version 0.2.0, NSIS settings, static CRT, prerequisites | DONE | Commit d701c78; all gates green; STOP after this step per spec |
 | 10b | Third-party licenses (non-blocking) | SKIPPED — MPL-2.0 crates in Rust dependency tree (see Deviation notes) | cargo-about 0.9.3 installed and works; retry recipe recorded |
 | 10c | Release build script | DONE | scripts/build-release.mjs (reference impl used verbatim); dry-run verified |
-| 10d | Build four installers | NOT STARTED | |
+| 10d | Build four installers | IN PROGRESS | x64 both variants OK; ARM64 needed a linker-discovery fix (see Deviation notes) — full script re-run for final set |
 | 10e | Verify installers | NOT STARTED | |
 | 10f | RELEASING.md, release notes, README | NOT STARTED | |
 | 10g | Final verification | NOT STARTED | |
@@ -49,6 +49,15 @@ Log: target/p10-gates.log (git-ignored).
 - 10c: How the version-mismatch protection works (explained instead of breaking real files, per spec): at startup the script reads `tauri.conf.json` `version`, `package.json` `version`, and the first `version = "…"` in `src-tauri/Cargo.toml`; if any two differ it prints `RELEASE BUILD FAILED: version mismatch: tauri.conf.json=…, package.json=…, Cargo.toml=…` and exits 1 before building anything. All three are currently 0.2.0, so the guard passes silently.
 ## Open questions for the owner
 - 10b: 5 Rust crates in the (Tauri-transitive) dependency tree are MPL-2.0, which the spec puts on the STOP list. If the owner ever decides MPL-2.0 is acceptable (it is a weak copyleft license commonly used by Mozilla projects; filing this as a question, not an action), 10b can be completed later via the retry recipe above. Nothing in v0.2.0 depends on this.
+## Verified facts (10d, first run)
+- x64 standard installer built and archived OK: release-artifacts/v0.2.0/ERX-Tools-0.2.0-x64-setup.exe (2,387,142 bytes ≈ 2.3 MB, build took ~3m18s for the release compile).
+- **Tauri NSIS output name pattern verified** ([VERIFY] from 10c): `ERX Tools for Windows_0.2.0_x64-setup.exe` → script's `_${version}_${t.arch}-setup.exe` suffix match works as written.
+- x64 offline variant FAILED at the WebView2 download step: `Downloading https://go.microsoft.com/fwlink/?linkid=2124701` → `failed to bundle project: 'Peer disconnected'`. Network failure during the ~100+ MB Microsoft offline-installer download. Per spec 10d-4: retrying ONCE (log: target/release-build-retry1.log).
+- Release-only warning (cosmetic, non-fatal; gates unaffected): `unused import: std::time::Duration` in `src\tools\update_check\commands.rs:7` — appears only in release profile (used in debug builds, so dev-profile gates never see it). R3 forbids editing src/; owner may fix it in a source prompt.
+## Verified facts (10d, continued)
+- Retry 1: the WebView2 download succeeded on the second attempt ("Peer disconnected" was transient). Both x64 installers archived.
+- ARM64 failure diagnosed (NOT the spec's missing-component case — the component IS installed): `link: missing operand after '\377\376'` → GNU coreutils 8.32 `link.exe` from Git Bash `/usr/bin/` ran instead of MSVC's linker, because rustc's MSVC discovery finds nothing in the VS 18 BuildTools install (vswhere reports 0 packages) and falls back to PATH, where coreutils shadows MSVC. Host x64 detection worked, so only cross-ARM64 was affected.
+- Fix (in the R3-allowed file `src-tauri/.cargo/config.toml`): for `[target.aarch64-pc-windows-msvc]` pin `linker` to `...\MSVC\14.44.35207\bin\Hostx64\arm64\link.exe` and add `/LIBPATH` link-args for VC `lib\arm64` (14.44.35207), Windows SDK `10.0.26100.0\um\arm64` and `\ucrt\arm64`. Direct test build (`npm run tauri build -- --target aarch64-pc-windows-msvc --config …webview2-download.json`) → exit 0, app exe built, NSIS bundle produced (log target/p10-arm64-test.log).
 ## Deviation notes
 - Spec command `cargo install cargo-about --locked` compiled cargo-about 0.9.3 but did NOT install the binary ("bin cargo-about requires the features: cli"). Re-ran with `cargo install cargo-about --locked --features cli` → installed, `cargo about --version` → cargo-about 0.9.3. Recorded here per R6.
 - 10b SKIPPED per the spec's own STOP rule ("if it is MPL, LGPL, GPL, AGPL, SSPL or 'unknown', STOP this step and report the crate name and license to the owner"). `cargo about generate` reported exactly 5 crates under **MPL-2.0**, all reachable from Tauri's dependency tree:
