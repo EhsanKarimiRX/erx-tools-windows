@@ -924,3 +924,44 @@ message ever causes trouble.
 `Win32_UI_WindowsAndMessaging` - needed for `EnumWindows`,
 `EnumChildWindows`, `GetClassNameW`, `PostMessageW` and `WM_COMMAND` in
 `refresh_shell_views`. ARM64 check stays green.
+
+## Update check (Prompt 9)
+
+- **Manual only, and the first and only network exception.** The check runs
+  when the user clicks the circular button inside the version pill on the
+  home screen — never at startup, never in the background, no downloads, no
+  installs. The webview still makes zero network requests (the CSP and
+  `capabilities/` are untouched); the request is made from Rust.
+- **Client: WinHTTP via `windows-sys`** (feature `Win32_Networking_WinHttp`,
+  the only Cargo change). No new crates; Windows' own TLS and certificate
+  store and the system proxy settings are used, nothing extra ships, and it
+  is ARM64-safe. One GET to
+  `https://api.github.com/repos/EhsanKarimiRX/erx-tools-windows/releases/latest`
+  is the whole protocol; the answer is only read, never executed. Certificate
+  errors are never ignored, the redirect policy is never changed.
+- **The remembered release-page URL lives in memory only** (Tauri managed
+  state, cleared whenever the result is not `UpdateAvailable`) — nothing is
+  stored on disk, no persistence, state resets to gray at every start.
+- **URL safety:** only URLs starting with exactly
+  `https://github.com/EhsanKarimiRX/erx-tools-windows/` are openable
+  (length- and character-checked); anything else falls back to the plain
+  releases page, and `open_update_page` re-checks whatever it is about to
+  open and takes no arguments from the frontend.
+- **Draft and pre-release releases are ignored by design**, so beta builds
+  for friends must be published as normal (non-pre-release) releases with a
+  version tag like `v0.2.0`.
+- **The release tag must match the app version.** A Rust test asserts
+  `tauri.conf.json`, `package.json` and `Cargo.toml` (`CARGO_PKG_VERSION`)
+  carry the same version, so bumping only one of them fails loudly.
+- **SemVer is hand-written** (`update_check/version.rs`): parsing, ordering
+  and pre-release rules for GitHub tags, no SemVer crate. Versions are shown
+  normalized (no leading `v`).
+- **Every state is honest:** gray (not checked / checking), blue (update
+  available), green (up to date), red (check failed) — color is never the
+  only signal (tooltip + aria-label + popover text on every state). A
+  spinner with `prefers-reduced-motion` fallback replaces the arrow while
+  checking.
+- **Debug-only fake switch:** `ERX_FAKE_UPDATE` (`available` / `uptodate` /
+  `norelease` / `failed`) returns fake results after a 700 ms delay so the
+  owner can see every badge state before any release exists. It lives inside
+  `#[cfg(debug_assertions)]` and never ships in release builds.

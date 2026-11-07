@@ -1,5 +1,5 @@
 # Prompt 9 — Name/logo notice + update button: progress
-Last updated: 2026-11-07 (9d done; continuing into 9e)
+Last updated: 2026-11-07 (ALL STEPS DONE; final STOP after 9e)
 
 ## How to resume
 Read docs/PROMPT_9_SPEC.md (full prompt). Continue at the first step not DONE. Never git push.
@@ -10,8 +10,8 @@ Read docs/PROMPT_9_SPEC.md (full prompt). Continue at the first step not DONE. N
 | 9a | Branding notice (docs) | DONE | commit 33f7e43; owner approved wording |
 | 9b | Pure logic (semver, JSON, decide, version test) | DONE | commit a97e62b; 405 tests |
 | 9c | WinHTTP client, commands, debug switch | DONE | live tests 2/2; STOP for owner |
-| 9d | Home screen UpdateBadge | DONE | commit follows; popover text per spec |
-| 9e | Docs, audit, final gates | NOT STARTED | |
+| 9d | Home screen UpdateBadge | DONE | commit 0748044 |
+| 9e | Docs, audit, final gates | DONE | README 3 statements, DECISIONS.md section, audit clean |
 
 ## Gates (last run: after 9c)
 - `npm run build` OK

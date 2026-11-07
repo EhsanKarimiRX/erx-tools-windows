@@ -6,7 +6,7 @@ A small, offline toolbox for Windows. Every tool opens from a simple square tile
 
 ## Why ERX Tools
 
-- **Offline by design.** The app itself makes no network calls, has no telemetry and loads no remote content.
+- **Offline by design.** No telemetry and no remote content. The only network request is the update check, and only when you click it (see Privacy and security).
 - **No administrator rights needed.** The app does not ask for admin to run. (Some Windows tools you launch from it may ask for permission themselves.)
 - **Honest results.** Batch work ends with a clear report of what succeeded, failed or was skipped, and why. No fake progress bars.
 - **Careful with your files.** Originals are never modified. Output files never overwrite existing files. The organizer only moves files, explains what it will do before it does it, and has Undo.
@@ -61,7 +61,7 @@ No installer has been published yet. Setup files for x64 and ARM64 are planned a
 
 ## Privacy and security
 
-- The app itself makes no network calls, sends no telemetry and loads no remote content. The webview has a strict Content-Security-Policy and only Tauri's core default permissions.
+- The only network request ERX Tools makes is the **update check**, and only when you click the update button next to the version number on the home screen. It is one HTTPS request to GitHub asking for the latest release number. Nothing is downloaded or installed automatically, and nothing about you or your files is sent. Like any web server, GitHub can see your IP address and the app version. Everything else works offline; the app sends no telemetry and loads no remote content. The webview has a strict Content-Security-Policy and only Tauri's core default permissions.
 - The UI never touches the file system directly; all file work goes through Rust commands.
 - Some buttons hand off to Windows (for example opening the Microsoft Store page for PC Manager). That is Windows doing it, not ERX Tools.
 - The code has had no professional security audit.
@@ -99,6 +99,7 @@ To add a tool, see [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md). Design decisi
 - Never expose file system, shell, http or opener permissions "just in case".
 - User-facing error strings live in Rust (`ToolError`); internal details must not leak to the UI.
 - Commit `package-lock.json` and `src-tauri/Cargo.lock` for reproducible builds.
+- The update check (written in Rust, in the update module) is the only allowed network access. Do not add other network calls without the owner's explicit approval.
 
 ## How this project is built
 
