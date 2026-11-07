@@ -1,12 +1,12 @@
 # Prompt 10 — First release (v0.2.0): progress
-Last updated: 2026-11-07 20:16
+Last updated: 2026-11-07 20:35
 ## How to resume
 Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. Never git push, never tag, never publish.
 ## Status
 | Step | Description | Status | Notes |
 |---|---|---|---|
-| 10a | Setup, version 0.2.0, NSIS settings, static CRT, prerequisites | IN PROGRESS | 10a-1 done: spec saved verbatim (415 lines), git clean, main == origin/main at 9e054a7 |
-| 10b | Third-party licenses (non-blocking) | NOT STARTED | |
+| 10a | Setup, version 0.2.0, NSIS settings, static CRT, prerequisites | DONE | Commit d701c78; all gates green; STOP after this step per spec |
+| 10b | Third-party licenses (non-blocking) | NOT STARTED | cargo-about 0.9.3 already installed (--features cli needed) |
 | 10c | Release build script | NOT STARTED | |
 | 10d | Build four installers | NOT STARTED | |
 | 10e | Verify installers | NOT STARTED | |
@@ -14,7 +14,13 @@ Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. 
 | 10g | Final verification | NOT STARTED | |
 (Status: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner / SKIPPED — reason)
 ## Gates (last run)
-(not run yet)
+2026-11-07, after 10a changes, with forced build-script re-run (`cargo clean -p erx-tools` first):
+- `npm run build` → exit 0
+- `cargo fmt --check` → exit 0
+- `cargo clippy -- -D warnings` → exit 0
+- `cargo test` → exit 0, **417 passed, 0 failed, 20 ignored** (baseline ≥374 met; incl. Prompt 9b version-consistency tests, 12/12 via `cargo test version` right after the bump)
+- `cargo check --target aarch64-pc-windows-msvc` → exit 0
+Log: target/p10-gates.log (git-ignored).
 ## Prerequisites found (10a-2)
 1. **Rust targets** (`rustup target list --installed`): `aarch64-pc-windows-msvc` and `x86_64-pc-windows-msvc` BOTH installed. ✓
 2. **ARM64 linker/libraries**: vswhere query from the spec (`-requires Microsoft.VisualStudio.Component.VC.Tools.ARM64`) printed NOTHING (exit 0). vswhere JSON shows the installation `C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools` (VS 18 Build Tools, installationVersion 18.11.12328.437) reporting **0 packages** — the component query cannot see into this VS 18 installation. Second check (folder search) FOUND the ARM64 toolset:
@@ -39,3 +45,5 @@ Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. 
 - 10a-7: `.gitignore` got `release-artifacts/`; `target/` and `src-tauri/target` were already ignored.
 ## Open questions for the owner
 (none yet)
+## Deviation notes
+- Spec command `cargo install cargo-about --locked` compiled cargo-about 0.9.3 but did NOT install the binary ("bin cargo-about requires the features: cli"). Re-ran with `cargo install cargo-about --locked --features cli` → installed, `cargo about --version` → cargo-about 0.9.3. Recorded here per R6.
