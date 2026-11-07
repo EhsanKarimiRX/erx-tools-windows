@@ -1,0 +1,7 @@
+# Statically link the C runtime so the built executables do not need the
+# Microsoft Visual C++ Redistributable installed (Prompt 10a-6).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -1,0 +1,41 @@
+# Prompt 10 — First release (v0.2.0): progress
+Last updated: 2026-11-07 20:16
+## How to resume
+Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. Never git push, never tag, never publish.
+## Status
+| Step | Description | Status | Notes |
+|---|---|---|---|
+| 10a | Setup, version 0.2.0, NSIS settings, static CRT, prerequisites | IN PROGRESS | 10a-1 done: spec saved verbatim (415 lines), git clean, main == origin/main at 9e054a7 |
+| 10b | Third-party licenses (non-blocking) | NOT STARTED | |
+| 10c | Release build script | NOT STARTED | |
+| 10d | Build four installers | NOT STARTED | |
+| 10e | Verify installers | NOT STARTED | |
+| 10f | RELEASING.md, release notes, README | NOT STARTED | |
+| 10g | Final verification | NOT STARTED | |
+(Status: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner / SKIPPED — reason)
+## Gates (last run)
+(not run yet)
+## Prerequisites found (10a-2)
+1. **Rust targets** (`rustup target list --installed`): `aarch64-pc-windows-msvc` and `x86_64-pc-windows-msvc` BOTH installed. ✓
+2. **ARM64 linker/libraries**: vswhere query from the spec (`-requires Microsoft.VisualStudio.Component.VC.Tools.ARM64`) printed NOTHING (exit 0). vswhere JSON shows the installation `C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools` (VS 18 Build Tools, installationVersion 18.11.12328.437) reporting **0 packages** — the component query cannot see into this VS 18 installation. Second check (folder search) FOUND the ARM64 toolset:
+   - Toolset `14.44.35207`: COMPLETE — `lib/arm64` has 84 files incl. `libcmt.lib` and `msvcrt.lib`; `bin/Hostx64/arm64/` contains `cl.exe` and `link.exe`.
+   - Toolset `14.51.36231`: PARTIAL — `lib/arm64` only 29 files, no CRT libs.
+   → Conclusion: ARM64 building should work; the definitive test is the real ARM64 build in 10d.
+3. **Node** v26.12.1 (≥18 ✓), **npm** 12.0.2, **Python** 3.10.11. ✓
+4. **Tauri CLI** works: `npm run tauri -- --version` → tauri-cli 2.12.4. ✓
+5. **Existing installation**: NONE found. PowerShell `Get-ItemProperty 'HKCU:\...\Uninstall\*'` with DisplayName -like '*ERX*' → empty; folder `%LOCALAPPDATA%\ERX Tools for Windows` does not exist. (A raw `reg query /s /f` from Git Bash failed due to shell flag mangling; the PowerShell check covers the same ground.) → 10e-5 install smoke test CAN run.
+## Verified facts
+- 10a-1: fresh start (no progress/spec file existed before). `git status` clean; `git status -sb` shows `## main...origin/main` with no ahead/behind → local main equals origin/main at 9e054a7 (Prompt 9e). Spec saved verbatim to docs/PROMPT_10_SPEC.md (415 lines).
+- 10a-3: `npm version 0.2.0 --no-git-tag-version` changed ONLY package.json + package-lock.json (git diff --stat confirms), no tag created. Cargo.toml `[package] version` and tauri.conf.json `version` set to 0.2.0. Cargo.lock diff = the app's package entry only (`erx-tools` 0.1.0 → 0.2.0).
+- 10a-4 (schema verification against `node_modules/@tauri-apps/cli/config.schema.json`, tauri-cli 2.12.4):
+  - `bundle.targets` → BundleTarget: "all" OR array of BundleType {deb,rpm,appimage,msi,nsis,app,dmg} → `["nsis"]` valid.
+  - `bundle.windows` → exists; props include `webviewInstallMode` and `nsis`.
+  - `webviewInstallMode.type` enum: skip / downloadBootstrapper / embedBootstrapper / offlineInstaller / fixedRuntime → both used values valid; `silent` boolean (default true).
+  - `nsis.installMode` enum: currentUser / perMachine / both → "currentUser" valid (also the schema default). `nsis.languages`: array (default ["English"]). `nsis.displayLanguageSelector`: boolean (default false). `nsis.compression` enum: zlib / bzip2 / lzma / none → "lzma" valid (also the schema default).
+  - `bundle.resources`: array of paths, globs allowed, relative to src-tauri, structure preserved under $RESOURCE → for 10b, `../THIRD_PARTY_LICENSES.md` is the right syntax (verified early while the schema was open).
+  - Merged into tauri.conf.json keeping icon/publisher/copyright/shortDescription/category; JSON re-validated with python json.load.
+- 10a-5: `npm run tauri build -- --help` shows `-c, --config <CONFIG>` ("JSON strings or paths to JSON, JSON5 or TOML files to merge with the default configuration file… Configurations are merged in the order they are provided, which means a particular value overwrites previous values when a config key-value pair conflicts."). Created `src-tauri/release-configs/webview2-download.json` (downloadBootstrapper) and `webview2-offline.json` (offlineInstaller), both silent:true.
+- 10a-6: created `src-tauri/.cargo/config.toml` (folder did not exist before) with +crt-static rustflags for both windows-msvc targets.
+- 10a-7: `.gitignore` got `release-artifacts/`; `target/` and `src-tauri/target` were already ignored.
+## Open questions for the owner
+(none yet)
