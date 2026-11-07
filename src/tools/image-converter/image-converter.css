@@ -232,6 +232,12 @@
   font-weight: 600;
 }
 
+/* A <legend> is not a flex item, so the fieldset's 8px gap never applies
+   between it and the first radio — give it its own space below. */
+.ic-legend {
+  margin-bottom: 10px;
+}
+
 .ic-field select {
   padding: 6px 8px;
   background: var(--surface);
@@ -291,6 +297,14 @@
   margin: 0;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+/* Justified explanatory text in the settings panel. Scoped to the panel so
+   the empty-state notes stay centered via .ic-center. (.ic-note covers both
+   panel paragraphs and the transparency hint next to the color picker.) */
+.ic-options .ic-note {
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .ic-path {

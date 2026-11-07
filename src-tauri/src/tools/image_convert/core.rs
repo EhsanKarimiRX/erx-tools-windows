@@ -52,20 +52,6 @@ impl InputFormat {
         }
     }
 
-    /// True when this input format is the same kind as the output format
-    /// (drives the `name-converted.ext` re-compression naming rule). HEIC
-    /// has no output twin, so it never re-compresses.
-    pub fn matches_output(self, output: OutputFormat) -> bool {
-        matches!(
-            (self, output),
-            (InputFormat::Jpeg, OutputFormat::Jpeg)
-                | (InputFormat::Png, OutputFormat::Png)
-                | (InputFormat::Webp, OutputFormat::Webp)
-                | (InputFormat::Bmp, OutputFormat::Bmp)
-                | (InputFormat::Tiff, OutputFormat::Tiff)
-        )
-    }
-
     /// Maps a content-sniffed `image` crate format to ours, if supported.
     pub(crate) fn from_image_format(format: image::ImageFormat) -> Option<Self> {
         match format {
@@ -619,14 +605,6 @@ mod tests {
         )
         .unwrap();
         assert!(absolute.output_folder.is_some());
-    }
-
-    #[test]
-    fn same_format_detection_drives_naming() {
-        assert!(InputFormat::Jpeg.matches_output(OutputFormat::Jpeg));
-        assert!(InputFormat::Tiff.matches_output(OutputFormat::Tiff));
-        assert!(!InputFormat::Jpeg.matches_output(OutputFormat::Png));
-        assert!(!InputFormat::Gif.matches_output(OutputFormat::Tiff));
     }
 
     /// Fresh per-test directory under the system temp dir.

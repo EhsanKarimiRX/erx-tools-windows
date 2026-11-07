@@ -1,13 +1,19 @@
 //! Output file naming rules.
 //!
-//! Never overwrite an original: `name.newext` → `name (1).newext` → …, and
-//! `name-converted.ext` for same-format re-compression. Names are sanitized
-//! so output can never escape the chosen folder or contain characters
-//! Windows rejects.
+//! Every output gets an "ERX" suffix before the extension: `photo.jpg` →
+//! `photoERX.png`, ALWAYS — even when nothing collides, and even when the
+//! stem already ends in "ERX" (it may belong to another project and mean
+//! something to its owner, so it is never stripped or detected). When the
+//! name exists it counts up: `photoERX (1).png`, `photoERX (2).png`, …
+//! Names are sanitized so output can never escape the chosen folder or
+//! contain characters Windows rejects.
 
 use std::path::{Path, PathBuf};
 
 use super::core::ConvertOptions;
+
+/// Suffix appended to every output stem, before the extension.
+const OUTPUT_SUFFIX: &str = "ERX";
 
 /// Windows reserved device names, invalid as (stem of a) file name.
 const RESERVED_NAMES: [&str; 22] = [
@@ -48,14 +54,13 @@ pub fn sanitize_stem(stem: &str) -> String {
     stem.to_string()
 }
 
-/// Picks the output path for one converted file.
-///
-/// `same_format` marks a re-compression (source format == output format) and
-/// switches the base name to `name-converted`. `exists` is injected so tests
-/// can simulate collisions without a real file system.
+/// Picks the output path for one converted file: `stemERX.ext`, or the first
+/// free `stemERX (n).ext`. `exists` is injected so tests can simulate
+/// collisions without a real file system. This check is only a fast
+/// pre-check; the write itself claims the name with `create_new` (see
+/// `pipeline`), so nothing existing can be overwritten even under races.
 pub fn choose_output_path(
     source: &Path,
-    same_format: bool,
     options: &ConvertOptions,
     exists: impl Fn(&Path) -> bool,
 ) -> Result<PathBuf, String> {
@@ -71,11 +76,7 @@ pub fn choose_output_path(
         .file_stem()
         .map_or_else(|| "image".to_string(), |s| s.to_string_lossy().into_owned());
     let stem = sanitize_stem(&raw_stem);
-    let base = if same_format {
-        format!("{stem}-converted")
-    } else {
-        stem
-    };
+    let base = format!("{stem}{OUTPUT_SUFFIX}");
 
     let mut candidate = folder.join(format!("{base}.{}", options.format.extension()));
     let mut counter = 1;
@@ -100,56 +101,107 @@ mod tests {
         }
     }
 
+    fn jpeg_options(folder: Option<&str>) -> ConvertOptions {
+        ConvertOptions {
+            format: OutputFormat::Jpeg,
+            ..options(folder)
+        }
+    }
+
     fn never(_path: &Path) -> bool {
         false
     }
 
     #[test]
-    fn picks_sibling_name_with_new_extension() {
-        let path = choose_output_path(Path::new("C:/pics/photo.jpg"), false, &options(None), never)
-            .unwrap();
-        assert_eq!(path, PathBuf::from("C:/pics/photo.png"));
+    fn always_appends_the_erx_suffix() {
+        let path =
+            choose_output_path(Path::new("C:/pics/photo.jpg"), &options(None), never).unwrap();
+        assert_eq!(path, PathBuf::from("C:/pics/photoERX.png"));
     }
 
     #[test]
-    fn same_format_appends_converted() {
-        let path = choose_output_path(Path::new("C:/pics/photo.jpg"), true, &options(None), never)
-            .unwrap();
-        assert_eq!(path, PathBuf::from("C:/pics/photo-converted.png"));
+    fn same_format_recompression_also_gets_the_suffix() {
+        let path =
+            choose_output_path(Path::new("C:/pics/photo.jpg"), &jpeg_options(None), never).unwrap();
+        assert_eq!(path, PathBuf::from("C:/pics/photoERX.jpg"));
     }
 
     #[test]
     fn collisions_count_upwards() {
         let taken = [
-            PathBuf::from("C:/pics/photo.png"),
-            PathBuf::from("C:/pics/photo (1).png"),
+            PathBuf::from("C:/pics/photoERX.png"),
+            PathBuf::from("C:/pics/photoERX (1).png"),
         ];
-        let path = choose_output_path(Path::new("C:/pics/photo.jpg"), false, &options(None), |p| {
+        let path = choose_output_path(Path::new("C:/pics/photo.jpg"), &options(None), |p| {
             taken.iter().any(|candidate| candidate.as_path() == p)
         })
         .unwrap();
-        assert_eq!(path, PathBuf::from("C:/pics/photo (2).png"));
+        assert_eq!(path, PathBuf::from("C:/pics/photoERX (2).png"));
     }
 
     #[test]
-    fn same_format_collisions_count_too() {
-        let path = choose_output_path(Path::new("C:/pics/a.tif"), true, &options(None), |p| {
-            p.to_str().unwrap().ends_with("a-converted.png")
+    fn same_format_collisions_count_upwards() {
+        let path = choose_output_path(Path::new("C:/pics/photo.jpg"), &jpeg_options(None), |p| {
+            p.to_str().unwrap().ends_with("photoERX.jpg")
         })
         .unwrap();
-        assert_eq!(path, PathBuf::from("C:/pics/a-converted (1).png"));
+        assert_eq!(path, PathBuf::from("C:/pics/photoERX (1).jpg"));
     }
 
     #[test]
     fn custom_folder_wins_over_source_folder() {
         let path = choose_output_path(
             Path::new("C:/pics/photo.jpg"),
-            false,
             &options(Some("D:/out")),
             never,
         )
         .unwrap();
-        assert_eq!(path, PathBuf::from("D:/out/photo.png"));
+        assert_eq!(path, PathBuf::from("D:/out/photoERX.png"));
+    }
+
+    /// "ERX" at the end of a source name may belong to another project, so it
+    /// is never stripped or detected: the suffix simply stacks.
+    #[test]
+    fn stem_already_ending_in_erx_gets_another_erx() {
+        let path =
+            choose_output_path(Path::new("C:/pics/photoERX.jpg"), &options(None), never).unwrap();
+        assert_eq!(path, PathBuf::from("C:/pics/photoERXERX.png"));
+
+        let path = choose_output_path(Path::new("C:/pics/ERX.jpg"), &options(None), never).unwrap();
+        assert_eq!(path, PathBuf::from("C:/pics/ERXERX.png"));
+    }
+
+    /// Sanitizing happens first, the suffix is appended after it — so it is
+    /// never trimmed or truncated, even for dirty or capped stems.
+    #[test]
+    fn sanitized_stem_still_ends_with_the_suffix() {
+        let path = choose_output_path(Path::new("C:/pics/img<1>:\"x?.png"), &options(None), never)
+            .unwrap();
+        assert!(path.to_str().unwrap().ends_with("img_1___x_ERX.png"));
+
+        let long = format!("{}.png", "a".repeat(500));
+        let path = choose_output_path(Path::new(&long), &options(None), never).unwrap();
+        assert!(path.to_str().unwrap().ends_with("ERX.png"));
+        let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+        assert_eq!(stem.chars().count(), MAX_STEM_CHARS + OUTPUT_SUFFIX.len());
+    }
+
+    /// With the always-append rule the output can only collide with the
+    /// source itself when the ERX-named file already exists; the count-up
+    /// handles that like any other collision.
+    #[test]
+    fn output_colliding_with_the_source_name_counts_up() {
+        let taken = [
+            PathBuf::from("C:/pics/photoERX.jpg"), // the source file itself
+            PathBuf::from("C:/pics/photoERXERX.jpg"), // the natural first output name
+        ];
+        let path = choose_output_path(
+            Path::new("C:/pics/photoERX.jpg"),
+            &jpeg_options(None),
+            |p| taken.iter().any(|candidate| candidate.as_path() == p),
+        )
+        .unwrap();
+        assert_eq!(path, PathBuf::from("C:/pics/photoERXERX (1).jpg"));
     }
 
     #[test]

@@ -4,12 +4,17 @@
 //! (no Tauri types) keeps the whole flow unit-testable.
 
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use super::convert::{convert_heic, convert_stream};
 use super::core::{ConvertOptions, InputFormat, Inspection, inspect_path};
 use super::naming::choose_output_path;
+
+/// Upper bound for output-name attempts when `create_new` keeps reporting
+/// the name as taken. The count-up pre-check normally lands on a free name
+/// immediately; the bound only matters under heavy races.
+const MAX_NAME_TRIES: usize = 10_000;
 
 /// What one successful conversion produced.
 #[derive(Debug)]
@@ -18,8 +23,10 @@ pub struct ConvertOutcome {
     pub output_size: u64,
 }
 
-/// Converts a single file end to end. The original is never touched and the
-/// output path never collides (`name.newext`, `name (1).newext`, …).
+/// Converts a single file end to end. The original is never touched and no
+/// existing file is ever overwritten: the output claims its name with
+/// `create_new` (`nameERX.ext`, `nameERX (1).ext`, …), which is safe even
+/// when several workers pick names at the same moment.
 ///
 /// Error strings are short, user-friendly English reasons (no full paths —
 /// at most the file name).
@@ -39,10 +46,10 @@ pub fn convert_one_file(source: &Path, options: &ConvertOptions) -> Result<Conve
         Inspection::Invalid { reason } => return Err(reason),
     };
 
-    let same_format = info.format.matches_output(options.format);
     // The stem is sanitized, so `join` can never escape the output folder.
-    let output_path =
-        choose_output_path(source, same_format, options, |candidate| candidate.exists())?;
+    // This first pick is only a fast pre-check; the write below is the
+    // source of truth.
+    let mut output_path = choose_output_path(source, options, |candidate| candidate.exists())?;
 
     // HEIC goes through its own path-based decoder (Windows WIC) instead of
     // the byte-stream converters; everything else decodes from the stream.
@@ -55,13 +62,34 @@ pub fn convert_one_file(source: &Path, options: &ConvertOptions) -> Result<Conve
         };
         convert_stream(BufReader::new(file), info.animated, options)?
     };
-    if std::fs::write(&output_path, &data).is_err() {
-        let name = output_path.file_name().map_or_else(
-            || "output".to_string(),
-            |n| n.to_string_lossy().into_owned(),
-        );
-        return Err(format!("could not write the output file \"{name}\""));
-    }
+
+    let mut tries = 0;
+    let output_path = loop {
+        tries += 1;
+        if tries > MAX_NAME_TRIES {
+            let name = output_path.file_name().map_or_else(
+                || "output".to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            return Err(format!("could not find a free output name for \"{name}\""));
+        }
+        match write_exclusive(&output_path, &data) {
+            Ok(()) => break output_path,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Another worker (or an earlier file) took the name after
+                // the pre-check. Its file now exists, so re-running the
+                // pre-check counts past it.
+                output_path = choose_output_path(source, options, |candidate| candidate.exists())?;
+            }
+            Err(_) => {
+                let name = output_path.file_name().map_or_else(
+                    || "output".to_string(),
+                    |n| n.to_string_lossy().into_owned(),
+                );
+                return Err(format!("could not write the output file \"{name}\""));
+            }
+        }
+    };
 
     Ok(ConvertOutcome {
         output_path,
@@ -69,12 +97,29 @@ pub fn convert_one_file(source: &Path, options: &ConvertOptions) -> Result<Conve
     })
 }
 
+/// Creates `path` exclusively and writes `data` into it. `create_new` means
+/// an existing file is never opened for writing, so nothing on disk can be
+/// overwritten — including files another worker creates between the name
+/// pre-check and this call. If writing fails after creation (disk full, …)
+/// the just-created partial file is removed; it can only be a file this
+/// call created, so no pre-existing file is ever deleted.
+fn write_exclusive(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    if let Err(error) = file.write_all(data) {
+        let _ = std::fs::remove_file(path);
+        return Err(error);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tools::image_convert::core::{OutputFormat, RgbColor};
     use image::GenericImageView;
-    use std::io::Write;
 
     /// Fresh per-test directory under the system temp dir.
     fn temp_dir(name: &str) -> PathBuf {
@@ -122,7 +167,7 @@ mod tests {
         let original_bytes = std::fs::read(&source).unwrap();
 
         let outcome = convert_one_file(&source, &jpeg_options()).unwrap();
-        assert_eq!(outcome.output_path, dir.join("photo.jpg"));
+        assert_eq!(outcome.output_path, dir.join("photoERX.jpg"));
         assert!(outcome.output_size > 0);
         // Original untouched, output exists and decodes.
         assert_eq!(std::fs::read(&source).unwrap(), original_bytes);
@@ -135,20 +180,38 @@ mod tests {
     fn never_overwrites_and_counts_upwards() {
         let dir = temp_dir("collisions");
         let source = write_file(&dir, "photo.png", &small_png());
-        write_file(&dir, "photo.jpg", b"pre-existing output");
+        write_file(&dir, "photoERX.jpg", b"first existing output");
+        write_file(&dir, "photoERX (1).jpg", b"second existing output");
 
         let outcome = convert_one_file(&source, &jpeg_options()).unwrap();
-        assert_eq!(outcome.output_path, dir.join("photo (1).jpg"));
-        // The pre-existing file is not the conversion result.
+        assert_eq!(outcome.output_path, dir.join("photoERX (2).jpg"));
+        // Both pre-existing files still hold their original contents.
         assert_eq!(
-            std::fs::read(dir.join("photo.jpg")).unwrap(),
-            b"pre-existing output"
+            std::fs::read(dir.join("photoERX.jpg")).unwrap(),
+            b"first existing output"
+        );
+        assert_eq!(
+            std::fs::read(dir.join("photoERX (1).jpg")).unwrap(),
+            b"second existing output"
         );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
-    fn same_format_recompression_uses_converted_suffix() {
+    fn pre_existing_output_is_left_byte_for_byte_untouched() {
+        let dir = temp_dir("pre-existing");
+        let source = write_file(&dir, "photo.png", &small_png());
+        write_file(&dir, "photoERX.jpg", b"precious bytes");
+        let before = std::fs::read(dir.join("photoERX.jpg")).unwrap();
+
+        let outcome = convert_one_file(&source, &jpeg_options()).unwrap();
+        assert_eq!(outcome.output_path, dir.join("photoERX (1).jpg"));
+        assert_eq!(std::fs::read(dir.join("photoERX.jpg")).unwrap(), before);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn same_format_recompression_gets_the_erx_suffix() {
         let dir = temp_dir("same-format");
         let source = write_file(&dir, "photo.png", &small_png());
 
@@ -157,8 +220,87 @@ mod tests {
             ..jpeg_options()
         };
         let outcome = convert_one_file(&source, &options).unwrap();
-        assert_eq!(outcome.output_path, dir.join("photo-converted.png"));
+        assert_eq!(outcome.output_path, dir.join("photoERX.png"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Mirrors the batch worker pool: several threads convert same-stem
+    /// files into one folder at the same moment. `create_new` must keep
+    /// every output alive — none may be lost or overwrite another.
+    #[test]
+    fn concurrent_same_stem_outputs_never_overwrite_each_other() {
+        let out_dir = temp_dir("race-out");
+        let options = ConvertOptions {
+            format: OutputFormat::Png,
+            output_folder: Some(out_dir.clone()),
+            ..jpeg_options()
+        };
+        let sources: Vec<PathBuf> = (0..6)
+            .map(|i| {
+                write_file(
+                    &temp_dir(&format!("race-src-{i}")),
+                    "photo.png",
+                    &small_png(),
+                )
+            })
+            .collect();
+
+        // A barrier releases all threads together, so their pick-name →
+        // write sequences overlap as much as the scheduler allows.
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(sources.len()));
+        let options_ref = &options;
+        let results: Vec<Result<ConvertOutcome, String>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = sources
+                .iter()
+                .map(|source| {
+                    let barrier = std::sync::Arc::clone(&barrier);
+                    scope.spawn(move || {
+                        barrier.wait();
+                        convert_one_file(source, options_ref)
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect()
+        });
+
+        for result in &results {
+            result.as_ref().expect("every conversion should succeed");
+        }
+        let mut names: Vec<String> = results
+            .iter()
+            .map(|result| {
+                result
+                    .as_ref()
+                    .unwrap()
+                    .output_path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        names.dedup();
+        // Every output is distinct, and together they are exactly the base
+        // name plus the count-up names — nothing was lost or merged.
+        let mut expected: Vec<String> = std::iter::once("photoERX.png".to_string())
+            .chain((1..sources.len() as u32).map(|n| format!("photoERX ({n}).png")))
+            .collect();
+        expected.sort();
+        assert_eq!(names.len(), sources.len(), "distinct outputs: {names:?}");
+        assert_eq!(names, expected);
+        for name in &names {
+            assert!(out_dir.join(name).is_file(), "{name} is missing");
+        }
+        assert_eq!(std::fs::read_dir(&out_dir).unwrap().count(), sources.len());
+
+        for source in &sources {
+            let _ = std::fs::remove_dir_all(source.parent().unwrap());
+        }
+        let _ = std::fs::remove_dir_all(&out_dir);
     }
 
     #[test]
@@ -173,7 +315,7 @@ mod tests {
         };
         let outcome = convert_one_file(&source, &options).unwrap();
         // Persian file name survives; nothing lands next to the original.
-        assert_eq!(outcome.output_path, out_dir.join("عکس تست.jpg"));
+        assert_eq!(outcome.output_path, out_dir.join("عکس تستERX.jpg"));
         assert!(outcome.output_path.exists());
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1); // only the source
         std::fs::remove_dir_all(&dir).unwrap();
@@ -240,14 +382,14 @@ mod tests {
         );
         assert_eq!(
             results[1].as_ref().unwrap().output_path,
-            dir.join("good.jpg")
+            dir.join("goodERX.jpg")
         );
         assert!(
             results[2].as_ref().unwrap_err().contains("Windows error"),
             "{:?}",
             results[2]
         );
-        assert!(dir.join("good.jpg").exists());
+        assert!(dir.join("goodERX.jpg").exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

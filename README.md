@@ -18,6 +18,7 @@ A small, offline toolbox for Windows. Every tool opens from a simple square tile
 Convert images in batches (up to 200 files at a time) with live progress, cancel and a summary.
 - **Input:** JPEG, PNG, WebP, BMP, GIF, TIFF and HEIC/HEIF (iPhone photos). HEIC is read with the codecs installed in Windows, so it needs Microsoft's *HEIF Image Extensions* and *HEVC Video Extensions* from the Microsoft Store (many PCs already have them). If they are missing, the app says so.
 - **Output:** JPEG (with a quality slider), PNG, WebP (lossless), BMP and TIFF.
+- **Output names:** every converted file gets "ERX" before the extension (photo.jpg → photoERX.png). If that name is taken it counts up (photoERX (1).png, photoERX (2).png, …), so nothing is ever overwritten.
 - Camera rotation is applied automatically. Metadata (EXIF, GPS) and color profiles are not kept, so wide-color photos such as iPhone photos may look slightly less vivid. Only the first image/frame of a file is converted.
 
 ### QR Code Generator
