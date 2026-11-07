@@ -15,16 +15,30 @@ Read docs/PROMPT_6_SPEC.md (full prompt) and docs/PROMPT_6_DECISIONS.md. Continu
 | 6a | Gates + commit | DONE | see Gates below |
 | 6b | Integration | DONE | 374 tests (+11), live 6/6; HEIC rotation not yet verified (6c) |
 | 6c | Real-photo verification | DONE | WIC applies rotation itself (verified visually); 12/12 live tests |
-| 6d | UI wording, docs, final | NOT STARTED | |
+| 6d | UI wording, docs, final | DONE | HEIC advertised in UI with codec note; README updated; all gates green |
+
+**PROMPT 6 COMPLETE.** Last updated: end of 6d session, 2026-11-07.
 (Status: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner)
 
-## Gates (last run, end of 6c)
-- npm run build: PASS (433ms)
+## Gates (last run, end of 6d — final for Prompt 6)
+- npm run build: PASS (450ms)
 - cargo fmt --check: PASS
 - cargo clippy -- -D warnings: PASS
-- cargo test (count): 374 passed, 0 failed, 18 ignored (6 pre-existing live + 12 live HEIC); non-live total unchanged by 6c (all 6c tests are #[ignore])
+- cargo test (count): 374 passed, 0 failed, 18 ignored (6 pre-existing live + 12 live HEIC)
 - ARM64 check: PASS (cargo check --target aarch64-pc-windows-msvc)
-- Live HEIC tests: 12/12 PASS (6 fixture + 6 owner-sample tests)
+- Live HEIC tests: 12/12 PASS (re-run after all 6d changes)
+
+## 6d changes
+- `types.ts`: SUPPORTED_INPUT and SUPPORTED_FORMATS_MESSAGE now include HEIC.
+- `commands.rs`: DIALOG_EXTENSIONS + `heic`, `heif`, `hif` (Windows matches extensions case-insensitively, so the owner's `.HEIC` files are covered).
+- `index.tsx`: gray HEIC-codec note under the empty-state drop zone; `OptionsPanel.tsx`: the honest metadata note gained the Display P3 sentence, plus a second note naming the two Store extensions (rotation sentence stays true — WIC applies it, verified in 6c).
+- Long HEIC error messages wrap: `.ic-name` cell already has `max-width: 360px` + `word-break: break-all`, and `word-break` inherits into `.ic-file-note`; the warning block wraps at word boundaries. No CSS change needed.
+- README.md: Image Converter entry lists HEIC/HEIF input with the Store-extension dependency and the P3 note.
+
+## 6d audit (R3)
+- New Cargo dependencies for the whole of Prompt 6: `windows 0.62` (default-features off; features Win32_Graphics_Imaging, Win32_System_Com, Win32_Foundation) — merges with the same version Tauri already pulls. windows-sys features added: Win32_System_Threading + Win32_System_ProcessStatus (test-only, peak-memory measurement).
+- Duplicate crates: none introduced by Prompt 6. `windows 0.62.2` / `windows-core 0.62.2` / `windows-link 0.2.1` each remain a single node. windows-sys 0.61.2 appears as two nodes because cargo keeps build-dependencies (tauri-build/walkdir) separate from normal dependencies — that split predates Prompt 6; the other duplicate pairs (serde, base64, …) are the pre-existing Tauri baseline.
+- Tauri capabilities/permissions: untouched since the Prompt 5 baseline (`git diff a1d95c2..HEAD -- tauri.conf.json capabilities/` is empty). CSP: unchanged. Network-capable crates in the active build graph: none added (only the pre-existing `tokio` via tauri).
 
 ## Verified facts
 - Baseline before any change: git clean at a1d95c2 ("Prompt 5h ... - 337 tests").

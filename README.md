@@ -11,7 +11,13 @@ folders and are lazy-loaded only when opened — see
 ## Tools
 
 - **Image Converter** — convert images between JPEG, PNG, WebP, BMP, GIF
-  and TIFF in batches, with live progress, cancel and a summary.
+  and TIFF in batches, with live progress, cancel and a summary. Reads
+  HEIC/HEIF (iPhone photos) as input too, decoded through Windows' own
+  codecs: this needs Microsoft's “HEIF Image Extensions” and “HEVC Video
+  Extensions” installed (often preinstalled; both are in the Microsoft
+  Store). iPhone photos keep their rotation; wide-color (Display P3)
+  photos are saved without a color profile and may look slightly less
+  vivid. Outputs stay JPEG/PNG/WebP/BMP/TIFF.
 - **QR Code Generator** — create QR codes from text, links or Wi-Fi
   credentials; sharp or rounded style, custom colors, logo support; export
   as PNG or SVG.

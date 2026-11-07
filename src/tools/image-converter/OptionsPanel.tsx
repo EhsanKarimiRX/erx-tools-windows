@@ -122,7 +122,15 @@ export default function OptionsPanel({ options, onChange, disabled }: OptionsPan
 
       <p className="ic-note">
         Outputs contain no metadata (EXIF and GPS are removed). Camera rotation
-        is applied automatically. Originals are never modified.
+        is applied automatically. Originals are never modified. Wide-color
+        (Display P3) photos, such as iPhone photos, are saved without a color
+        profile and may look slightly less vivid.
+      </p>
+      <p className="ic-note">
+        HEIC/HEIF (iPhone photos) is read with the codecs installed in
+        Windows. If a HEIC photo cannot be opened, install Microsoft’s “HEIF
+        Image Extensions” and “HEVC Video Extensions” from the Microsoft
+        Store.
       </p>
     </div>
   );

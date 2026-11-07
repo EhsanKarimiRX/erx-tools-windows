@@ -253,6 +253,12 @@ export default function ImageConverter() {
             Mixed formats are fine — all files are converted to the one format
             you choose.
           </p>
+          <p className="ic-note ic-center">
+            HEIC/HEIF (iPhone photos) is read with the codecs installed in
+            Windows. If a HEIC photo cannot be opened, install Microsoft’s
+            “HEIF Image Extensions” and “HEVC Video Extensions” from the
+            Microsoft Store.
+          </p>
           {warnings.length > 0 && (
             <div className="ic-warning" role="alert">
               {warnings.map((warning) => (

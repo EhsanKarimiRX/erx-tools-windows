@@ -18,7 +18,9 @@ use super::pipeline::convert_one_file;
 use crate::tools::ToolError;
 
 /// Extensions offered in the native file dialog filter.
-const DIALOG_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp", "gif", "tif", "tiff"];
+const DIALOG_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "webp", "bmp", "gif", "tif", "tiff", "heic", "heif", "hif",
+];
 
 /// Upper bound for parallel conversion workers. A single image may decode
 /// into ~320 MB of pixels, so the pool is capped regardless of core count.
