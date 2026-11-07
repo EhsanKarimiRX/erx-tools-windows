@@ -42,7 +42,7 @@ tiny-skia = "0.12"
 # QR Code Generator: embedding the logo PNG into the SVG as a data URL.
 # Folder Icon: PNG data URLs for the small previews.
 base64 = "0.22"
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_System_Power", "Win32_System_Registry", "Win32_Security", "Win32_System_SystemInformation", "Win32_System_Time"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_System_Power", "Win32_System_Registry", "Win32_Security", "Win32_System_SystemInformation", "Win32_System_Time", "Win32_System_Threading", "Win32_System_ProcessStatus"] }
 # Image Converter / HEIC: callable WIC COM interfaces. windows-sys 0.61.2 ships
 # no Graphics/Imaging module at all (no feature, no types), so the official
 # `windows` crate is required. It is the same 0.62.x version Tauri already

@@ -95,9 +95,13 @@ pub fn default_heic_decoder() -> &'static dyn HeicDecoder {
 /// guards like every other input, collapses all-opaque buffers to RGB (so
 /// opaque iPhone photos do not grow needless alpha in PNG/WebP/TIFF outputs)
 /// and keeps alpha otherwise.
-// TODO(6c): orientation — unknown whether WIC already rotates iPhone photos;
-// decided empirically with real photos in 6c. Do NOT apply EXIF orientation
-// here in the meantime.
+///
+/// Orientation: Windows' HEIC decoder applies the photo's irot/imir rotation
+/// itself. Verified 2026-11-07 with three upright 3024×4032 portrait iPhone
+/// photos on Windows 11 build 26300 x64 (HEIF Image Extension 1.2.62.0 +
+/// HEVC Video Extension 2.5.48.0): WIC reports the rotated portrait
+/// dimensions and upright content, so applying EXIF orientation here would
+/// rotate the picture a second time.
 fn heic_image(decoded: DecodedRgba) -> Result<DynamicImage, String> {
     check_dimensions(decoded.width, decoded.height)?;
     let buffer = image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.rgba)
