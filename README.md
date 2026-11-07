@@ -114,6 +114,10 @@ ERX Tools is a product of one owner, who is not a professional programmer, built
 
 Built with [Tauri 2](https://tauri.app/), [React](https://react.dev/), TypeScript and Rust.
 
+## Name and logo
+
+The source code is released under the MIT License (see below). The **ERX Tools** name and the ERX Tools **logo** (the files in the `branding/` folder and the app icons) are **not** covered by that license. You are welcome to fork the code and change it, but please give your version its own name and its own logo, and do not present it as the official ERX Tools. Details: [branding/NOTICE.md](branding/NOTICE.md).
+
 ## License
 
-Released under the [MIT License](LICENSE).
+The source code is released under the [MIT License](LICENSE). The name and logo are not part of that license (see [Name and logo](#name-and-logo)).
