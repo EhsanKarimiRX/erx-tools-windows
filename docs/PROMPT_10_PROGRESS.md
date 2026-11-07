@@ -7,7 +7,7 @@ Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. 
 |---|---|---|---|
 | 10a | Setup, version 0.2.0, NSIS settings, static CRT, prerequisites | DONE | Commit d701c78; all gates green; STOP after this step per spec |
 | 10b | Third-party licenses (non-blocking) | SKIPPED — MPL-2.0 crates in Rust dependency tree (see Deviation notes) | cargo-about 0.9.3 installed and works; retry recipe recorded |
-| 10c | Release build script | NOT STARTED | |
+| 10c | Release build script | DONE | scripts/build-release.mjs (reference impl used verbatim); dry-run verified |
 | 10d | Build four installers | NOT STARTED | |
 | 10e | Verify installers | NOT STARTED | |
 | 10f | RELEASING.md, release notes, README | NOT STARTED | |
@@ -43,8 +43,12 @@ Log: target/p10-gates.log (git-ignored).
 - 10a-5: `npm run tauri build -- --help` shows `-c, --config <CONFIG>` ("JSON strings or paths to JSON, JSON5 or TOML files to merge with the default configuration file… Configurations are merged in the order they are provided, which means a particular value overwrites previous values when a config key-value pair conflicts."). Created `src-tauri/release-configs/webview2-download.json` (downloadBootstrapper) and `webview2-offline.json` (offlineInstaller), both silent:true.
 - 10a-6: created `src-tauri/.cargo/config.toml` (folder did not exist before) with +crt-static rustflags for both windows-msvc targets.
 - 10a-7: `.gitignore` got `release-artifacts/`; `target/` and `src-tauri/target` were already ignored.
+## Verified facts (10c)
+- 10c: Cargo's real build directory IS `src-tauri/target` (`cargo metadata` reports `target_directory: C:\dev\erxtools\src-tauri\target`; today's check/clippy/test artifacts are fresh there). The root `C:\dev\erxtools\target\` holds stale leftovers from an earlier layout and is git-ignored; no config file or env var redirects cargo. → The reference script's `nsisDir` paths (`src-tauri/target[/<triple>]/release/bundle/nsis`) are correct as written. Output file-name pattern (`_<version>_<arch>-setup.exe` suffix match) still to be confirmed on the first real build in 10d.
+- 10c: `node scripts/build-release.mjs --dry-run` printed exactly 4 sections (x64 download / x64 offline / arm64 download / arm64 offline) with the right `npm run tauri build -- …` command lines and `RELEASE BUILD DONE`, exit 0, and created NO `release-artifacts/` folder.
+- 10c: How the version-mismatch protection works (explained instead of breaking real files, per spec): at startup the script reads `tauri.conf.json` `version`, `package.json` `version`, and the first `version = "…"` in `src-tauri/Cargo.toml`; if any two differ it prints `RELEASE BUILD FAILED: version mismatch: tauri.conf.json=…, package.json=…, Cargo.toml=…` and exits 1 before building anything. All three are currently 0.2.0, so the guard passes silently.
 ## Open questions for the owner
-(none yet)
+- 10b: 5 Rust crates in the (Tauri-transitive) dependency tree are MPL-2.0, which the spec puts on the STOP list. If the owner ever decides MPL-2.0 is acceptable (it is a weak copyleft license commonly used by Mozilla projects; filing this as a question, not an action), 10b can be completed later via the retry recipe above. Nothing in v0.2.0 depends on this.
 ## Deviation notes
 - Spec command `cargo install cargo-about --locked` compiled cargo-about 0.9.3 but did NOT install the binary ("bin cargo-about requires the features: cli"). Re-ran with `cargo install cargo-about --locked --features cli` → installed, `cargo about --version` → cargo-about 0.9.3. Recorded here per R6.
 - 10b SKIPPED per the spec's own STOP rule ("if it is MPL, LGPL, GPL, AGPL, SSPL or 'unknown', STOP this step and report the crate name and license to the owner"). `cargo about generate` reported exactly 5 crates under **MPL-2.0**, all reachable from Tauri's dependency tree:
