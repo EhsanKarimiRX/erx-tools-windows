@@ -23,13 +23,15 @@ use super::error::{HeicFailure, Stage, classify_hresult};
 use crate::tools::image_convert::core::MAX_PIXELS;
 
 /// A decoded HEIC image: straight (non-premultiplied) 8-bit RGBA pixels.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DecodedRgba {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
     /// Frames the WIC decoder reports; we always use frame 0 (the primary
     /// image), like the animated-input convention elsewhere in the converter.
+    /// Read by the live tests; production consumers may surface it later.
+    #[allow(dead_code)]
     pub frame_count: u32,
 }
 

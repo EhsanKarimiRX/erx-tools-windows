@@ -8,6 +8,10 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
+use super::heic::error::user_message;
+use super::heic::sniff::{HeifKind, sniff_heif};
+use super::heic::wic;
+
 /// Hard limit on one input file, so a huge dropped file can never reach the
 /// decoder (256 MB).
 pub const MAX_INPUT_FILE_BYTES: u64 = 256 * 1024 * 1024;
@@ -30,6 +34,8 @@ pub enum InputFormat {
     Bmp,
     Gif,
     Tiff,
+    /// Decoded through Windows' WIC codec (see `heic`); input-only.
+    Heic,
 }
 
 impl InputFormat {
@@ -42,11 +48,13 @@ impl InputFormat {
             InputFormat::Bmp => "BMP",
             InputFormat::Gif => "GIF",
             InputFormat::Tiff => "TIFF",
+            InputFormat::Heic => "HEIC",
         }
     }
 
     /// True when this input format is the same kind as the output format
-    /// (drives the `name-converted.ext` re-compression naming rule).
+    /// (drives the `name-converted.ext` re-compression naming rule). HEIC
+    /// has no output twin, so it never re-compresses.
     pub fn matches_output(self, output: OutputFormat) -> bool {
         matches!(
             (self, output),
@@ -84,6 +92,10 @@ pub enum Inspection {
     /// A readable file that is not a supported image. `detected` names the
     /// real format when we recognize it (e.g. "AVIF"), for a clearer note.
     NotSupported { detected: Option<String> },
+    /// A HEIC/HEIF (or other) file whose Windows decode failed — missing
+    /// codecs, damaged file, locked file. `reason` is the honest
+    /// user-facing message built by `heic::error::user_message`.
+    Failed { reason: String },
     /// Not usable at all (missing, folder, unreadable, damaged, over limit).
     Invalid { reason: String },
 }
@@ -153,7 +165,9 @@ pub fn inspect_path(path: &Path) -> Inspection {
         }
     };
     let Some(image_format) = reader.format() else {
-        return Inspection::NotSupported { detected: None };
+        // The `image` crate sees nothing it knows. Only the HEIC sniffer can
+        // still claim the file: HEIC/HEIF content is invisible to it.
+        return heic_or_unsupported(path, size_bytes);
     };
     let Some(format) = InputFormat::from_image_format(image_format) else {
         return Inspection::NotSupported {
@@ -208,6 +222,45 @@ pub fn friendly_format_name(format: image::ImageFormat) -> &'static str {
         image::ImageFormat::Qoi => "QOI",
         image::ImageFormat::Tga => "TGA",
         _ => "an unsupported image format",
+    }
+}
+
+/// The `image` crate sniff found nothing it knows — the last chance is our
+/// own HEIC/HEIF sniffer on the first 256 bytes. Content decides, never the
+/// extension: a HEIC renamed `.jpg` lands here, and a `.heic` file that is
+/// really a JPEG never does (it was already classified above).
+///
+/// AVIF and unknown content keep the exact "not supported" behavior they had
+/// before HEIC support existed.
+fn heic_or_unsupported(path: &Path, size_bytes: u64) -> Inspection {
+    let mut head = [0u8; 256];
+    let read = match File::open(path) {
+        // Read::take: never more than the header bytes of a huge file.
+        Ok(file) => file.take(head.len() as u64).read(&mut head).unwrap_or(0),
+        Err(_) => return Inspection::NotSupported { detected: None },
+    };
+    match sniff_heif(&head[..read]) {
+        HeifKind::Heic => {
+            // The 256 MB file-size limit was already enforced above, so the
+            // only checks left are WIC's (and its 80 MP guard inside).
+            match wic::dimensions(path) {
+                Ok(_dimensions) => Inspection::Image(ImageInfo {
+                    format: InputFormat::Heic,
+                    size_bytes,
+                    animated: false,
+                }),
+                Err(failure) => Inspection::Failed {
+                    reason: user_message(&failure),
+                },
+            }
+        }
+        HeifKind::Avif => Inspection::NotSupported {
+            detected: Some("AVIF".to_string()),
+        },
+        HeifKind::OtherHeif => Inspection::Failed {
+            reason: "unsupported HEIF variant".to_string(),
+        },
+        HeifKind::NotHeif => Inspection::NotSupported { detected: None },
     }
 }
 
@@ -676,6 +729,110 @@ mod tests {
         match inspect_path(&huge) {
             Inspection::Invalid { reason } => assert!(reason.contains("MP limit")),
             other => panic!("expected invalid, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // ------------------------------------------------------------------
+    // HEIC/HEIF detection (6b): content decides, never the extension
+    // ------------------------------------------------------------------
+
+    /// A file that sniffs as HEIC but is garbage inside: `inspect_path` must
+    /// classify it as HEIC and then fail honestly — on any machine, with or
+    /// without the Windows codecs.
+    fn heic_garbage_bytes() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(168u32.to_be_bytes());
+        bytes.extend_from_slice(b"ftyp");
+        bytes.extend_from_slice(b"heic");
+        bytes.extend_from_slice(b"\0\0\0\0");
+        bytes.extend([0u8; 24]);
+        bytes.extend([0xA5u8; 128]);
+        bytes
+    }
+
+    /// A `mif1` container without a HEIC/AVIF image brand (unsupported HEIF
+    /// variant).
+    fn bare_mif1_bytes() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(20u32.to_be_bytes());
+        bytes.extend_from_slice(b"ftyp");
+        bytes.extend_from_slice(b"mif1");
+        bytes.extend_from_slice(b"\0\0\0\0");
+        bytes.extend_from_slice(b"mif1");
+        bytes
+    }
+
+    #[test]
+    fn heic_content_fails_honestly_when_wic_cannot_decode() {
+        let dir = temp_dir("heic-detect");
+        let path = write_bytes(&dir, "photo.heic", &heic_garbage_bytes());
+        match inspect_path(&path) {
+            Inspection::Failed { reason } => {
+                assert!(reason.contains("Windows error"), "{reason}");
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn heic_renamed_jpg_is_still_heic() {
+        let dir = temp_dir("heic-as-jpg");
+        let path = write_bytes(&dir, "photo.jpg", &heic_garbage_bytes());
+        match inspect_path(&path) {
+            Inspection::Failed { reason } => {
+                assert!(reason.contains("Windows error"), "{reason}");
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn unsupported_heif_variant_reports_a_reason() {
+        let dir = temp_dir("mif1");
+        let path = write_bytes(&dir, "photo.heif", &bare_mif1_bytes());
+        match inspect_path(&path) {
+            Inspection::Failed { reason } => assert_eq!(reason, "unsupported HEIF variant"),
+            other => panic!("expected Failed, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn avif_still_reports_not_supported() {
+        let dir = temp_dir("avif");
+        let mut bytes = Vec::new();
+        bytes.extend(16u32.to_be_bytes());
+        bytes.extend_from_slice(b"ftypavif");
+        bytes.extend_from_slice(b"\0\0");
+        let path = write_bytes(&dir, "photo.avif", &bytes);
+        match inspect_path(&path) {
+            Inspection::NotSupported { detected } => {
+                assert_eq!(detected.as_deref(), Some("AVIF"))
+            }
+            other => panic!("expected NotSupported(AVIF), got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn jpeg_renamed_heic_still_goes_through_the_jpeg_path() {
+        let dir = temp_dir("jpeg-as-heic");
+        let jpeg = {
+            let image =
+                image::DynamicImage::ImageRgb8(image::ImageBuffer::from_fn(2, 2, |_, _| {
+                    image::Rgb([10, 20, 30])
+                }));
+            let mut out = std::io::Cursor::new(Vec::new());
+            image.write_to(&mut out, image::ImageFormat::Jpeg).unwrap();
+            out.into_inner()
+        };
+        let path = write_bytes(&dir, "photo.heic", &jpeg);
+        match inspect_path(&path) {
+            Inspection::Image(info) => assert_eq!(info.format, InputFormat::Jpeg),
+            other => panic!("expected a JPEG, got {other:?}"),
         }
         std::fs::remove_dir_all(&dir).unwrap();
     }

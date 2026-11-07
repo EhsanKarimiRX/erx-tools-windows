@@ -4,6 +4,7 @@
 //! No Tauri types here; `pipeline.rs` wraps it for real files.
 
 use std::io::{BufRead, Cursor, Seek};
+use std::path::Path;
 
 use image::codecs::bmp::BmpEncoder;
 use image::codecs::gif::GifDecoder;
@@ -19,6 +20,8 @@ use image::{
 };
 
 use super::core::{ConvertOptions, InputFormat, MAX_PIXELS, OutputFormat, friendly_format_name};
+use super::heic::error::{HeicFailure, user_message};
+use super::heic::wic::DecodedRgba;
 
 /// Converts one image from `input` to the configured output format.
 ///
@@ -59,6 +62,71 @@ pub fn convert_stream<R: BufRead + Seek>(
     };
 
     encode(prepare(image, options), options)
+}
+
+// ---------------------------------------------------------------------------
+// HEIC input (Windows WIC decoder behind a testable seam)
+// ---------------------------------------------------------------------------
+
+/// Pluggable HEIC decode seam: production uses Windows WIC, tests inject a
+/// fake so the whole conversion path is testable without codecs.
+pub trait HeicDecoder: Send + Sync {
+    fn decode(&self, path: &Path) -> Result<DecodedRgba, HeicFailure>;
+}
+
+/// The production decoder: Windows' own WIC codec (Microsoft's HEIF/HEVC
+/// extensions on the user's PC — the app ships no decoder).
+pub struct WicDecoder;
+
+impl HeicDecoder for WicDecoder {
+    fn decode(&self, path: &Path) -> Result<DecodedRgba, HeicFailure> {
+        super::heic::wic::decode_first_frame(path)
+    }
+}
+
+static WIC_DECODER: WicDecoder = WicDecoder;
+
+/// The decoder used when none is injected (production path).
+pub fn default_heic_decoder() -> &'static dyn HeicDecoder {
+    &WIC_DECODER
+}
+
+/// Builds the prepared image from decoded HEIC pixels: re-checks the size
+/// guards like every other input, collapses all-opaque buffers to RGB (so
+/// opaque iPhone photos do not grow needless alpha in PNG/WebP/TIFF outputs)
+/// and keeps alpha otherwise.
+// TODO(6c): orientation — unknown whether WIC already rotates iPhone photos;
+// decided empirically with real photos in 6c. Do NOT apply EXIF orientation
+// here in the meantime.
+fn heic_image(decoded: DecodedRgba) -> Result<DynamicImage, String> {
+    check_dimensions(decoded.width, decoded.height)?;
+    let buffer = image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.rgba)
+        .ok_or_else(|| "Windows returned HEIC pixels in an unexpected size".to_string())?;
+    if buffer.pixels().all(|pixel| pixel.0[3] == 255) {
+        Ok(DynamicImage::ImageRgb8(
+            DynamicImage::ImageRgba8(buffer).to_rgb8(),
+        ))
+    } else {
+        Ok(DynamicImage::ImageRgba8(buffer))
+    }
+}
+
+/// Converts one HEIC file with an injected decoder (the test seam).
+pub fn convert_heic_with(
+    decoder: &dyn HeicDecoder,
+    source: &Path,
+    options: &ConvertOptions,
+) -> Result<Vec<u8>, String> {
+    let decoded = decoder
+        .decode(source)
+        .map_err(|failure| user_message(&failure))?;
+    let image = heic_image(decoded)?;
+    encode(prepare(image, options), options)
+}
+
+/// Converts one HEIC file through the real Windows WIC decoder.
+pub fn convert_heic(source: &Path, options: &ConvertOptions) -> Result<Vec<u8>, String> {
+    convert_heic_with(default_heic_decoder(), source, options)
 }
 
 /// Hard gate before any large allocation: the decompression-bomb guard.
@@ -171,6 +239,9 @@ mod tests {
     use crate::tools::image_convert::core::{InputFormat, RgbColor};
     use image::codecs::gif::GifEncoder;
     use image::{Frame, GenericImage, GenericImageView, ImageBuffer, Rgba};
+    use windows::Win32::Foundation::{
+        E_FAIL, WINCODEC_ERR_BADHEADER, WINCODEC_ERR_COMPONENTNOTFOUND,
+    };
 
     const ALL_INPUTS: [InputFormat; 6] = [
         InputFormat::Jpeg,
@@ -247,6 +318,9 @@ mod tests {
                 height,
                 ExtendedColorType::Rgba8,
             ),
+            // HEIC has no encoder here: its pixels arrive through the
+            // decoder seam (see the fake-decoder tests below).
+            InputFormat::Heic => panic!("HEIC inputs come from the decoder seam, not an encoder"),
         };
         result.expect("test image must encode");
         out.into_inner()
@@ -475,5 +549,155 @@ mod tests {
         let error = convert_stream(Cursor::new(bytes), false, &png_options()).unwrap_err();
         assert!(error.contains("Farbfeld"));
         assert!(error.contains("not supported"));
+    }
+
+    // ------------------------------------------------------------------
+    // HEIC input through the decoder seam (6b)
+    // ------------------------------------------------------------------
+
+    /// Fake decoder returning a preset result; the path is ignored.
+    struct FakeDecoder(Result<DecodedRgba, HeicFailure>);
+
+    impl HeicDecoder for FakeDecoder {
+        fn decode(&self, _path: &Path) -> Result<DecodedRgba, HeicFailure> {
+            self.0.clone()
+        }
+    }
+
+    /// A deterministic width×height HEIC frame: opaque unless `alpha` is set.
+    fn fake_heic(width: u32, height: u32, alpha: Option<u8>) -> DecodedRgba {
+        let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+        for y in 0..height {
+            for x in 0..width {
+                rgba.extend_from_slice(&[
+                    ((x * 17) % 256) as u8,
+                    ((y * 23) % 256) as u8,
+                    ((x * y) % 256) as u8,
+                    alpha.unwrap_or(255),
+                ]);
+            }
+        }
+        DecodedRgba {
+            width,
+            height,
+            rgba,
+            frame_count: 1,
+        }
+    }
+
+    #[test]
+    fn heic_opaque_converts_to_every_output() {
+        let source = Path::new("C:\\fake\\photo.heic");
+        for output in ALL_OUTPUTS {
+            let options = ConvertOptions {
+                format: output,
+                jpeg_quality: 85,
+                background: RgbColor(255, 255, 255),
+                output_folder: None,
+            };
+            let converted =
+                convert_heic_with(&FakeDecoder(Ok(fake_heic(4, 2, None))), source, &options)
+                    .unwrap_or_else(|error| panic!("{output:?}: {error}"));
+            let result = image::load_from_memory(&converted).unwrap();
+            assert_eq!(result.dimensions(), (4, 2), "{output:?}");
+            // All-opaque HEIC collapses to RGB, so no output carries alpha.
+            assert_eq!(result.color(), image::ColorType::Rgb8, "{output:?}");
+        }
+    }
+
+    #[test]
+    fn heic_alpha_is_kept_or_flattened_per_output() {
+        let source = Path::new("C:\\fake\\photo.heic");
+        // First pixel fully transparent, the rest opaque.
+        let mut decoded = fake_heic(4, 2, None);
+        decoded.rgba[0..4].copy_from_slice(&[0, 0, 0, 0]);
+
+        for output in [OutputFormat::Png, OutputFormat::Webp, OutputFormat::Tiff] {
+            let options = ConvertOptions {
+                format: output,
+                jpeg_quality: 85,
+                background: RgbColor(255, 255, 255),
+                output_folder: None,
+            };
+            let converted = convert_heic_with(&FakeDecoder(Ok(decoded.clone())), source, &options)
+                .unwrap_or_else(|error| panic!("{output:?}: {error}"));
+            let result = image::load_from_memory(&converted).unwrap();
+            assert_eq!(result.color(), image::ColorType::Rgba8, "{output:?}");
+            assert_eq!(result.get_pixel(0, 0).0[3], 0, "{output:?}");
+        }
+
+        for output in [OutputFormat::Jpeg, OutputFormat::Bmp] {
+            let options = ConvertOptions {
+                format: output,
+                jpeg_quality: 95,
+                background: RgbColor(10, 20, 30),
+                output_folder: None,
+            };
+            let converted = convert_heic_with(&FakeDecoder(Ok(decoded.clone())), source, &options)
+                .unwrap_or_else(|error| panic!("{output:?}: {error}"));
+            let result = image::load_from_memory(&converted).unwrap();
+            let pixel = result.get_pixel(0, 0).0;
+            let close = pixel[..3]
+                .iter()
+                .zip([10u8, 20, 30])
+                .all(|(a, b)| i16::from(*a) - i16::from(b) <= 8);
+            assert!(close, "{output:?}: background pixel wrong: {pixel:?}");
+        }
+    }
+
+    #[test]
+    fn heic_all_opaque_collapses_to_rgb_in_memory() {
+        assert!(matches!(
+            heic_image(fake_heic(4, 2, None)).unwrap(),
+            DynamicImage::ImageRgb8(_)
+        ));
+        assert!(matches!(
+            heic_image(fake_heic(4, 2, Some(128))).unwrap(),
+            DynamicImage::ImageRgba8(_)
+        ));
+    }
+
+    #[test]
+    fn heic_rechecks_dimension_guards() {
+        let error = convert_heic_with(
+            &FakeDecoder(Ok(fake_heic(12_000, 12_000, None))),
+            Path::new("C:\\fake\\photo.heic"),
+            &png_options(),
+        )
+        .unwrap_err();
+        assert_eq!(error, "image has more than the 80 MP limit");
+    }
+
+    #[test]
+    fn heic_decoder_failures_become_the_exact_messages() {
+        let source = Path::new("C:\\fake\\photo.heic");
+        let failures = [
+            HeicFailure::CodecOrFile {
+                code: WINCODEC_ERR_COMPONENTNOTFOUND.0,
+            },
+            HeicFailure::Corrupt {
+                code: WINCODEC_ERR_BADHEADER.0,
+            },
+            HeicFailure::FileAccess {
+                code: 0x80070002u32 as i32,
+            },
+            HeicFailure::OutOfMemory,
+            HeicFailure::TooLarge,
+            HeicFailure::Other { code: E_FAIL.0 },
+        ];
+        for failure in &failures {
+            let error =
+                convert_heic_with(&FakeDecoder(Err(*failure)), source, &png_options()).unwrap_err();
+            assert_eq!(error, user_message(failure), "{failure:?}");
+            assert!(!error.trim().is_empty());
+        }
+        // Distinctive wording per class, as specified in 6a-5.
+        assert!(user_message(&failures[0]).contains("HEIF Image Extensions"));
+        assert!(user_message(&failures[0]).contains("0x88982F50"));
+        assert!(user_message(&failures[1]).contains("damaged or incomplete"));
+        assert!(user_message(&failures[2]).contains("in use by another program"));
+        assert!(user_message(&failures[3]).contains("Not enough memory"));
+        assert!(user_message(&failures[4]).contains("80 MP limit"));
+        assert!(user_message(&failures[5]).contains("could not decode"));
     }
 }

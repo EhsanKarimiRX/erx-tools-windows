@@ -86,6 +86,15 @@ fn inspect_one(path: &str) -> InspectedFile {
                 reason: Some(reason),
             }
         }
+        core::Inspection::Failed { reason } => InspectedFile {
+            path: path.to_string(),
+            file_name,
+            size_bytes: 0,
+            kind: "unsupported",
+            format: None,
+            animated: false,
+            reason: Some(reason),
+        },
         core::Inspection::Invalid { reason } => InspectedFile {
             path: path.to_string(),
             file_name,

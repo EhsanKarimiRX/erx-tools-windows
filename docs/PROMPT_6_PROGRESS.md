@@ -13,18 +13,18 @@ Read docs/PROMPT_6_SPEC.md (full prompt) and docs/PROMPT_6_DECISIONS.md. Continu
 | 6a-3..5 | heic module: sniff + errors | DONE | 15 sniff tests, 9 error tests |
 | 6a-6 | WIC decoder + live tests | DONE | 5 live tests pass; fixture decodes (64×64 "Exif" image); error codes calibrated |
 | 6a | Gates + commit | DONE | see Gates below |
-| 6b | Integration | NOT STARTED | |
-| 6c | Real-photo verification | NOT STARTED | (needs owner photos) |
+| 6b | Integration | DONE | 374 tests (+11), live 6/6; HEIC rotation not yet verified (6c) |
+| 6c | Real-photo verification | IN PROGRESS | (photos ready per owner: 200/201/202.HEIC) |
 | 6d | UI wording, docs, final | NOT STARTED | |
 (Status: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner)
 
-## Gates (last run, end of 6a)
-- npm run build: PASS (tsc + vite, 687ms)
+## Gates (last run, end of 6b)
+- npm run build: PASS (794ms)
 - cargo fmt --check: PASS
 - cargo clippy -- -D warnings: PASS
-- cargo test (count): 363 passed, 0 failed, 11 ignored (2 pre-existing live suites + 5 new live HEIC tests); baseline was 337 passing, so +26 new non-live tests
+- cargo test (count): 374 passed, 0 failed, 12 ignored (+1 live pipeline test); 6b added 11 non-live tests
 - ARM64 check: PASS (cargo check --target aarch64-pc-windows-msvc)
-- Live HEIC tests: 5/5 PASS (cargo test heic -- --ignored)
+- Live HEIC tests: 6/6 PASS (`cargo test heic -- --ignored`), incl. the new full-pipeline test: fixture → inspect Image(Heic) → JPEG/PNG/WebP/BMP/TIFF outputs decode back at 64×64, naming `photo.<ext>` and collision `photo (1).<ext>` correct, content-over-extension proven (fixture under `.jpg` name still Image(Heic))
 
 ## Verified facts
 - Baseline before any change: git clean at a1d95c2 ("Prompt 5h ... - 337 tests").
@@ -43,6 +43,9 @@ Read docs/PROMPT_6_SPEC.md (full prompt) and docs/PROMPT_6_DECISIONS.md. Continu
   - valid `ftypheic` header + garbage → same `0xC00D36BE` → **CodecOrFile** (same reasoning)
 - **(6a-7) Clippy findings fixed properly, not suppressed:** `chunks_exact(4)` → `as_chunks::<4>()` in sniff.rs; thread_local initializer made `const` in wic.rs.
 - **(6a-7) Temporary `#[allow(dead_code)]` on `pub mod heic`** in `image_convert/mod.rs` (with TODO(6b) comment): `mod tools;` is private in lib.rs, so the 6a scaffold is unreachable from the crate root until 6b wires it in — without the allowance `cargo clippy -D warnings` fails on 21 dead-code warnings. Removed in 6b.
+- **(6b-1)** `InputFormat::Heic` added (label "HEIC"); `matches_output` intentionally has no HEIC arm (input-only, never re-compresses). `from_image_format` unchanged: the `image` crate has no HEIF variant, so HEIC detection comes only from the new sniff fallback (6b-2). Spec note: "friendly_format_name for HEIC returns HEIC" cannot literally apply — that function maps `image::ImageFormat` values, which include no HEIC variant; the HEIC display name flows through `InputFormat::label()`. Temporary dead-code allowance REMOVED in this step.
+- **(6b-2)** `Inspection::Failed { reason }` added (new variant) and mapped in both consumers: `commands.rs inspect_one` → kind "unsupported" with the custom reason; `pipeline.rs convert_one_file` → per-file Err(reason). `inspect_path` now falls back to `heic_or_unsupported` ONLY when the `image` crate sniff returns None: reads the first 256 bytes (`File::take`), sniffs, and routes: Heic → `wic::dimensions` (80 MP guard inside) → `Image{Heic}` or `Failed{user_message}`; Avif → existing `NotSupported{Some("AVIF")}` ("AVIF is not supported in v1" preserved); OtherHeif → `Failed{"unsupported HEIF variant"}`; NotHeif → existing `NotSupported{None}` ("not a recognized image"). The 256 MB limit is already enforced before this point; content decides, never the extension.
+- **(6b-3/4)** `convert.rs` gained the `HeicDecoder` trait seam (`Send + Sync`), the production `WicDecoder` (static default via `default_heic_decoder()`), `heic_image` (re-checks the 80 MP guard, collapses all-opaque RGBA to RGB, keeps alpha otherwise; `// TODO(6c): orientation` comment in place — NO orientation applied yet), `convert_heic_with(decoder, source, options)` and `convert_heic(source, options)`. `pipeline.rs convert_one_file` routes `InputFormat::Heic` to `convert_heic` (path-based WIC) and everything else to the existing stream path. `DecodedRgba` got `Clone` (fake-decoder tests) and a documented `#[allow(dead_code)]` on `frame_count` (spec-mandated field, read by live tests; production consumers come in 6c/6d). Deviation note: `RgbaImage::from_raw` failure (unreachable decoder-contract bug) uses a plain message "Windows returned HEIC pixels in an unexpected size" instead of `HeicFailure::Other` — an `Other` message would print a meaningless "(Windows error 0x00000000)".
 
 ## Dependencies / features added
 - `src-tauri/Cargo.toml`: `windows = { version = "0.62", default-features = false, features = ["Win32_Graphics_Imaging", "Win32_System_Com", "Win32_Foundation"] }` (more features only if the compiler demands them). No other dependency/feature/permission changes.

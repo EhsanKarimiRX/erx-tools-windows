@@ -7,8 +7,8 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
-use super::convert::convert_stream;
-use super::core::{ConvertOptions, Inspection, inspect_path};
+use super::convert::{convert_heic, convert_stream};
+use super::core::{ConvertOptions, InputFormat, Inspection, inspect_path};
 use super::naming::choose_output_path;
 
 /// What one successful conversion produced.
@@ -35,6 +35,7 @@ pub fn convert_one_file(source: &Path, options: &ConvertOptions) -> Result<Conve
                 None => "not a recognized image".to_string(),
             });
         }
+        Inspection::Failed { reason } => return Err(reason),
         Inspection::Invalid { reason } => return Err(reason),
     };
 
@@ -43,11 +44,17 @@ pub fn convert_one_file(source: &Path, options: &ConvertOptions) -> Result<Conve
     let output_path =
         choose_output_path(source, same_format, options, |candidate| candidate.exists())?;
 
-    let file = match File::open(source) {
-        Ok(file) => file,
-        Err(_) => return Err("cannot open the file".into()),
+    // HEIC goes through its own path-based decoder (Windows WIC) instead of
+    // the byte-stream converters; everything else decodes from the stream.
+    let data = if info.format == InputFormat::Heic {
+        convert_heic(source, options)?
+    } else {
+        let file = match File::open(source) {
+            Ok(file) => file,
+            Err(_) => return Err("cannot open the file".into()),
+        };
+        convert_stream(BufReader::new(file), info.animated, options)?
     };
-    let data = convert_stream(BufReader::new(file), info.animated, options)?;
     if std::fs::write(&output_path, &data).is_err() {
         let name = output_path.file_name().map_or_else(
             || "output".to_string(),
@@ -196,6 +203,51 @@ mod tests {
                 .unwrap_err()
                 .contains("not absolute")
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A file that sniffs as HEIC but is garbage inside: the real WIC path
+    /// fails deterministically with the honest message.
+    fn heic_garbage_bytes() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(168u32.to_be_bytes());
+        bytes.extend_from_slice(b"ftyp");
+        bytes.extend_from_slice(b"heic");
+        bytes.extend_from_slice(b"\0\0\0\0");
+        bytes.extend([0u8; 24]);
+        bytes.extend([0xA5u8; 128]);
+        bytes
+    }
+
+    /// One failing HEIC must never stop its neighbors, and results stay in
+    /// list order (the batch command gives every file its own result slot).
+    #[test]
+    fn heic_failures_do_not_stop_neighbors() {
+        let dir = temp_dir("heic-batch");
+        let broken1 = write_file(&dir, "broken1.heic", &heic_garbage_bytes());
+        let good = write_file(&dir, "good.png", &small_png());
+        let broken2 = write_file(&dir, "broken2.heic", &heic_garbage_bytes());
+
+        let results: Vec<Result<ConvertOutcome, String>> = [&broken1, &good, &broken2]
+            .iter()
+            .map(|path| convert_one_file(path, &jpeg_options()))
+            .collect();
+
+        assert!(
+            results[0].as_ref().unwrap_err().contains("Windows error"),
+            "{:?}",
+            results[0]
+        );
+        assert_eq!(
+            results[1].as_ref().unwrap().output_path,
+            dir.join("good.jpg")
+        );
+        assert!(
+            results[2].as_ref().unwrap_err().contains("Windows error"),
+            "{:?}",
+            results[2]
+        );
+        assert!(dir.join("good.jpg").exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

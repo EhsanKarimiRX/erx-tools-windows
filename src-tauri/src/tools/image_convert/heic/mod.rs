@@ -11,3 +11,6 @@
 pub mod error;
 pub mod sniff;
 pub mod wic;
+
+#[cfg(test)]
+mod live_test;
