@@ -1,15 +1,12 @@
-//! Update check backend: pure decision logic (version, release, result)
-//! plus the Windows HTTP client and the Tauri commands that use them.
+//! Update check backend: pure decision logic (version, release, result),
+//! the WinHTTP network layer and the Tauri commands.
 //!
 //! The check runs only when the user clicks the update button on the home
 //! screen — never automatically. One HTTPS GET to GitHub's releases API is
 //! the app's only network access (see DECISIONS.md, Prompt 9).
 
-// Nothing consumes this module outside its own tests until 9c registers the
-// commands (same pattern as folder_icon/probe.rs's allow(dead_code));
-// removed when the commands land in 9c.
-#![allow(dead_code)]
-
+pub mod commands;
+pub mod http;
 pub mod release;
 pub mod result;
 pub mod version;

@@ -18,6 +18,7 @@ pub fn run() {
         .manage(tools::image_convert::commands::BatchState::default())
         .manage(tools::folder_icon::commands::BatchState::default())
         .manage(tools::system_manager::awake::commands::AwakeRuntime::default())
+        .manage(tools::update_check::commands::UpdateState::default())
         .setup(|app| {
             // Awake startup: resolve the state folder, run the app-start
             // reconcile (R4) and start the 5-second background thread.
@@ -76,6 +77,10 @@ pub fn run() {
             tools::system_manager::organize::commands::organize_undo,
             tools::system_manager::quick_launch::commands::quick_launch_info,
             tools::system_manager::quick_launch::commands::quick_launch_open,
+            // Update check: the app's only network access (R3), run solely
+            // when the user clicks the update button on the home screen.
+            tools::update_check::commands::check_for_updates,
+            tools::update_check::commands::open_update_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

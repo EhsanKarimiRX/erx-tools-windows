@@ -9,14 +9,14 @@ use super::version::parse_version;
 
 /// How the HTTP layer answered. Pure data, so `decide` is unit-testable
 /// without any Windows calls.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HttpOutcome {
     Response { status: u32, body: Vec<u8> },
     Error(HttpErrorKind),
 }
 
 /// The classification of an HTTP-layer failure.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HttpErrorKind {
     CannotReach,
     TimedOut,
