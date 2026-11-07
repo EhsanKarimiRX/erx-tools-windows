@@ -1,8 +1,10 @@
 [package]
 name = "erx-tools"
 version = "0.1.0"
-description = "ERX Tools for Windows - a lightweight offline toolbox"
+description = "A small, offline toolbox for Windows."
 authors = ["EhsanKarimiRX"]
+license = "MIT"
+repository = "https://github.com/EhsanKarimiRX/erx-tools-windows"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -2,6 +2,14 @@
   "name": "erx-tools",
   "private": true,
   "version": "0.1.0",
+  "description": "A small, offline toolbox for Windows.",
+  "author": "EhsanKarimiRX",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EhsanKarimiRX/erx-tools-windows.git"
+  },
+  "homepage": "https://github.com/EhsanKarimiRX/erx-tools-windows",
   "type": "module",
   "scripts": {
     "dev": "vite",
