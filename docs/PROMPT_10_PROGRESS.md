@@ -8,8 +8,8 @@ Read docs/PROMPT_10_SPEC.md (full prompt). Continue at the first step not DONE. 
 | 10a | Setup, version 0.2.0, NSIS settings, static CRT, prerequisites | DONE | Commit d701c78; all gates green; STOP after this step per spec |
 | 10b | Third-party licenses (non-blocking) | SKIPPED — MPL-2.0 crates in Rust dependency tree (see Deviation notes) | cargo-about 0.9.3 installed and works; retry recipe recorded |
 | 10c | Release build script | DONE | scripts/build-release.mjs (reference impl used verbatim); dry-run verified |
-| 10d | Build four installers | IN PROGRESS | x64 both variants OK; ARM64 needed a linker-discovery fix (see Deviation notes) — full script re-run for final set |
-| 10e | Verify installers | NOT STARTED | |
+| 10d | Build four installers | DONE | 5 files in release-artifacts/v0.2.0/; commit fe07c23 (ARM64 linker fix); see 10d verified facts |
+| 10e | Verify installers | DONE | all checks green incl. install/start/uninstall smoke test; no tracked files changed → no commit |
 | 10f | RELEASING.md, release notes, README | NOT STARTED | |
 | 10g | Final verification | NOT STARTED | |
 (Status: NOT STARTED / IN PROGRESS / DONE / BLOCKED — waiting for owner / SKIPPED — reason)
@@ -47,6 +47,20 @@ Log: target/p10-gates.log (git-ignored).
 - 10c: Cargo's real build directory IS `src-tauri/target` (`cargo metadata` reports `target_directory: C:\dev\erxtools\src-tauri\target`; today's check/clippy/test artifacts are fresh there). The root `C:\dev\erxtools\target\` holds stale leftovers from an earlier layout and is git-ignored; no config file or env var redirects cargo. → The reference script's `nsisDir` paths (`src-tauri/target[/<triple>]/release/bundle/nsis`) are correct as written. Output file-name pattern (`_<version>_<arch>-setup.exe` suffix match) still to be confirmed on the first real build in 10d.
 - 10c: `node scripts/build-release.mjs --dry-run` printed exactly 4 sections (x64 download / x64 offline / arm64 download / arm64 offline) with the right `npm run tauri build -- …` command lines and `RELEASE BUILD DONE`, exit 0, and created NO `release-artifacts/` folder.
 - 10c: How the version-mismatch protection works (explained instead of breaking real files, per spec): at startup the script reads `tauri.conf.json` `version`, `package.json` `version`, and the first `version = "…"` in `src-tauri/Cargo.toml`; if any two differ it prints `RELEASE BUILD FAILED: version mismatch: tauri.conf.json=…, package.json=…, Cargo.toml=…` and exits 1 before building anything. All three are currently 0.2.0, so the guard passes silently.
+## Verified facts (10d/10e — final set)
+- Final script run (retry 2) produced exactly 5 files in `release-artifacts/v0.2.0/` (RELEASE BUILD DONE, exit 0): x64-setup 2,387,606 B; x64-setup-with-webview2 220,107,384 B (209.9 MB); arm64-setup 2,098,581 B; arm64-setup-with-webview2 195,652,936 B (186.6 MB); SHA256SUMS.txt. The ARM64 offline WebView2 download (fwlink 2099617) failed once with `Peer disconnected` (transient, same as x64 earlier) and succeeded on the single retry allowed by 10d-4.
+- Gates re-run after the 10d config change (target/p10-10d-gates.log): fmt 0, clippy 0, test 0 (**417 passed, 0 failed, 20 ignored**), ARM64 check 0.
+- 10e-1 PE machine types: x64 app exe `0x8664`, ARM64 app exe `0xAA64` (both `erx-tools.exe`, package name verified from Cargo.toml + build log).
+- 10e-2 CRT check: `vcruntime140` / `vcruntime140_1` / `msvcp140` appear in NEITHER app exe → static CRT confirmed for real; the Visual C++ Redistributable is NOT a requirement.
+- 10e-3 version metadata: app exe ProductName "ERX Tools for Windows", ProductVersion/FileVersion 0.2.0, CompanyName "EhsanKarimiRX", LegalCopyright "Copyright (c) 2026 EhsanKarimiRX", FileDescription "ERX Tools for Windows". Installer (NSIS): same name/version/copyright/description, CompanyName empty (normal for the NSIS stub).
+- 10e-4 all four SHA-256 recomputed = MATCH with SHA256SUMS.txt. Offline deltas: x64 +207.6 MB, arm64 +184.6 MB (both ≥ 50 MB → offline mode was applied).
+- 10e-5 smoke test of the x64 STANDARD installer (all PASS, script target/install_test.ps1):
+  1. Pre-checks: no running *erx* process, no uninstall registry entry.
+  2. Silent install `/S`: exit 0, 2.1 s (WebView2 already present, no download).
+  3. Install folder `%LOCALAPPDATA%\ERX Tools for Windows` ([VERIFY] confirmed via registry InstallLocation); contains `erx-tools.exe` (7,159,808 B) and `uninstall.exe`; no THIRD_PARTY_LICENSES.md (expected — 10b skipped); HKCU uninstall entry "ERX Tools for Windows" v0.2.0; Start Menu shortcut `...\Start Menu\Programs\ERX Tools for Windows.lnk`.
+  4. App started, after 6 s process `erx-tools` running with Responding=True; stopped cleanly.
+  5. Silent uninstall: folder gone within ~2 s.
+  6. After uninstall: folder gone, registry entry gone, shortcut gone. App data `%APPDATA%\com.erxtools.windows` REMAINS after silent uninstall (normal NSIS behavior; reported as the spec requires).
 ## Open questions for the owner
 - 10b: 5 Rust crates in the (Tauri-transitive) dependency tree are MPL-2.0, which the spec puts on the STOP list. If the owner ever decides MPL-2.0 is acceptable (it is a weak copyleft license commonly used by Mozilla projects; filing this as a question, not an action), 10b can be completed later via the retry recipe above. Nothing in v0.2.0 depends on this.
 ## Verified facts (10d, first run)
