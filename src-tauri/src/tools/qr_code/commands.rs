@@ -3,6 +3,7 @@
 //! the webview needs no permissions beyond `core:default`.
 
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
@@ -60,9 +61,8 @@ pub struct QrSvg {
     pub level_used: String,
     pub char_count: usize,
     pub max_chars: usize,
-    /// Exact PNG side length after snapping to whole pixels per module.
+    /// Side of the saved PNG (the requested export size, used exactly).
     pub png_pixels: u32,
-    pub png_pixels_per_module: u32,
     pub warnings: Vec<String>,
 }
 
@@ -107,7 +107,6 @@ fn to_qr_svg(built: core::BuiltQr) -> QrSvg {
         char_count: built.char_count,
         max_chars: built.max_chars,
         png_pixels: built.png_pixels,
-        png_pixels_per_module: built.png_pixels_per_module,
         warnings: built.warnings,
     }
 }
@@ -122,10 +121,34 @@ pub fn generate_qr(options: QrOptionsDto) -> Result<QrSvg, ToolError> {
         .map_err(ToolError::Internal)
 }
 
-/// Builds the QR SVG and lets the user pick a save location in the native
-/// Save As dialog, then writes the file. Returns the written path, or
-/// `None` when the dialog was cancelled. The dialog's own overwrite
-/// confirmation is the only overwrite protection (never silent).
+/// The extension rule for saved files: the final file name always ends
+/// with the expected extension. A name that already has it (any casing)
+/// is kept exactly as typed; anything else gets the extension APPENDED —
+/// like Windows' own save dialogs — so "report" becomes "report.png" and
+/// a mistyped "report.jpg" becomes "report.jpg.png" instead of silently
+/// dropping what the user typed. Trailing dots/spaces are trimmed first
+/// (Windows ignores them in file names anyway). The check only looks at
+/// the final path component, so dots in folder names ("D:\my.folder\a")
+/// are never mistaken for an extension.
+fn with_extension(path: &Path, extension: &str) -> PathBuf {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return path.to_path_buf();
+    };
+    let trimmed = name.trim_end_matches(['.', ' ']);
+    let wanted = format!(".{extension}");
+    let fixed = if trimmed.to_ascii_lowercase().ends_with(&wanted) {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}{wanted}")
+    };
+    path.with_file_name(fixed)
+}
+
+/// Builds the QR SVG and lets the user choose a location in the native
+/// SAVE dialog (confirm button "Save", with the standard overwrite
+/// prompt), then writes the file. The chosen name always ends up with the
+/// .svg extension. Returns the written path, or `None` when the dialog
+/// was cancelled (nothing written, no message).
 #[tauri::command]
 pub fn save_qr_svg(app: AppHandle, options: QrOptionsDto) -> Result<Option<String>, ToolError> {
     let request = to_build_request(options);
@@ -136,13 +159,19 @@ pub fn save_qr_svg(app: AppHandle, options: QrOptionsDto) -> Result<Option<Strin
         .file()
         .add_filter("SVG image", &["svg"])
         .set_file_name("qr-code.svg")
-        .blocking_pick_file();
-    let Some(path) = target else {
+        .blocking_save_file();
+    let Some(target) = target else {
         return Ok(None); // cancelled — nothing written
     };
-    let path = path
-        .into_path()
-        .map_err(|_| ToolError::Internal("The chosen save location is not valid.".into()))?;
+    let path = with_extension(
+        &target
+            .into_path()
+            .map_err(|_| ToolError::Internal("The chosen save location is not valid.".into()))?,
+        "svg",
+    );
+    if path.as_os_str().is_empty() {
+        return Ok(None); // nothing chosen — never write
+    }
 
     std::fs::write(&path, built.svg.as_bytes()).map_err(|_| {
         ToolError::Internal("Windows refused to write the SVG file. Check the folder.".into())
@@ -150,9 +179,11 @@ pub fn save_qr_svg(app: AppHandle, options: QrOptionsDto) -> Result<Option<Strin
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// Builds the QR code, rasterizes it at the snapped size and lets the user
-/// pick a save location in the native Save As dialog, then writes the PNG.
-/// Returns the written path, or `None` when the dialog was cancelled.
+/// Builds the QR code, rasterizes it at the exact export size and lets
+/// the user choose a location in the native SAVE dialog (confirm button
+/// "Save", with the standard overwrite prompt), then writes the PNG. The
+/// chosen name always ends up with the .png extension. Returns the
+/// written path, or `None` when the dialog was cancelled.
 #[tauri::command]
 pub fn save_qr_png(app: AppHandle, options: QrOptionsDto) -> Result<Option<String>, ToolError> {
     let request = to_build_request(options);
@@ -164,6 +195,7 @@ pub fn save_qr_png(app: AppHandle, options: QrOptionsDto) -> Result<Option<Strin
         built.foreground,
         built.background,
         built.png_pixels,
+        built.plate.as_ref(),
         built.logo.as_ref(),
     )
     .map_err(ToolError::Internal)?;
@@ -173,13 +205,19 @@ pub fn save_qr_png(app: AppHandle, options: QrOptionsDto) -> Result<Option<Strin
         .file()
         .add_filter("PNG image", &["png"])
         .set_file_name("qr-code.png")
-        .blocking_pick_file();
-    let Some(path) = target else {
+        .blocking_save_file();
+    let Some(target) = target else {
         return Ok(None); // cancelled — nothing written
     };
-    let path = path
-        .into_path()
-        .map_err(|_| ToolError::Internal("The chosen save location is not valid.".into()))?;
+    let path = with_extension(
+        &target
+            .into_path()
+            .map_err(|_| ToolError::Internal("The chosen save location is not valid.".into()))?,
+        "png",
+    );
+    if path.as_os_str().is_empty() {
+        return Ok(None); // nothing chosen — never write
+    }
 
     std::fs::write(&path, png).map_err(|_| {
         ToolError::Internal("Windows refused to write the PNG file. Check the folder.".into())
@@ -313,5 +351,29 @@ mod tests {
         )
         .expect("builds");
         assert!(svg.svg.starts_with("<svg"));
+    }
+
+    /// The save-dialog name fix: the final file always ends with the
+    /// expected extension, nothing typed is silently replaced.
+    #[test]
+    fn save_paths_always_get_the_right_extension() {
+        let png = |p: &str| with_extension(Path::new(p), "png");
+        let svg = |p: &str| with_extension(Path::new(p), "svg");
+
+        // No extension: appended.
+        assert_eq!(png("a"), PathBuf::from("a.png"));
+        assert_eq!(svg("b"), PathBuf::from("b.svg"));
+        // Right extension in any casing: kept exactly as typed.
+        assert_eq!(png("a.PNG"), PathBuf::from("a.PNG"));
+        assert_eq!(png("qr-code.png"), PathBuf::from("qr-code.png"));
+        assert_eq!(svg("B.SVG"), PathBuf::from("B.SVG"));
+        // A different extension is NOT replaced: append instead.
+        assert_eq!(png("a.jpg"), PathBuf::from("a.jpg.png"));
+        assert_eq!(svg("a.png"), PathBuf::from("a.png.svg"));
+        // Dots in folder names never count as the file's extension.
+        assert_eq!(png(r"C:\my.folder\a"), PathBuf::from(r"C:\my.folder\a.png"));
+        // Trailing dots/spaces are trimmed like Windows does.
+        assert_eq!(png("a."), PathBuf::from("a.png"));
+        assert_eq!(png("a . "), PathBuf::from("a.png"));
     }
 }

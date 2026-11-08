@@ -110,6 +110,14 @@
   font-weight: 600;
 }
 
+/* A locked level (a logo forces H): clearly unavailable but still
+   readable — dimmer than a normal unselected segment, no pointer. There
+   is deliberately no hover rule, so it never lights up. */
+.qr-seg-locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Colors. */
 .qr-color-row {
   display: flex;

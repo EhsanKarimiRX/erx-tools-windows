@@ -1,6 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import type { QrOptions } from "./types";
 import {
-  DEFAULT_PNG_SIZE,
   MAX_MARGIN,
   MAX_PNG_SIZE,
   MIN_MARGIN,
@@ -22,10 +22,11 @@ interface OptionsPanelProps {
   margin: number;
   onMargin: (value: number) => void;
   pngSize: number;
-  onPngSize: (value: number) => void;
-  /** Shown exactly as Rust reports it (snapped to whole modules). */
-  pngPixels: number | null;
-  pngPixelsPerModule: number | null;
+  /** Called on every change: the parsed size when the typed value is a
+   * valid in-range integer, null while the field is invalid/in progress. */
+  onPngSize: (value: number | null) => void;
+  /** Canvas side in modules (grid + quiet zone) of the current preview. */
+  totalModules: number | null;
   /** With a logo (3C) the level is forced to H and locked. */
   levelLocked: boolean;
 }
@@ -37,8 +38,87 @@ const LEVELS: { value: QrOptions["errorCorrection"]; label: string }[] = [
   { value: "H", label: "H" },
 ];
 
-/** Style, colors, error correction, margin and PNG size controls. */
+/** How long the "not available while a logo is added" note stays up. */
+const LOCKED_NOTE_MS = 4000;
+
+/** Style, colors, error correction, margin and export size controls. */
 export default function OptionsPanel(props: OptionsPanelProps) {
+  // The typed export size: kept as raw text while typing so the user can
+  // always type freely (no per-keystroke clamping). Only a valid in-range
+  // integer is sent up; everything else reports null until it is fixed.
+  const [rawSize, setRawSize] = useState(String(props.pngSize));
+  const [sizeError, setSizeError] = useState(false);
+
+  // The "not available" note for locked error-correction levels: shown on
+  // activation of a locked level, auto-hidden after a few seconds, never
+  // stacked (another click only resets the timer).
+  const [lockedNote, setLockedNote] = useState(false);
+  const noteTimer = useRef<number | null>(null);
+
+  function clearNoteTimer() {
+    if (noteTimer.current !== null) {
+      window.clearTimeout(noteTimer.current);
+      noteTimer.current = null;
+    }
+  }
+
+  // Removing the logo hides the note at once; unmount never leaves a
+  // timer behind.
+  useEffect(() => {
+    if (!props.levelLocked) {
+      clearNoteTimer();
+      setLockedNote(false);
+    }
+    return clearNoteTimer;
+  }, [props.levelLocked]);
+
+  /** A locked level stays focusable and announces why it does nothing;
+   * unlocked levels pass straight through. */
+  function onLevelClick(value: QrOptions["errorCorrection"]) {
+    if (props.levelLocked && value !== "H") {
+      setLockedNote(true);
+      clearNoteTimer();
+      noteTimer.current = window.setTimeout(() => {
+        setLockedNote(false);
+        noteTimer.current = null;
+      }, LOCKED_NOTE_MS);
+      return;
+    }
+    props.onErrorCorrection(value);
+  }
+
+  // Pixels per module the export size would give for the current code —
+  // used only for the "may be hard to scan" hint.
+  const pixelsPerModule =
+    props.totalModules !== null ? props.pngSize / props.totalModules : null;
+
+  /** Digits only, no sign or decimal point; returns the size when the
+   * text is a whole number inside the allowed range. */
+  function parseExportSize(text: string): number | null {
+    if (!/^\d{1,4}$/.test(text)) return null;
+    const parsed = Number(text);
+    return parsed >= MIN_PNG_SIZE && parsed <= MAX_PNG_SIZE ? parsed : null;
+  }
+
+  function onSizeChange(text: string) {
+    const digits = text.replace(/\D/g, "").slice(0, 4);
+    setRawSize(digits);
+    setSizeError(false);
+    props.onPngSize(parseExportSize(digits));
+  }
+
+  /** Blur/Enter: accept and normalize a valid value ("01080" -> "1080"),
+   * or show the inline error and revert the text to the last valid size. */
+  function commitSize() {
+    if (parseExportSize(rawSize) === null) {
+      setSizeError(true);
+      setRawSize(String(props.pngSize));
+      props.onPngSize(props.pngSize); // field is valid again
+    } else {
+      setRawSize(String(Number(rawSize)));
+    }
+  }
+
   return (
     <>
       {/* ----- style ----- */}
@@ -182,23 +262,29 @@ export default function OptionsPanel(props: OptionsPanelProps) {
           role="radiogroup"
           aria-label="Error correction level"
         >
-          {LEVELS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={props.errorCorrection === value}
-              className={
-                props.errorCorrection === value
-                  ? "qr-seg qr-seg-active"
-                  : "qr-seg"
-              }
-              disabled={props.levelLocked && value !== "H"}
-              onClick={() => props.onErrorCorrection(value)}
-            >
-              {label}
-            </button>
-          ))}
+          {LEVELS.map(({ value, label }) => {
+            const active = props.errorCorrection === value;
+            const locked = props.levelLocked && value !== "H";
+            return (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                aria-disabled={locked || undefined}
+                className={
+                  active
+                    ? "qr-seg qr-seg-active"
+                    : locked
+                      ? "qr-seg qr-seg-locked"
+                      : "qr-seg"
+                }
+                onClick={() => onLevelClick(value)}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
         <p className="qr-hint">
           Higher levels survive damage better but make the code denser.
@@ -206,6 +292,12 @@ export default function OptionsPanel(props: OptionsPanelProps) {
             ? " H is required while a logo covers the center."
             : " Q is a good default."}
         </p>
+        {props.levelLocked && lockedNote && (
+          <p className="qr-hint-warning" role="status" aria-live="polite">
+            Not available while a logo is added. Logos need error correction
+            level H.
+          </p>
+        )}
       </div>
 
       {/* ----- margin ----- */}
@@ -231,33 +323,49 @@ export default function OptionsPanel(props: OptionsPanelProps) {
         </p>
       </div>
 
-      {/* ----- PNG size ----- */}
+      {/* ----- export size ----- */}
       <div className="qr-fieldset">
         <div className="qr-color-row">
           <label className="qr-label" htmlFor="qr-png-size">
-            PNG size
+            Export size (PNG)
           </label>
-          <span className="qr-value">
-            {props.pngPixels !== null && props.pngPixelsPerModule !== null
-              ? `saves at ${props.pngPixels} × ${props.pngPixels} px (${props.pngPixelsPerModule} px/module)`
-              : `${props.pngSize} px requested`}
-          </span>
+          <div className="qr-color-controls">
+            <input
+              id="qr-png-size"
+              type="text"
+              inputMode="numeric"
+              className={`qr-hex-input${sizeError ? " qr-hex-invalid" : ""}`}
+              value={rawSize}
+              onChange={(event) => onSizeChange(event.target.value)}
+              onBlur={commitSize}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitSize();
+              }}
+              maxLength={4}
+              spellCheck={false}
+              aria-label="Export size in pixels"
+              aria-invalid={sizeError}
+              aria-describedby={sizeError ? "qr-png-size-error" : undefined}
+            />
+            <span className="qr-value">px</span>
+          </div>
         </div>
-        <input
-          id="qr-png-size"
-          type="range"
-          className="qr-range"
-          min={MIN_PNG_SIZE}
-          max={MAX_PNG_SIZE}
-          step={16}
-          value={props.pngSize}
-          onChange={(event) => props.onPngSize(Number(event.target.value))}
-        />
+        {sizeError ? (
+          <p id="qr-png-size-error" className="qr-error" role="alert">
+            Enter a size between 256 and 4096 px
+          </p>
+        ) : (
+          <p className="qr-hint">
+            saves at {props.pngSize} × {props.pngSize} px
+          </p>
+        )}
         <p className="qr-hint">
-          Snapped down to a whole number of pixels per module so every edge
-          stays perfectly sharp. {DEFAULT_PNG_SIZE} px is plenty for most
-          uses.
+          Preview is not to scale. This only changes the saved PNG. SVG is
+          always scalable.
         </p>
+        {pixelsPerModule !== null && pixelsPerModule < 4 && (
+          <p className="qr-hint-warning">Small size: code may be hard to scan.</p>
+        )}
       </div>
     </>
   );

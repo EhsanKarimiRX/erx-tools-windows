@@ -54,23 +54,49 @@ impl QrStyle {
     }
 }
 
-/// Area in module coordinates (inside the QR grid, without margin) whose
-/// dark modules are removed — used to clear space for a centered logo.
+/// Area in GRID coordinates whose dark modules are removed — used to clear
+/// space for a centered logo. GRID coordinates are the matrix alone: the
+/// matrix's top-left module is (0,0) and the quiet-zone margin is NOT
+/// included (canvas coordinates — used by `LogoDraw` — shift everything by
+/// `margin`). `build_shapes` tests modules at exactly these grid positions,
+/// so a rect centered on `matrix_size / 2` lands under the centered logo.
+///
+/// `radius` rounds the area's corners (0 = plain rectangle). Constructors
+/// must keep `radius <= (x1 - x0) / 2` — the containment test clamps with
+/// that assumption.
 #[derive(Debug, Clone, Copy)]
 pub struct ClearRect {
     pub x0: f64,
     pub y0: f64,
     pub x1: f64,
     pub y1: f64,
+    /// Corner radius in module units; 0 = square.
+    pub radius: f64,
 }
 
 impl ClearRect {
+    /// True when the point lies inside the (rounded) rectangle: the
+    /// distance from the point to the rectangle clamped into the corner
+    /// radii must not exceed the radius. Radius 0 degenerates to the
+    /// exact plain-rectangle test.
+    fn contains_point(&self, x: f64, y: f64) -> bool {
+        let clamped_x = x.clamp(self.x0 + self.radius, self.x1 - self.radius);
+        let clamped_y = y.clamp(self.y0 + self.radius, self.y1 - self.radius);
+        let dx = x - clamped_x;
+        let dy = y - clamped_y;
+        dx * dx + dy * dy <= self.radius * self.radius
+    }
+
     /// True when the module with the given top-left corner lies fully
-    /// inside the area. Modules are only removed whole, so partially
-    /// covered edge modules stay and keep the outline clean.
+    /// inside the area: all four cell corners must be inside the (rounded)
+    /// rectangle. Modules are only removed whole, so partially covered
+    /// edge modules stay and keep the outline clean.
     fn contains_module(&self, x: usize, y: usize) -> bool {
         let (mx, my) = (x as f64, y as f64);
-        mx >= self.x0 && my >= self.y0 && (mx + 1.0) <= self.x1 && (my + 1.0) <= self.y1
+        self.contains_point(mx, my)
+            && self.contains_point(mx + 1.0, my)
+            && self.contains_point(mx + 1.0, my + 1.0)
+            && self.contains_point(mx, my + 1.0)
     }
 }
 
@@ -161,8 +187,10 @@ pub fn build_shapes(
     shapes
 }
 
-/// Where and how to draw the centered logo, in module coordinates of the
-/// total canvas. Both backends consume the same prepared PNG.
+/// Where and how to draw the centered logo, in CANVAS coordinates of the
+/// total rendered square (quiet zone included: the QR grid starts at
+/// (margin, margin) and the canvas side is `total_modules`). Both backends
+/// consume the same prepared PNG.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LogoDraw {
     /// Top-left corner in module coordinates.
@@ -177,6 +205,23 @@ pub struct LogoDraw {
 /// Top-left corners of the three 7x7 finder blocks.
 fn finder_origins(size: usize) -> [(usize, usize); 3] {
     [(0, 0), (size - 7, 0), (0, size - 7)]
+}
+
+/// The rounded "plate" drawn behind the logo, in CANVAS coordinates (the
+/// same system as `LogoDraw`: quiet zone included). It is the cleared
+/// area's rounded rectangle shifted by `margin`, filled with the
+/// background color over the modules and under the logo, so the hole's
+/// edge is clean and really rounded. Only produced for the Rounded style
+/// with an opaque background.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LogoPlate {
+    /// Top-left corner in canvas coordinates.
+    pub x: f64,
+    pub y: f64,
+    /// Plate side in module coordinates.
+    pub size: f64,
+    /// Corner radius in module coordinates.
+    pub radius: f64,
 }
 
 /// True when (x, y) lies inside one of the three 7x7 finder blocks.
@@ -265,7 +310,7 @@ fn append_closed_path(out: &mut Vec<Segment>, corners: [(f64, f64); 4], radii: [
 }
 
 /// One rounded rectangle as a closed subpath, appended to `out`.
-fn rounded_rect(x: f64, y: f64, w: f64, h: f64, r: f64) -> Vec<Segment> {
+pub(crate) fn rounded_rect(x: f64, y: f64, w: f64, h: f64, r: f64) -> Vec<Segment> {
     let corners = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)];
     let r = r.clamp(0.0, w.min(h) / 2.0);
     let mut out = Vec::with_capacity(10);
@@ -428,6 +473,7 @@ mod tests {
             y0: 2.0,
             x1: 4.0,
             y1: 4.0,
+            radius: 0.0,
         };
         let with = build_shapes(&matrix, QrStyle::Sharp, 0, Some(clear));
         let without = build_shapes(&matrix, QrStyle::Sharp, 0, None);
@@ -445,6 +491,7 @@ mod tests {
             y0: 4.5,
             x1: 5.5,
             y1: 5.5,
+            radius: 0.0,
         };
         assert_eq!(
             dark_count(&build_shapes(&matrix, QrStyle::Sharp, 0, Some(partial))),

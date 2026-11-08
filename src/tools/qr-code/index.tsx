@@ -57,6 +57,9 @@ export default function QrCodeGenerator() {
     useState<QrOptions["errorCorrection"]>("Q");
   const [margin, setMargin] = useState(DEFAULT_MARGIN);
   const [pngSize, setPngSize] = useState(DEFAULT_PNG_SIZE);
+  // False while the export-size field holds an invalid/in-progress value;
+  // the last valid size keeps driving the preview, Save PNG is blocked.
+  const [exportSizeValid, setExportSizeValid] = useState(true);
   const [logo, setLogo] = useState<PreparedLogo | null>(null);
   const [logoPercent, setLogoPercent] = useState(DEFAULT_LOGO_PERCENT);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -81,6 +84,17 @@ export default function QrCodeGenerator() {
     setLogo(next);
     setErrorCorrection(next ? "H" : "Q");
     setLogoError(null);
+  }
+
+  /** Typed export size: null while the field is invalid (nothing is
+   * committed then); a valid integer updates the size immediately. */
+  function handleExportSize(value: number | null) {
+    if (value === null) {
+      setExportSizeValid(false);
+    } else {
+      setExportSizeValid(true);
+      setPngSize(value);
+    }
   }
 
   const content: QrContent =
@@ -257,9 +271,8 @@ export default function QrCodeGenerator() {
           margin={margin}
           onMargin={setMargin}
           pngSize={pngSize}
-          onPngSize={setPngSize}
-          pngPixels={result?.pngPixels ?? null}
-          pngPixelsPerModule={result?.pngPixelsPerModule ?? null}
+          onPngSize={handleExportSize}
+          totalModules={result?.totalModules ?? null}
           levelLocked={logo !== null}
         />
 
@@ -305,8 +318,16 @@ export default function QrCodeGenerator() {
             type="button"
             className="button-primary"
             onClick={() => save("png")}
-            disabled={!canGenerate || preview.status !== "ok" || saving !== null}
-            title={canGenerate ? undefined : "Enter some content first"}
+            disabled={
+              !canGenerate || preview.status !== "ok" || saving !== null || !exportSizeValid
+            }
+            title={
+              !canGenerate
+                ? "Enter some content first"
+                : !exportSizeValid
+                  ? "Fix the export size first"
+                  : undefined
+            }
           >
             {saving === "png" ? "Saving…" : "Save PNG"}
           </button>

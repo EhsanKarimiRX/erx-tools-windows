@@ -6,19 +6,21 @@
 //! pattern), so no user string can break out of the markup.
 
 use super::colors::Rgb;
-use super::geometry::{FillRule, LogoDraw, Segment, Shape};
+use super::geometry::{FillRule, LogoDraw, LogoPlate, Segment, Shape};
 
 /// Renders the complete SVG document for the given shapes.
 ///
 /// `total` is the canvas side in module units (grid + both margins). The
 /// document has a `viewBox` but no fixed width/height, so it scales to any
 /// display size (preview) and file size (export). `background` is omitted
-/// entirely when transparent.
+/// entirely when transparent. The `plate` (Rounded style + logo, opaque
+/// background) is drawn over the module paths and under the logo image.
 pub fn render(
     shapes: &[Shape],
     total: f64,
     foreground: Rgb,
     background: Option<Rgb>,
+    plate: Option<&LogoPlate>,
     logo: Option<&LogoDraw>,
 ) -> String {
     let mut svg = String::with_capacity(2048 + shapes.len() * 256);
@@ -55,6 +57,21 @@ pub fn render(
             FillRule::EvenOdd => " fill-rule=\"evenodd\"",
         };
         svg.push_str(&format!("\" fill=\"{}\"{}/>", foreground.hex(), rule));
+    }
+
+    if let (Some(plate), Some(background)) = (plate, background) {
+        // The rounded plate covers the square hole edge: filled with the
+        // background color, over the modules and under the logo. Its
+        // geometry is our own validated numbers, so no escaping concerns.
+        svg.push_str(&format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\"/>",
+            num(plate.x),
+            num(plate.y),
+            num(plate.size),
+            num(plate.size),
+            num(plate.radius),
+            background.hex()
+        ));
     }
 
     if let Some(logo) = logo {
@@ -103,6 +120,7 @@ mod tests {
             Rgb::parse("#112233").unwrap(),
             background,
             None,
+            None,
         )
     }
 
@@ -128,7 +146,14 @@ mod tests {
         let secret = "SUPER-SECRET-payload-123";
         let matrix = Matrix::from_text(secret, Ecc::Low).expect("fits");
         let shapes = build_shapes(&matrix, QrStyle::Sharp, 4, None);
-        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None, None);
+        let svg = render(
+            &shapes,
+            29.0,
+            Rgb::parse("#000000").unwrap(),
+            None,
+            None,
+            None,
+        );
         assert!(!svg.contains(secret));
         // Even escaped fragments of it must not appear.
         assert!(!svg.contains("SECRET"));
@@ -138,7 +163,14 @@ mod tests {
     fn evenodd_gets_attribute_nonzero_does_not() {
         let matrix = Matrix::from_text("ab", Ecc::Low).expect("fits");
         let shapes = build_shapes(&matrix, QrStyle::Round, 4, None);
-        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None, None);
+        let svg = render(
+            &shapes,
+            29.0,
+            Rgb::parse("#000000").unwrap(),
+            None,
+            None,
+            None,
+        );
         assert_eq!(svg.matches("fill-rule=\"evenodd\"").count(), 3); // 3 rings
         assert_eq!(svg.matches("fill=\"#000000\"").count(), 7); // all shapes
     }
@@ -157,7 +189,66 @@ mod tests {
     fn rounded_geometry_produces_quadratic_curves() {
         let matrix = Matrix::from_text("a", Ecc::Low).expect("fits");
         let shapes = build_shapes(&matrix, QrStyle::Round, 4, None);
-        let svg = render(&shapes, 29.0, Rgb::parse("#000000").unwrap(), None, None);
+        let svg = render(
+            &shapes,
+            29.0,
+            Rgb::parse("#000000").unwrap(),
+            None,
+            None,
+            None,
+        );
         assert!(svg.contains('Q'), "rounded style must contain quad curves");
+    }
+
+    #[test]
+    fn plate_rect_sits_between_modules_and_logo() {
+        let plate = LogoPlate {
+            x: 10.0,
+            y: 10.0,
+            size: 8.0,
+            radius: 1.8,
+        };
+        let logo = LogoDraw {
+            x: 12.0,
+            y: 12.0,
+            size: 4.0,
+            png_base64: "QUJD".into(),
+        };
+        let svg = render(
+            &[],
+            29.0,
+            Rgb::parse("#000000").unwrap(),
+            Some(Rgb::parse("#ffffff").unwrap()),
+            Some(&plate),
+            Some(&logo),
+        );
+        assert!(svg.contains(
+            "<rect x=\"10\" y=\"10\" width=\"8\" height=\"8\" rx=\"1.8\" fill=\"#ffffff\"/>"
+        ));
+        let plate_pos = svg.find("<rect x=\"10\"").expect("plate rect present");
+        let image_pos = svg.find("<image").expect("logo image present");
+        assert!(plate_pos < image_pos, "plate must be drawn under the logo");
+    }
+
+    #[test]
+    fn no_plate_without_a_background() {
+        // Even when a plate is passed, it is only drawn when a background
+        // color exists (transparent backgrounds get no plate).
+        let plate = LogoPlate {
+            x: 10.0,
+            y: 10.0,
+            size: 8.0,
+            radius: 1.8,
+        };
+        let svg = render(
+            &[],
+            29.0,
+            Rgb::parse("#000000").unwrap(),
+            None,
+            Some(&plate),
+            None,
+        );
+        assert!(!svg.contains("<rect"));
+        assert!(!svg.contains("rx="));
     }
 }

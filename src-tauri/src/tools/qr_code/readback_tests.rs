@@ -20,6 +20,7 @@ fn roundtrip(request: &BuildRequest) -> String {
         built.foreground,
         built.background,
         768, // comfortable density for the decoder
+        built.plate.as_ref(),
         None,
     )
     .expect("real renderer must work");
@@ -88,7 +89,7 @@ fn request(content: ContentInput) -> BuildRequest {
         transparent: false,
         error_correction: "Q".into(),
         margin: 4,
-        png_size: 1024,
+        png_size: 1080,
         logo: None,
     }
 }
@@ -152,6 +153,7 @@ fn transparent_background_survives_composited_on_white() {
         built.foreground,
         built.background,
         768,
+        built.plate.as_ref(),
         None,
     )
     .expect("renders");
@@ -173,6 +175,7 @@ fn inverted_code_survives_after_pixel_inversion() {
         built.foreground,
         built.background,
         768,
+        built.plate.as_ref(),
         None,
     )
     .expect("renders");
@@ -206,10 +209,97 @@ fn logo_code_still_decodes_and_forces_h() {
         built.foreground,
         built.background,
         768,
+        built.plate.as_ref(),
         built.logo.as_ref(),
     )
     .expect("renders");
     assert_eq!(decode_png_text(&png), "https://example.com/logo");
+}
+
+#[test]
+fn logo_with_margin_4_and_exact_export_size_decodes() {
+    // Regression for the centered-hole fix (margin 4 was enough to knock
+    // the cleared area off the logo) and the exact export size: the PNG
+    // must be exactly the requested side and still decode.
+    let img = image::RgbaImage::from_pixel(512, 512, image::Rgba([30, 120, 200, 255]));
+    let mut png_bytes = Vec::new();
+    image::DynamicImage::ImageRgba8(img)
+        .write_to(
+            &mut std::io::Cursor::new(&mut png_bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    let logo_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png_bytes);
+
+    let mut req = request(ContentInput::Website("https://example.com/margin4".into()));
+    req.error_correction = "Q".into(); // must be forced up to H
+    req.margin = 4;
+    req.logo = Some(core::LogoInput {
+        png_base64: logo_b64,
+        fraction: 0.10,
+    });
+    let built = core::build(&req).expect("builds");
+    assert_eq!(built.level_used, super::matrix::Ecc::High);
+    let png = super::raster::render_png(
+        &built.shapes,
+        built.total_modules,
+        built.foreground,
+        built.background,
+        built.png_pixels, // the exact requested export size
+        built.plate.as_ref(),
+        built.logo.as_ref(),
+    )
+    .expect("renders");
+    let decoded = image::load_from_memory(&png).expect("our PNG decodes");
+    assert_eq!(
+        (decoded.width(), decoded.height()),
+        (built.png_pixels, built.png_pixels)
+    );
+    assert_eq!(decode_png_text(&png), "https://example.com/margin4");
+}
+
+#[test]
+fn rounded_style_with_logo_and_plate_at_1080_decodes() {
+    // Rounded style + logo + margin 4, exported at the default 1080: the
+    // rounded plate must not break scanning, and the file must be exactly
+    // 1080 × 1080.
+    let img = image::RgbaImage::from_pixel(512, 512, image::Rgba([180, 30, 30, 255]));
+    let mut png_bytes = Vec::new();
+    image::DynamicImage::ImageRgba8(img)
+        .write_to(
+            &mut std::io::Cursor::new(&mut png_bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    let logo_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png_bytes);
+
+    let mut req = request(ContentInput::Website("https://example.com/rounded".into()));
+    req.style = "round".into();
+    req.error_correction = "Q".into(); // must be forced up to H
+    req.margin = 4;
+    req.logo = Some(core::LogoInput {
+        png_base64: logo_b64,
+        fraction: 0.15,
+    });
+    let built = core::build(&req).expect("builds");
+    assert_eq!(built.level_used, super::matrix::Ecc::High);
+    assert!(
+        built.plate.is_some(),
+        "rounded style with an opaque background must draw the plate"
+    );
+    let png = super::raster::render_png(
+        &built.shapes,
+        built.total_modules,
+        built.foreground,
+        built.background,
+        built.png_pixels,
+        built.plate.as_ref(),
+        built.logo.as_ref(),
+    )
+    .expect("renders");
+    let decoded = image::load_from_memory(&png).expect("our PNG decodes");
+    assert_eq!((decoded.width(), decoded.height()), (1080, 1080));
+    assert_eq!(decode_png_text(&png), "https://example.com/rounded");
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //! No Tauri types here, so the whole pipeline is unit testable.
 
 use super::colors::{self, Rgb};
-use super::geometry::{self, ClearRect, LogoDraw, QrStyle, Shape};
+use super::geometry::{self, ClearRect, LogoDraw, LogoPlate, QrStyle, Shape};
 use super::matrix::{self, Ecc, Matrix};
 use super::payload::{self, WifiOptions, WifiSecurity};
 use super::raster;
@@ -14,7 +14,7 @@ use super::svg;
 pub const MIN_MARGIN: usize = 1;
 pub const MAX_MARGIN: usize = 10;
 
-/// Requested PNG export sizes: the allowed range (default 1024 lives in
+/// Requested PNG export sizes: the allowed range (default 1080 lives in
 /// the UI).
 pub const MIN_PNG_SIZE: i32 = raster::MIN_PNG_SIZE as i32;
 pub const MAX_PNG_SIZE: i32 = raster::MAX_PNG_SIZE as i32;
@@ -27,6 +27,10 @@ pub const MAX_LOGO_FRACTION: f64 = 0.20;
 pub const LOGO_NEAR_MAX: f64 = 0.18;
 /// One module of extra clearing on every side around the logo.
 pub const LOGO_CLEAR_PADDING_MODULES: f64 = 1.0;
+/// Corner radius of the cleared area (and the plate drawn over it) as a
+/// fraction of its side, Rounded style only; clamped to at most half the
+/// side so opposite corners can never overlap.
+pub const LOGO_PLATE_RADIUS_FRACTION: f64 = 0.22;
 
 /// What the user wants to encode, as raw (unvalidated) UI input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,7 +98,7 @@ pub struct BuildRequest {
     /// "L", "M", "Q" or "H".
     pub error_correction: String,
     pub margin: i32,
-    /// Requested PNG side length in pixels (snapped down to whole modules).
+    /// Requested PNG side length in pixels (used exactly for the export).
     pub png_size: i32,
     pub logo: Option<LogoInput>,
 }
@@ -111,13 +115,16 @@ pub struct BuiltQr {
     pub background: Option<Rgb>,
     /// The logo overlay for both backends, if any.
     pub logo: Option<LogoDraw>,
+    /// The rounded plate drawn behind the logo (Rounded style with an
+    /// opaque background only), in canvas coordinates; both renderers
+    /// draw it over the modules and under the logo.
+    pub plate: Option<LogoPlate>,
     /// QR side length in modules (without the quiet zone).
     pub size_modules: usize,
     /// QR side length including both margins.
     pub total_modules: usize,
-    /// Exact PNG side length after snapping to whole pixels per module.
+    /// Side length of the saved PNG (the requested size, used exactly).
     pub png_pixels: u32,
-    pub png_pixels_per_module: u32,
     /// Level actually used (differs from the request when a logo forced H).
     pub level_used: Ecc,
     /// Payload length in characters, for the live counter.
@@ -162,10 +169,15 @@ pub fn build(request: &BuildRequest) -> Result<BuiltQr, String> {
         .map_err(|too_long| matrix::too_long_message(too_long.max_chars))?;
     let total_modules = matrix.size() + 2 * margin;
 
-    // The cleared module area is slightly larger than the logo (one module
-    // of padding on every side). With a background it fills with the
-    // background color automatically; transparent backgrounds simply stay
-    // empty behind the logo.
+    // The logo rect lives in CANVAS coordinates (the rendered square with
+    // the quiet zone; its center is total_modules/2). The cleared module
+    // area is slightly larger than the logo (one module of padding on
+    // every side) and lives in GRID coordinates (the matrix alone, origin
+    // at its top-left module), because build_shapes checks modules by
+    // their grid positions. Both centers are the same point of the code:
+    // size/2 + margin = total/2. With a background the cleared area fills
+    // with the background color automatically; transparent backgrounds
+    // simply stay empty behind the logo.
     let logo_draw = logo.map(|input| {
         let size = input.fraction * total_modules as f64;
         let center = total_modules as f64 / 2.0;
@@ -176,16 +188,25 @@ pub fn build(request: &BuildRequest) -> Result<BuiltQr, String> {
             png_base64: input.png_base64.clone(),
         }
     });
-    let clear = logo_draw.as_ref().map(|draw| {
-        let side = draw.size + 2.0 * LOGO_CLEAR_PADDING_MODULES;
-        let center = total_modules as f64 / 2.0;
-        ClearRect {
-            x0: center - side / 2.0,
-            y0: center - side / 2.0,
-            x1: center + side / 2.0,
-            y1: center + side / 2.0,
-        }
-    });
+    let clear = logo_draw
+        .as_ref()
+        .map(|draw| logo_clear_rect(draw.size, matrix.size(), style));
+
+    // Rounded style with an opaque background: the plate is the cleared
+    // area's rounded rectangle shifted into canvas coordinates (+ margin),
+    // drawn by both renderers over the modules and under the logo so the
+    // hole's edge is clean and really rounded. Transparent backgrounds get
+    // no plate (a plate would paint a color that does not exist); square
+    // styles keep the plain hole with no plate at all.
+    let plate = match (style, background) {
+        (QrStyle::Round, Some(_)) => clear.as_ref().map(|area| LogoPlate {
+            x: area.x0 + margin as f64,
+            y: area.y0 + margin as f64,
+            size: area.x1 - area.x0,
+            radius: area.radius,
+        }),
+        _ => None,
+    };
 
     let shapes = geometry::build_shapes(&matrix, style, margin, clear);
     let svg_text = svg::render(
@@ -193,9 +214,9 @@ pub fn build(request: &BuildRequest) -> Result<BuiltQr, String> {
         total_modules as f64,
         foreground,
         background,
+        plate.as_ref(),
         logo_draw.as_ref(),
     );
-    let snapped = raster::snap_size(total_modules, png_size);
 
     let mut warnings = colors::color_warnings(foreground, background);
     if request
@@ -217,13 +238,39 @@ pub fn build(request: &BuildRequest) -> Result<BuiltQr, String> {
         foreground,
         background,
         logo: logo_draw,
+        plate,
         size_modules: matrix.size(),
         total_modules,
-        png_pixels: snapped.pixels,
-        png_pixels_per_module: snapped.pixels_per_module,
+        png_pixels: png_size,
         level_used: ecc,
         warnings,
     })
+}
+
+/// The cleared area around a centered logo, in GRID coordinates: the
+/// matrix's top-left module is (0,0) and the quiet-zone margin is NOT
+/// included (canvas coordinates — used by `LogoDraw` — shift everything
+/// by `margin`). `build_shapes` checks modules by their grid positions,
+/// so this rect must use the same system: centered on the GRID center
+/// (`matrix_size / 2`) it lands exactly under the logo, whose canvas
+/// center is `total_modules / 2 = matrix_size / 2 + margin`.
+///
+/// Rounded style rounds the area's corners (`LOGO_PLATE_RADIUS_FRACTION`
+/// of the side); square styles keep the plain rectangle.
+fn logo_clear_rect(logo_size: f64, matrix_size: usize, style: QrStyle) -> ClearRect {
+    let side = logo_size + 2.0 * LOGO_CLEAR_PADDING_MODULES;
+    let center = matrix_size as f64 / 2.0;
+    let radius = match style {
+        QrStyle::Round => (side * LOGO_PLATE_RADIUS_FRACTION).min(side / 2.0),
+        QrStyle::Sharp => 0.0,
+    };
+    ClearRect {
+        x0: center - side / 2.0,
+        y0: center - side / 2.0,
+        x1: center + side / 2.0,
+        y1: center + side / 2.0,
+        radius,
+    }
 }
 
 /// Validates the logo input from the UI (never trusted): the fraction must
@@ -273,6 +320,9 @@ pub fn validate_png_size(size: i32) -> Result<u32, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
+    use super::geometry::Segment;
     use super::*;
 
     fn text_request(text: &str) -> BuildRequest {
@@ -284,7 +334,7 @@ mod tests {
             transparent: false,
             error_correction: "Q".into(),
             margin: 4,
-            png_size: 1024,
+            png_size: 1080,
             logo: None,
         }
     }
@@ -470,16 +520,225 @@ mod tests {
     }
 
     #[test]
-    fn png_size_range_is_enforced_and_snapped() {
+    fn png_size_range_is_enforced_and_used_exactly() {
         assert_eq!(validate_png_size(256), Ok(256));
         assert_eq!(validate_png_size(4096), Ok(4096));
         assert!(validate_png_size(255).is_err());
         assert!(validate_png_size(4097).is_err());
 
-        // The build reports the exact snapped size (29 modules at 1024 ->
-        // 35 px per module -> 1015).
+        // The build reports the requested size as-is (no snapping).
         let built = build(&text_request("Hello")).expect("builds");
-        assert_eq!(built.png_pixels as usize, built.total_modules * 35);
-        assert_eq!(built.png_pixels_per_module, 35);
+        assert_eq!(built.png_pixels, 1080);
+        let mut request = text_request("Hello");
+        request.png_size = 777;
+        assert_eq!(build(&request).expect("builds").png_pixels, 777);
+    }
+
+    /// Grid positions of every drawn dark module (sharp style draws exactly
+    /// one subpath per module; its MoveTo is the top-left corner in canvas
+    /// coordinates, so the margin is subtracted back off).
+    fn drawn_modules(shapes: &[Shape], margin: usize) -> HashSet<(usize, usize)> {
+        shapes[0]
+            .segments
+            .iter()
+            .filter_map(|segment| match *segment {
+                Segment::MoveTo(x, y) => {
+                    Some(((x - margin as f64) as usize, (y - margin as f64) as usize))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Pure hole geometry: on an all-dark grid the removed modules are
+    /// exactly the fully covered ones, so they must be mirror-symmetric
+    /// (horizontally, vertically and point-wise) around the center, for
+    /// odd and even sizes and for both styles (Rounded clears with a
+    /// rounded rect, Square with the plain one).
+    #[test]
+    fn logo_clear_rect_is_symmetric_on_an_all_dark_grid() {
+        for style in [QrStyle::Sharp, QrStyle::Round] {
+            for size in [21usize, 22, 29] {
+                let logo_size = 0.15 * (size as f64 + 8.0);
+                let clear = logo_clear_rect(logo_size, size, style);
+                // Mirror symmetry by construction: opposite edges sum to size.
+                assert!((clear.x0 + clear.x1 - size as f64).abs() < 1e-9);
+                assert!((clear.y0 + clear.y1 - size as f64).abs() < 1e-9);
+                assert!((clear.x1 - clear.x0 - (logo_size + 2.0)).abs() < 1e-9);
+                if style == QrStyle::Round {
+                    assert!(clear.radius > 0.0 && clear.radius <= (clear.x1 - clear.x0) / 2.0);
+                } else {
+                    assert_eq!(clear.radius, 0.0);
+                }
+
+                let all_dark = Matrix::from_dark_grid(size, vec![true; size * size]);
+                let shapes = geometry::build_shapes(&all_dark, QrStyle::Sharp, 0, Some(clear));
+                let drawn = drawn_modules(&shapes, 0);
+                let all: HashSet<(usize, usize)> = (0..size)
+                    .flat_map(|y| (0..size).map(move |x| (x, y)))
+                    .collect();
+                let removed: HashSet<(usize, usize)> = all.difference(&drawn).copied().collect();
+                assert!(!removed.is_empty(), "size {size}: nothing removed");
+                for &(x, y) in &removed {
+                    assert!(
+                        removed.contains(&(size - 1 - x, y))
+                            && removed.contains(&(x, size - 1 - y))
+                            && removed.contains(&(size - 1 - x, size - 1 - y)),
+                        "size {size}, style {style:?}: removed ({x},{y}) has no mirror"
+                    );
+                }
+                let min_x = removed.iter().map(|&(x, _)| x).min().unwrap();
+                let max_x = removed.iter().map(|&(x, _)| x).max().unwrap();
+                let bounds_center = (min_x + max_x + 1) as f64 / 2.0;
+                assert!(
+                    (bounds_center - size as f64 / 2.0).abs() <= 0.5,
+                    "size {size}: hole bounds center {bounds_center} vs {}",
+                    size as f64 / 2.0
+                );
+            }
+        }
+    }
+
+    /// Rounded style: the corner cells of the old square area are NOT
+    /// removed (the rounded corner only partially covers them), while the
+    /// cells in the middle of each side and the center ARE removed.
+    #[test]
+    fn rounded_clear_keeps_corner_cells_and_removes_side_cells() {
+        let size = 29usize;
+        let logo_size = 0.15 * 37.0; // production-like: side = 7.55 modules
+        let clear = logo_clear_rect(logo_size, size, QrStyle::Round);
+        assert!(clear.radius > 0.0);
+        assert!(clear.radius <= (clear.x1 - clear.x0) / 2.0);
+
+        let all_dark = Matrix::from_dark_grid(size, vec![true; size * size]);
+        let shapes = geometry::build_shapes(&all_dark, QrStyle::Sharp, 0, Some(clear));
+        let drawn = drawn_modules(&shapes, 0);
+        let is_removed = |x: usize, y: usize| !drawn.contains(&(x, y));
+
+        // First/last cells fully inside the plain bounding box.
+        let min_cell = clear.x0.ceil() as usize;
+        let max_cell = (clear.x1 - 1.0).floor() as usize;
+        assert!(min_cell < max_cell);
+        // The old square area's corner cells are kept.
+        assert!(!is_removed(min_cell, min_cell), "TL corner cell kept");
+        assert!(!is_removed(max_cell, min_cell), "TR corner cell kept");
+        assert!(!is_removed(min_cell, max_cell), "BL corner cell kept");
+        assert!(!is_removed(max_cell, max_cell), "BR corner cell kept");
+        // The middle cell of each side is removed.
+        let mid = (min_cell + max_cell) / 2;
+        assert!(is_removed(mid, min_cell), "top side middle removed");
+        assert!(is_removed(mid, max_cell), "bottom side middle removed");
+        assert!(is_removed(min_cell, mid), "left side middle removed");
+        assert!(is_removed(max_cell, mid), "right side middle removed");
+        // The center cell is removed.
+        assert!(is_removed(size / 2, size / 2), "center cell removed");
+    }
+
+    /// The plate exists only for Rounded style with an opaque background
+    /// and a logo; it matches the cleared area, shifted into canvas
+    /// coordinates, and its radius is proportional and clamped.
+    #[test]
+    fn plate_rules_by_style_and_background() {
+        let logo_base64 = test_logo_base64();
+
+        let mut rounded = text_request("Hello with logo");
+        rounded.style = "round".into();
+        rounded.error_correction = "H".into();
+        rounded.logo = Some(LogoInput {
+            png_base64: logo_base64,
+            fraction: 0.15,
+        });
+        let built = build(&rounded).expect("builds");
+        let plate = built
+            .plate
+            .as_ref()
+            .expect("rounded + opaque bg has a plate");
+        assert!(
+            (plate.x + plate.size / 2.0 - built.total_modules as f64 / 2.0).abs() < 1e-9,
+            "plate is centered on the canvas"
+        );
+        assert!((plate.x - plate.y).abs() < 1e-9, "plate is symmetric");
+        assert!(plate.radius > 0.0 && plate.radius <= plate.size / 2.0);
+
+        let mut square = rounded.clone();
+        square.style = "sharp".into();
+        assert!(
+            build(&square).expect("builds").plate.is_none(),
+            "square style has no plate"
+        );
+
+        let mut transparent = rounded.clone();
+        transparent.transparent = true;
+        assert!(
+            build(&transparent).expect("builds").plate.is_none(),
+            "transparent background has no plate"
+        );
+
+        let mut no_logo = text_request("Hello");
+        no_logo.style = "round".into();
+        assert!(
+            build(&no_logo).expect("builds").plate.is_none(),
+            "no logo means no plate"
+        );
+    }
+
+    /// The real pipeline: with a logo, the removed dark modules (compared
+    /// against the same payload without one) must form a hole centered
+    /// under the logo rect, for margins across the whole VALIDATED range
+    /// (1..=10; margin 0 is covered by the all-dark geometry test above
+    /// because build() rejects it before the geometry runs).
+    #[test]
+    fn logo_hole_is_centered_under_the_logo_for_several_margins() {
+        let logo_base64 = test_logo_base64();
+        for margin in [1usize, 4, 10] {
+            let mut plain = text_request("Hello with logo");
+            plain.error_correction = "H".into();
+            plain.margin = margin as i32;
+            let plain_built = build(&plain).expect("plain builds");
+
+            let mut with_logo = plain.clone();
+            with_logo.logo = Some(LogoInput {
+                png_base64: logo_base64.clone(),
+                fraction: 0.15,
+            });
+            let built = build(&with_logo).expect("logo builds");
+
+            let before = drawn_modules(&plain_built.shapes, margin);
+            let after = drawn_modules(&built.shapes, margin);
+            let removed: Vec<(usize, usize)> = before.difference(&after).copied().collect();
+            assert!(!removed.is_empty(), "margin {margin}: nothing removed");
+
+            let size = plain_built.size_modules;
+            let total = built.total_modules;
+            assert_eq!(total, size + 2 * margin);
+
+            // The hole's bounds, converted to canvas coords (+ margin), are
+            // centered on the code center.
+            let min_x = removed.iter().map(|&(x, _)| x).min().unwrap();
+            let max_x = removed.iter().map(|&(x, _)| x).max().unwrap();
+            let min_y = removed.iter().map(|&(_, y)| y).min().unwrap();
+            let max_y = removed.iter().map(|&(_, y)| y).max().unwrap();
+            let center_x = (min_x + max_x + 1) as f64 / 2.0 + margin as f64;
+            let center_y = (min_y + max_y + 1) as f64 / 2.0 + margin as f64;
+            assert!(
+                (center_x - total as f64 / 2.0).abs() <= 0.5
+                    && (center_y - total as f64 / 2.0).abs() <= 0.5,
+                "margin {margin}: hole center ({center_x}, {center_y}) vs {}",
+                total as f64 / 2.0
+            );
+
+            // The logo rect (canvas coords) lies fully inside the hole.
+            let logo = built.logo.as_ref().expect("logo present");
+            assert!(
+                logo.x >= min_x as f64 + margin as f64
+                    && logo.y >= min_y as f64 + margin as f64
+                    && logo.x + logo.size <= (max_x + 1) as f64 + margin as f64
+                    && logo.y + logo.size <= (max_y + 1) as f64 + margin as f64,
+                "margin {margin}: logo at ({}, {}) size {} not inside hole x[{min_x}, {max_x}] y[{min_y}, {max_y}]",
+                logo.x,
+                logo.y,
+                logo.size
+            );
+        }
     }
 }

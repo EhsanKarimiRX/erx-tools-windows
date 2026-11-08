@@ -52,9 +52,8 @@ export interface QrSvgResult {
   levelUsed: string;
   charCount: number;
   maxChars: number;
-  /** Exact PNG side after Rust snapped it to whole pixels per module. */
+  /** Exact side of the saved PNG (the requested export size, used as-is). */
   pngPixels: number;
-  pngPixelsPerModule: number;
   warnings: string[];
 }
 
@@ -77,7 +76,7 @@ export const MAX_MARGIN = 10;
 export const DEFAULT_MARGIN = 4;
 export const MIN_PNG_SIZE = 256;
 export const MAX_PNG_SIZE = 4096;
-export const DEFAULT_PNG_SIZE = 1024;
+export const DEFAULT_PNG_SIZE = 1080;
 /** Logo size slider range (percent of the QR width) and default. */
 export const MIN_LOGO_PERCENT = 10;
 export const MAX_LOGO_PERCENT = 20;
