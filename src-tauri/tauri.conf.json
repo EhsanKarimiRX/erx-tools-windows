@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ERX Tools for Windows",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.erxtools.windows",
   "build": {
     "beforeDevCommand": "npm run dev",
