@@ -1,7 +1,7 @@
 {
   "name": "erx-tools",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A small, offline toolbox for Windows.",
   "author": "EhsanKarimiRX",
   "license": "MIT",
