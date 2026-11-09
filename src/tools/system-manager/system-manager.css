@@ -307,6 +307,20 @@
   font-size: 13px;
 }
 
+/* The "Open Windows desktop icon settings" button opens a Windows window
+   OUTSIDE the app — a different kind of action than the switches — so it
+   gets a subtle accent-blue outline instead of the plain border. Reuses
+   .sm-ql-button for size/font/padding/disabled; only the colors change.
+   color-mix keeps it calm in both themes (no hard-coded colors). */
+.sm-ql-button.sm-icon-settings-button {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.sm-ql-button.sm-icon-settings-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
 /* ----- Organize section ----- */
 
 .sm-org-segments {
@@ -540,34 +554,6 @@
 
 /* ----- Command Tips section ----- */
 
-.sm-tip-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.sm-tip-heading {
-  margin: 4px 0 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.sm-tip {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.sm-tip:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
 .sm-tip-head {
   display: flex;
   align-items: baseline;
@@ -636,4 +622,70 @@
 .sm-tip-copy:hover {
   background: var(--surface-hover);
   border-color: var(--border-strong);
+}
+
+.sm-tip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* One command = one clearly separated card. */
+.sm-tip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.sm-tip-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sm-tip-step {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sm-tip-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.sm-tip-replace-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Sample text the user must replace: green, bold, faint tint. Light theme first, dark below. */
+.sm-tip-placeholder {
+  color: #15803d;
+  font-weight: 600;
+  background: color-mix(in srgb, #15803d 12%, transparent);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.sm-tip-more-toggle {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.sm-tip-more-body {
+  margin-top: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sm-tip-placeholder {
+    color: #4ade80;
+    background: color-mix(in srgb, #4ade80 14%, transparent);
+  }
 }

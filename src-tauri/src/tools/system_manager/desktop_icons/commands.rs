@@ -55,7 +55,10 @@ fn read_all(registry: &dyn RegistryBackend) -> Result<Vec<DesktopIconState>, Str
 /// The write→read-back flow, testable against the fake registry. Returns
 /// the visibility READ BACK after the write (the only thing the UI may
 /// show). A write or read-back failure is an error; the UI then reverts
-/// the switch and shows the message.
+/// the switch and shows the message. After the primary write+read-back
+/// succeeded, every legacy CLSID (see `DesktopIcon::legacy_clsids`) is
+/// also written best effort — failures are ignored and never reach the
+/// user, and no value is ever deleted.
 pub fn set_icon(
     registry: &dyn RegistryBackend,
     icon: DesktopIcon,
@@ -73,6 +76,9 @@ pub fn set_icon(
             "The setting was written but reads back as {}. Please try again.",
             if read_back { "shown" } else { "hidden" }
         ));
+    }
+    for legacy in icon.legacy_clsids() {
+        let _ = registry.write_dword(legacy, u32::from(!visible));
     }
     Ok(read_back)
 }
@@ -94,9 +100,46 @@ pub fn desktop_icons_set(id: String, visible: bool) -> Result<DesktopIconState, 
     })
 }
 
+/// Opens Windows' own "Desktop Icon Settings" dialog (the one behind
+/// Settings → Personalization → Themes → Desktop icon settings). Takes no
+/// frontend arguments — everything below is a fixed literal.
+#[tauri::command]
+pub fn desktop_icons_open_windows_settings() -> Result<(), ToolError> {
+    open_windows_desktop_icon_settings().map_err(ToolError::Internal)
+}
+
+/// Spawns `%SystemRoot%\System32\rundll32.exe` with the arguments
+/// `shell32.dll,Control_RunDLL` and `desk.cpl,,0` and returns immediately
+/// (the spawned dialog keeps running in its own process; the Child handle
+/// is dropped without waiting). The exe path is built from the SystemRoot
+/// environment variable — never from PATH — and the arguments are passed
+/// as real arguments: no shell, no cmd.exe, no PowerShell, no user input.
+#[cfg(windows)]
+fn open_windows_desktop_icon_settings() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+    let rundll32 = std::path::Path::new(&system_root)
+        .join("System32")
+        .join("rundll32.exe");
+    Command::new(&rundll32)
+        .args(["shell32.dll,Control_RunDLL", "desk.cpl,,0"])
+        .creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_child| ()) // intentionally not waited for
+        .map_err(|error| format!("Couldn't open the Windows desktop icon settings. ({error})"))
+}
+
+#[cfg(not(windows))]
+fn open_windows_desktop_icon_settings() -> Result<(), String> {
+    Err("ERX Tools System Manager needs Windows.".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::core::DesktopIcon;
+    use super::super::registry::RegistryBackend;
     use super::super::registry::fake::FakeRegistry;
     use super::{DesktopIconState, read_all, set_icon};
 
@@ -166,5 +209,60 @@ mod tests {
             visible: false,
         };
         assert_eq!(state.id, DesktopIcon::ThisPc.id());
+    }
+
+    #[test]
+    fn control_panel_write_reaches_primary_and_legacy() {
+        let registry = FakeRegistry::new();
+        let shown = set_icon(&registry, DesktopIcon::ControlPanel, true).expect("show");
+        assert!(shown);
+        assert_eq!(registry.get(DesktopIcon::ControlPanel.clsid()), Some(0));
+        assert_eq!(
+            registry.get(DesktopIcon::ControlPanel.legacy_clsids()[0]),
+            Some(0)
+        );
+        let hidden = set_icon(&registry, DesktopIcon::ControlPanel, false).expect("hide");
+        assert!(!hidden);
+        assert_eq!(registry.get(DesktopIcon::ControlPanel.clsid()), Some(1));
+        assert_eq!(
+            registry.get(DesktopIcon::ControlPanel.legacy_clsids()[0]),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_failing_legacy_write_never_fails_set_icon() {
+        let mut registry = FakeRegistry::new();
+        registry
+            .fail_writes_for
+            .push(DesktopIcon::ControlPanel.legacy_clsids()[0].to_string());
+        let shown = set_icon(&registry, DesktopIcon::ControlPanel, true)
+            .expect("the primary write must still succeed");
+        assert!(shown);
+        assert_eq!(registry.get(DesktopIcon::ControlPanel.clsid()), Some(0));
+        assert!(
+            registry
+                .get(DesktopIcon::ControlPanel.legacy_clsids()[0])
+                .is_none(),
+            "the failed legacy write leaves no value behind"
+        );
+    }
+
+    #[test]
+    fn read_all_uses_only_the_primary_clsid() {
+        let registry = FakeRegistry::new();
+        // Only the LEGACY name is set to 0 (would mean "shown" if it were read).
+        registry
+            .write_dword(DesktopIcon::ControlPanel.legacy_clsids()[0], 0)
+            .expect("seed legacy value");
+        let states = read_all(&registry).expect("read");
+        let control_panel = states
+            .iter()
+            .find(|state| state.id == "control_panel")
+            .expect("control panel row");
+        assert!(
+            !control_panel.visible,
+            "the legacy value must be ignored; an absent primary means the Windows default (hidden)"
+        );
     }
 }

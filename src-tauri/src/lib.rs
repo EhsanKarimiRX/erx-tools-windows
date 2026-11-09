@@ -69,6 +69,7 @@ pub fn run() {
             tools::system_manager::awake::commands::awake_exit,
             tools::system_manager::desktop_icons::commands::desktop_icons_get,
             tools::system_manager::desktop_icons::commands::desktop_icons_set,
+            tools::system_manager::desktop_icons::commands::desktop_icons_open_windows_settings,
             tools::system_manager::organize::commands::organize_pick_folder,
             tools::system_manager::organize::commands::organize_downloads_path,
             tools::system_manager::organize::commands::organize_scan,

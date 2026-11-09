@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import InfoNote from "./InfoNote";
 import SectionCard from "./SectionCard";
+import WarnNote from "./WarnNote";
 import type { DesktopIconState } from "./types";
 
 /** Turns anything thrown by invoke into a short display string. */
@@ -30,6 +31,8 @@ export default function DesktopIconsSection() {
   const [icons, setIcons] = useState<DesktopIconState[] | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const [openingSettings, setOpeningSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -76,6 +79,22 @@ export default function DesktopIconsSection() {
     [pendingId, refresh],
   );
 
+  // Opens Windows' own "Desktop Icon Settings" window. Separate from the
+  // switches' pendingId state on purpose: a pending launch must never block
+  // or revert the switches.
+  const openWindowsSettings = useCallback(async () => {
+    if (openingSettings) return;
+    setOpeningSettings(true);
+    setSettingsError(null);
+    try {
+      await invoke("desktop_icons_open_windows_settings");
+    } catch (error) {
+      setSettingsError(errorText(error));
+    } finally {
+      setOpeningSettings(false);
+    }
+  }, [openingSettings]);
+
   return (
     <SectionCard
       title="Desktop Icons"
@@ -87,6 +106,28 @@ export default function DesktopIconsSection() {
       </InfoNote>
 
       {icons === null && <p className="tool-placeholder">Checking the desktop icons…</p>}
+
+      {icons !== null && (
+        <>
+          <button
+            type="button"
+            className="sm-ql-button sm-icon-settings-button"
+            onClick={() => void openWindowsSettings()}
+            disabled={openingSettings}
+          >
+            Open Windows desktop icon settings
+          </button>
+          {settingsError !== null && (
+            <p className="sm-icon-row-error" role="alert">
+              Couldn't open the Windows settings window: {settingsError}
+            </p>
+          )}
+          <WarnNote>
+            When you hide an icon, Windows may move your other desktop icons into the free spot.
+            Windows does the same in its own settings window.
+          </WarnNote>
+        </>
+      )}
 
       {icons !== null && (
         <div className="sm-icon-rows">
@@ -118,6 +159,11 @@ export default function DesktopIconsSection() {
           Couldn't change this icon: {rowError.message}
         </p>
       )}
+
+      <InfoNote>
+        ERX Tools never moves or saves your icon positions. If your desktop layout changes, it is
+        caused by Windows itself, not by ERX Tools.
+      </InfoNote>
 
       <InfoNote>
         This changes the same settings as Windows Settings → Personalization → Themes → Desktop

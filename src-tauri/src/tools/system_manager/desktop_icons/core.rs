@@ -47,14 +47,33 @@ impl DesktopIcon {
     }
 
     /// The registry value name (the icon's CLSID, canonical casing as used
-    /// by Windows). Verified live — see docs/PROMPT_5_PROGRESS.md.
+    /// by Windows). The Control Panel CLSID was re-verified on Windows 11
+    /// build 26300 (26H2) by observing what Windows' own Desktop Icon
+    /// Settings dialog writes when the user ticks Control Panel: it writes
+    /// {5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}. The older GUID
+    /// {5399E694-6CE5-4D6D-8792-F8F34E1E2E6F} does not exist anywhere in
+    /// that build's registry and is kept only as a legacy write (see
+    /// `legacy_clsids`).
     pub fn clsid(self) -> &'static str {
         match self {
             DesktopIcon::ThisPc => "{20D04FE0-3AEA-1069-A2D8-08002B30309D}",
             DesktopIcon::RecycleBin => "{645FF040-5081-101B-9F08-00AA002F954E}",
-            DesktopIcon::ControlPanel => "{5399E694-6CE5-4D6D-8792-F8F34E1E2E6F}",
+            DesktopIcon::ControlPanel => "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}",
             DesktopIcon::Network => "{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}",
             DesktopIcon::UserFiles => "{59031a47-3f72-44a7-89c5-5595fe6b30ee}",
+        }
+    }
+
+    /// Older-Windows value names ALSO written, best effort, after the
+    /// primary write succeeded. Failures are ignored, the values are never
+    /// read back and never deleted. Only Control Panel has one: its pre-fix
+    /// GUID (verified absent on Windows 11 build 26300) is kept so older
+    /// Windows builds — where the shell may still key this icon under the
+    /// old CLSID — keep working. UNVERIFIED on any other build.
+    pub fn legacy_clsids(self) -> &'static [&'static str] {
+        match self {
+            DesktopIcon::ControlPanel => &["{5399E694-6CE5-4D6D-8792-F8F34E1E2E6F}"],
+            _ => &[],
         }
     }
 
@@ -139,5 +158,29 @@ mod tests {
             1
         );
         assert!(DesktopIcon::RecycleBin.default_visible());
+    }
+
+    #[test]
+    fn control_panel_uses_the_verified_clsids() {
+        // The value name Windows' own Desktop Icon Settings writes on
+        // Windows 11 build 26300 (owner-verified, 2026-11-08).
+        assert_eq!(
+            DesktopIcon::ControlPanel.clsid(),
+            "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}"
+        );
+        // The pre-fix GUID survives only as a best-effort legacy write.
+        assert_eq!(
+            DesktopIcon::ControlPanel.legacy_clsids(),
+            ["{5399E694-6CE5-4D6D-8792-F8F34E1E2E6F}"].as_slice()
+        );
+        // No other icon carries legacy names.
+        for icon in DesktopIcon::ALL {
+            if icon != DesktopIcon::ControlPanel {
+                assert!(
+                    icon.legacy_clsids().is_empty(),
+                    "{icon:?} must not have legacy CLSIDs"
+                );
+            }
+        }
     }
 }
