@@ -121,10 +121,18 @@ Manager.
 
 ## Command Tips
 
-A static, copy-only list of 11 verified commands (grouped Apps / Files /
-Repair / Network / System info) with badges for shell, administrator,
-duration and internet use. ERX Tools never runs them; there is no clipboard
-plugin — copying uses the browser clipboard with a plain fallback message.
+A static, copy-only list: 6 main commands plus 9 in the collapsed
+"More commands" drawer; no category headings. Multi-step commands have one
+box per step, each with its own Copy button. Placeholders are realistic
+sample text shown in green (angle brackets would break PowerShell commands).
+`winget upgrade --all` was removed on purpose (it can silently update tools
+such as Python and break projects) — the list shows how to update one app
+with `winget upgrade --id <Id> --exact` instead. The drawer starts with four
+hardware-check tips for checking a second-hand or suspicious laptop/PC:
+graphics card hardware IDs, BIOS model/serial, RAM modules and total, and
+drive size/model. Still static and copy-only: ERX Tools never runs them;
+there is no clipboard plugin — copying uses the browser clipboard with a
+plain fallback message.
 
 Two badge decisions came from live verification on the development machine
 (Windows 11 Pro, build 26300) rather than the usual assumptions:

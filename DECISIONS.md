@@ -965,3 +965,91 @@ message ever causes trouble.
   `norelease` / `failed`) returns fake results after a 700 ms delay so the
   owner can see every badge state before any release exists. It lives inside
   `#[cfg(debug_assertions)]` and never ships in release builds.
+
+## App rename to "ERX Tools" (Prompt 13, 2026-11-08)
+
+- **The installed app name, the main window title and the home-screen heading
+  become exactly "ERX Tools"** (`productName` and window title in
+  `src-tauri/tauri.conf.json`, `<title>` in `index.html`, `<h1>` in
+  `src/app/HomeScreen.tsx`). The GitHub project name stays
+  `erx-tools-windows`; repo URLs and historical docs are unchanged.
+- **Option chosen: productName change only.** The NSIS installer derives the
+  install folder, shortcut names and uninstall registry key from
+  `productName`, so v0.2.2 installs next to an existing "ERX Tools for
+  Windows" install instead of replacing it. The owner accepts this and will
+  tell users to uninstall the old app by hand.
+- **Rejected: NSIS `NSIS_HOOK_PREINSTALL` migration hook** (silently
+  uninstalling the old version first) — untestable by the agent without
+  running installers, and a broken hook risks breaking every install; too
+  few users to justify it.
+- **Rejected: custom NSIS template** (decoupling display names from registry
+  keys) — a ~970-line template copy must be kept in sync with every CLI
+  update; fragile.
+
+## Desktop Icons: Control Panel CLSID fix + Windows settings button (Prompt 13, 2026-11-08)
+
+- **Control Panel CLSID corrected** to `{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}`.
+  Evidence: on Windows 11 build 26300 (26H2) the owner ticked Control Panel in
+  Windows' own Desktop Icon Settings and Windows wrote exactly that value
+  (`= 0x0`) into `HKCU\...\HideDesktopIcons\NewStartPanel`; the GUID the app
+  used until now (`{5399E694-6CE5-4D6D-8792-F8F34E1E2E6F}`) does not exist
+  anywhere in that build's registry (not in `HKCR\CLSID`, not in the Desktop
+  namespace). Reading state always uses the new primary CLSID only.
+- **Old GUID kept as a best-effort legacy write** (`legacy_clsids`): after the
+  primary write+read-back succeeds, the old value name gets the same 0/1 so
+  older Windows builds — where the shell may still key the icon under the old
+  CLSID — keep working. UNVERIFIED on any other build; legacy write failures
+  are silently ignored and never shown to the user.
+- **Icons re-laying out when one is hidden is Windows' own behavior** — the
+  owner reproduced it with Windows' own settings dialog, and the app never
+  touches icon positions (zero IconLayouts/Bags/sort code). The refresh code
+  (ASSOCCHANGED + 0x7103) was left unchanged on purpose. Instead, a button
+  opens Windows' own dialog via `rundll32.exe shell32.dll,Control_RunDLL
+  desk.cpl,,0` (spawned from the SystemRoot path, CREATE_NO_WINDOW, both
+  arguments as fixed literals, never via a shell), and the section states
+  honestly that ERX Tools never moves or saves icon positions. The app never
+  guarantees icon order.
+
+## Command Tips redesign (Prompt 13, 2026-11-08)
+
+- **`winget upgrade --all` removed on purpose**: it can silently update dev
+  tools such as Python and break projects that depend on the old version.
+  Replaced by "Update one app": run `winget upgrade` to list, then update a
+  single app with `winget upgrade --id <AppId> --exact` (the new entry's
+  wording is new, but the command family was verified in Prompt 5f; the
+  `--id` variant was never executed here).
+- **Category headings (Apps/Files/Repair/Network/System info) removed**; the
+  main list keeps exactly 6 tips and the other 5 move into a collapsed
+  "More commands" drawer (closed by default, same state-toggle pattern as
+  the Awake options drawer).
+- **`<placeholders>` replaced by realistic sample text shown in green**
+  inside the code box (no angle brackets anywhere — `<…>` text breaks
+  PowerShell commands), each with a "Replace the green text with …" note
+  under its own box. Sample text is copied as-is, which is safe: every
+  default simply fails to resolve (nonexistent path / no matching package).
+- **One box per step**: multi-step commands (Wi-Fi password, Repair system
+  files) show each step as its own code box with its own Copy button and a
+  step label, so Copy always copies exactly the one line shown.
+- **Card layout**: each command is its own bordered card, so a note can
+  never look like it belongs to the next command.
+- Still frontend-only and static: no command is ever run by the app; the
+  copy fallback chain and the closing honesty note are unchanged. The green
+  colors are hard-coded (#15803d light / #4ade80 dark) because theme.css
+  has no green variable; the dark override uses the same
+  `@media (prefers-color-scheme: dark)` mechanism as theme.css.
+
+## Hardware-check tips added to "More commands" (Prompt 13, 2026-11-09)
+
+- **Four hardware-check tips added at the top of the "More commands"
+  drawer** (for checking a second-hand or suspicious laptop/PC):
+  graphics card hardware IDs, BIOS model/serial, RAM modules and total,
+  drive size/model.
+- **All are read-only PowerShell queries** (Get-CimInstance, Get-PhysicalDisk,
+  Get-Disk), still static copy-only text.
+- **They were NOT executed by the agent** (the output contains serial numbers
+  and hardware IDs) and are verified by the owner manually.
+- **A BIOS serial step was added** because the baseboard serial can differ
+  from the product serial.
+- The drawer now contains 9 tips total (4 new hardware + 5 existing);
+  `COMMAND_TIPS_MORE.length` drives the drawer label "More commands (9)"
+  automatically.

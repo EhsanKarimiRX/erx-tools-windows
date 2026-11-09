@@ -73,13 +73,18 @@ for strings produced by Rust — the file that owns them.
 |---|---|
 | Card title | Desktop Icons |
 | Card subtitle | Show or hide the standard desktop icons. |
-| Info note 1 | Changes apply to your Windows account only. If the desktop does not update by itself, click an empty spot on the desktop and press F5. |
+| Info note 1 (top, above the button) | Changes apply to your Windows account only. If the desktop does not update by itself, click an empty spot on the desktop and press F5. |
+| Button (moved above the switches in Prompt 13; subtle blue outline) | Open Windows desktop icon settings |
+| Button error | Couldn't open the Windows settings window: {message} |
+| Warning note (yellow, directly under the button) | When you hide an icon, Windows may move your other desktop icons into the free spot. Windows does the same in its own settings window. |
 | Loading text | Checking the desktop icons… |
 | Row names (from Rust, desktop_icons/core.rs) | This PC · Recycle Bin · Control Panel · Network · User's Files (your user folder) |
 | Row error | Couldn't change this icon: {message} |
-| Info note 2 | This changes the same settings as Windows Settings → Personalization → Themes → Desktop icon settings. |
+| Gray note (directly under the switches; replaces the old combined note) | ERX Tools never moves or saves your icon positions. If your desktop layout changes, it is caused by Windows itself, not by ERX Tools. |
+| Gray note (last) | This changes the same settings as Windows Settings → Personalization → Themes → Desktop icon settings. |
 | Read-back mismatch (Rust) | The setting was written but reads back as shown/hidden. Please try again. |
 | Written but unreadable (Rust) | The setting was written but could not be read back. |
+| Settings-open failure (Rust) | Couldn't open the Windows desktop icon settings. ({OS error}) |
 
 ## Organize (OrganizeSection.tsx + organize/*.rs) — RESTRUCTURED in Prompt 5h
 
@@ -172,41 +177,39 @@ for strings produced by Rust — the file that owns them.
 |---|---|
 | Card title | Command Tips |
 | Card subtitle | Handy Windows commands. Copy one, then paste it into PowerShell or Command Prompt (the buttons above open them). |
-| Group headings | Apps · Files · Repair · Network · System info |
 | Badges | {PowerShell / Command Prompt / Either} · Needs administrator · Can take a long time · Uses the internet |
 | Copy button | Copy → Copied (2 s) |
 | Copy failed | Couldn't copy. Select the text and press Ctrl+C. |
-| Placeholder caption | Replace the part in < > before running. |
+| Placeholder note (per step, under the code box) | Replace the green text with {replaceWith} — the words "green text" are themselves shown in green |
+| Drawer toggle (closed by default) | More commands (9) |
 | Closing note | These commands are only text. ERX Tools never runs them for you. |
 
-### Tip titles and explanations (commandTips.ts — full text)
+There are NO category headings anymore. Placeholders are realistic sample
+text shown in green inside the code box (no angle brackets anywhere).
+Multi-step commands show one code box per step, each with its own Copy
+button and a small step label.
 
-| Title | Explanation |
-|---|---|
-| List app updates | Shows which installed apps have updates. Uses the internet (winget does that; ERX Tools does not). Not every app appears. |
-| Update all apps | Slow, and it may show several permission (UAC) prompts while it works. Uses the internet. |
-| Show a folder tree | Lists folders and files under a folder. |
-| Check a downloaded file is intact | Prints the SHA-256 hash to compare with the value on the website you downloaded it from. |
-| Repair Windows system files | Run the first command, let it finish, then the second. Needs administrator and can take a long time. |
-| Flush the DNS cache | Can help with internet or website problems. Needs an administrator window on this PC (verified on Windows 11). |
-| Show a saved Wi-Fi password | Shows the saved password of a network on THIS PC. Private — do not share the output. Run the first command to see the network names. |
-| Laptop battery health report | Creates an HTML battery report in your user folder. Laptops only. The %USERPROFILE% part only works in Command Prompt (verified). |
-| System information | Prints the Windows version, RAM, uptime and more. |
-| Drives: size and health | Lists drives with size, free space and health. |
-| Top 10 CPU-hungry processes | Shows the ten processes that used the most CPU time. |
+### Main tips (COMMAND_TIPS_MAIN — 6 tips, in this order)
 
-### The commands themselves (copy text, exact)
+| Title | Explanation | Badges | Steps (exact copy text per step; green sample text in bold) |
+|---|---|---|---|
+| List app updates | Shows which installed apps have updates. It only lists them; nothing is installed. Uses the internet (winget does that; ERX Tools does not). Not every app appears. | Either · Uses the internet | `winget upgrade` |
+| Update one app | Updates ONE app. First run "List app updates" and copy the app's Id from the Id column. Update apps one at a time and only the ones you really need: updating a tool such as Python can break projects that depend on the old version. Windows may ask for permission (UAC). Uses the internet. | Either · Uses the internet | `winget upgrade --id ` + **Publisher.AppName** + ` --exact` — note: Replace the green text with the app's Id: copy it from the Id column of the "List app updates" result. If the Id looks cut off, make the window wider and run the list command again. |
+| Show a folder tree | Lists the folders and files inside a folder. For a big folder the result can be very long. | Either | `tree "` + **C:\path\to\folder** + `" /f` — note: Replace the green text with your own folder path. Keep the quotation marks. |
+| Laptop battery health report | Creates an HTML battery report named battery-report.html in your user folder. Laptops only. Use Command Prompt: the %USERPROFILE% part is not understood by PowerShell. | Command Prompt | `powercfg /batteryreport /output "%USERPROFILE%\battery-report.html"` |
+| System information | Prints the Windows version, RAM, uptime and more. | Either | `systeminfo` |
+| Show a saved Wi-Fi password | Shows the saved password of a Wi-Fi network on THIS PC. Private: do not share the output. In the result of Step 2, look for the line "Key Content". | Either | Step 1: list the saved networks → `netsh wlan show profiles`; Step 2: show the password → `netsh wlan show profile name="` + **NetworkName** + `" key=clear` — note: Replace the green text with the network name from Step 1. Keep the quotation marks. |
 
-| Title | Command(s) |
-|---|---|
-| List app updates | `winget upgrade` |
-| Update all apps | `winget upgrade --all` |
-| Show a folder tree | `tree "<folder path>" /f` |
-| Check a downloaded file is intact | `Get-FileHash "<file path>"` |
-| Repair Windows system files | `sfc /scannow` ⏎ `DISM /Online /Cleanup-Image /RestoreHealth` |
-| Flush the DNS cache | `ipconfig /flushdns` |
-| Show a saved Wi-Fi password | `netsh wlan show profiles` ⏎ `netsh wlan show profile name="<network name>" key=clear` |
-| Laptop battery health report | `powercfg /batteryreport /output "%USERPROFILE%\battery-report.html"` |
-| System information | `systeminfo` |
-| Drives: size and health | `Get-Volume` |
-| Top 10 CPU-hungry processes | `Get-Process | Sort-Object CPU -Descending | Select-Object -First 10` |
+### "More commands" drawer (COMMAND_TIPS_MORE — 9 tips, closed by default)
+
+| Title | Explanation | Badges | Steps (exact copy text per step; green sample text in bold) |
+|---|---|---|---|
+| Graphics card details | Shows your graphics card(s): name, maker, hardware ID (PNPDeviceID) and driver version. In the PNPDeviceID, look at the VEN_xxxx code: VEN_10DE = NVIDIA, VEN_1002 = AMD, VEN_8086 = Intel. If the card name says one thing but the VEN code says another, be suspicious. You can search the DEV_xxxx code on devicehunt.com or pci-ids.ucw.cz to see the real chip name. AdapterRAM is not reliable for cards with more than 4 GB of memory. | PowerShell | `Get-CimInstance Win32_VideoController | Select-Object Name, AdapterCompatibility, PNPDeviceID, DriverVersion, AdapterRAM` |
+| Laptop model and serial number (from BIOS) | Shows the maker, model and serial number stored in the BIOS (SMBIOS). Compare them with what the seller says, or enter the serial number on the brand's support site (Lenovo, HP, Dell, ASUS) to see the original specifications of that exact device. Step 3 shows the BIOS serial number, which support sites often ask for; the motherboard serial in Step 2 can be different or empty. A serial number is private: do not post it publicly. | PowerShell | Step 1: maker and model → `Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model, SystemFamily, SystemSKUNumber`; Step 2: motherboard → `Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer, Product, SerialNumber`; Step 3: BIOS serial number → `Get-CimInstance Win32_BIOS | Select-Object Manufacturer, SMBIOSBIOSVersion, SerialNumber` |
+| RAM modules and total size | Step 1 lists every RAM module with its part number, size (Capacity, in bytes) and speed (in MHz). Step 2 adds the sizes up and prints the total in GB. If the total is lower than what the seller advertised, something is wrong. | PowerShell | Step 1: each module → `Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel, Manufacturer, PartNumber, Capacity, Speed, SerialNumber`; Step 2: total size in GB → `(Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum / 1GB` |
+| SSD / hard drive model and size | Step 1 shows each physical drive: model, type (SSD or HDD), connection (NVMe, SATA, USB) and size in bytes. Step 2 shows the disks as Windows sees them. Divide Size by 1,000,000,000 to get the GB written on the box (1 TB is about 1,000,000,000,000 bytes). Windows only shows what the drive reports: a fake drive can report a false size and then corrupt files once its real space is full. If you see "Access denied", open PowerShell as administrator and run the command again. | PowerShell | Step 1: physical drives → `Get-PhysicalDisk | Select-Object FriendlyName, Model, MediaType, BusType, Size, SerialNumber`; Step 2: disks and size → `Get-Disk | Select-Object Number, FriendlyName, Size, PartitionStyle` |
+| Check a downloaded file is intact | Prints the SHA-256 hash of a file, to compare with the value on the website you downloaded it from. | PowerShell | `Get-FileHash "` + **C:\path\to\file.zip** + `"` — note: Replace the green text with your own file path. Keep the quotation marks. |
+| Drives: size and health | Lists drives with size, free space and health. | PowerShell | `Get-Volume` |
+| Top 10 CPU-hungry processes | Shows the ten processes that used the most CPU time. | PowerShell | `Get-Process | Sort-Object CPU -Descending | Select-Object -First 10` |
+| Repair Windows system files | Run Step 1, let it finish, then run Step 2. Needs an administrator window and can take a long time. | Either · Needs administrator · Can take a long time | Step 1: check system files → `sfc /scannow`; Step 2: repair the Windows image → `DISM /Online /Cleanup-Image /RestoreHealth` |
+| Flush the DNS cache | Can help with internet or website problems. Needs an administrator window on this PC (verified on Windows 11). | Either · Needs administrator | `ipconfig /flushdns` |

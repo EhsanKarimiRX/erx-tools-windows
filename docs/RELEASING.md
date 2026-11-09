@@ -29,6 +29,14 @@ Then set `version = "X.Y.Z"` in `src-tauri/Cargo.toml` (under `[package]`) and `
 
 Create `docs/releases/vX.Y.Z.md` (copy the most recent file in `docs/releases/` and edit it). This text is what gets pasted into the GitHub release description later.
 
+## Rename in v0.2.2
+
+- Since v0.2.2 the `productName` in `src-tauri/tauri.conf.json` is **ERX Tools** (previously "ERX Tools for Windows"). The NSIS default install folder (`%LOCALAPPDATA%\ERX Tools`), the Start Menu/Desktop shortcut names, the uninstall registry key and the installer window title all derive from `productName` (verified by reading the generated `src-tauri/target/release/nsis/x64/installer.nsi`), so **v0.2.2 installs NEXT TO an existing v0.2.0/v0.2.1 ("ERX Tools for Windows") and does not replace it**.
+- No migration hook was added, on purpose (owner decision: not worth the risk).
+- The v0.2.2 release notes must tell users to uninstall the old **"ERX Tools for Windows"** manually and to **not** tick "Delete the application data" during that uninstall — the data folders `%APPDATA%\com.erxtools.windows` and `%LOCALAPPDATA%\com.erxtools.windows` are identifier-based and shared by both apps.
+- Do not run both apps at the same time.
+- The released file names (`ERX-Tools-<version>-<arch>-setup….exe`) are unchanged, and later versions replace v0.2.2 normally.
+
 ## 5. Build the installers
 
 ```
