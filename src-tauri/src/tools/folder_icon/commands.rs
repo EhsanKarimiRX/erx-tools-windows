@@ -7,6 +7,7 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 use super::core;
+use super::perf; // PERF-TRACE (temporary)
 use crate::tools::ToolError;
 
 /// Opens the native multi-select folder picker from the Rust side (no
@@ -14,14 +15,17 @@ use crate::tools::ToolError;
 /// cancel.
 #[tauri::command]
 pub fn folder_icon_pick_folders(app: AppHandle) -> Option<Vec<String>> {
+    perf::mark("cmd pick enter"); // PERF-TRACE (temporary)
     let picked = app.dialog().file().blocking_pick_folders();
-    picked.map(|folders| {
+    let result = picked.map(|folders| {
         folders
             .into_iter()
             .filter_map(|folder| folder.into_path().ok())
             .map(|path| path.to_string_lossy().into_owned())
             .collect()
-    })
+    });
+    perf::mark("cmd pick exit"); // PERF-TRACE (temporary)
+    result
 }
 
 /// The eligibility verdict in a flat UI-friendly shape.
@@ -105,6 +109,7 @@ fn png_data_url(png: &[u8]) -> String {
 pub fn folder_icon_preview_svg(
     settings: FolderIconSettingsDto,
 ) -> Result<FolderIconPreview, ToolError> {
+    perf::mark("cmd preview_svg enter"); // PERF-TRACE (temporary)
     let settings = super::settings::IconSettings::from_parts(
         &settings.base_color,
         &settings.pattern,
@@ -125,11 +130,13 @@ pub fn folder_icon_preview_svg(
                 .map_err(ToolError::Internal)
         })
         .collect::<Result<Vec<_>, ToolError>>()?;
-    Ok(FolderIconPreview {
+    let result = Ok(FolderIconPreview {
         svg: built.svg,
         warnings: built.warnings,
         frames,
-    })
+    });
+    perf::mark("cmd preview_svg exit"); // PERF-TRACE (temporary)
+    result
 }
 
 /// Inspect result: what the folder currently shows plus the
@@ -148,20 +155,25 @@ pub struct InspectResultDto {
 #[cfg(windows)]
 #[tauri::command]
 pub fn folder_icon_inspect(path: String) -> Result<InspectResultDto, ToolError> {
+    perf::mark("cmd inspect enter"); // PERF-TRACE (temporary)
     let folder = std::path::PathBuf::from(&path);
     let resolved = super::eligibility::resolve(&folder);
+    perf::mark("inspect gather begin"); // PERF-TRACE (temporary)
     let env = super::platform::gather_environment();
+    perf::mark("inspect gather done"); // PERF-TRACE (temporary)
     let facts = super::platform::path_facts(&resolved);
     let eligibility = super::eligibility::evaluate(&resolved, facts, &env);
     let state = super::apply::inspect_folder(&folder).map_err(ToolError::Internal)?;
-    Ok(InspectResultDto {
+    let result = Ok(InspectResultDto {
         state: match state {
             super::apply::IconState::Default => "default",
             super::apply::IconState::CustomByErx => "custom_by_erx",
             super::apply::IconState::CustomByOther => "custom_by_other",
         },
         eligibility: eligibility_dto(&eligibility),
-    })
+    });
+    perf::mark("cmd inspect exit"); // PERF-TRACE (temporary)
+    result
 }
 
 // ----- batch processing (spec 4.4: sequential, capped, per-folder
@@ -209,7 +221,9 @@ struct BatchCounters {
 /// processed keep their result). Safe to call when nothing is running.
 #[tauri::command]
 pub fn folder_icon_cancel_batch(state: State<BatchState>) {
+    perf::mark("cmd cancel_batch enter"); // PERF-TRACE (temporary)
     state.cancel.store(true, Ordering::Relaxed);
+    perf::mark("cmd cancel_batch exit"); // PERF-TRACE (temporary)
 }
 
 /// Runs one folder through the eligibility re-check (right before the
@@ -226,14 +240,20 @@ fn batch_step(
 ) {
     // Re-check eligibility right before touching the folder: blocked
     // folders are Skipped, not Failed (spec 4.4).
+    // PERF-TRACE (temporary): per-folder timeline (index/count only, no
+    // folder names).
+    perf::mark(&format!("batch[{index}] start")); // PERF-TRACE (temporary)
     let resolved = super::eligibility::resolve(folder);
+    perf::mark(&format!("batch[{index}] gather begin")); // PERF-TRACE (temporary)
     let env = super::platform::gather_environment();
+    perf::mark(&format!("batch[{index}] gather done")); // PERF-TRACE (temporary)
     let facts = super::platform::path_facts(&resolved);
     let blocked = match super::eligibility::evaluate(&resolved, facts, &env) {
         super::eligibility::Eligibility::Allowed
         | super::eligibility::Eligibility::AllowedWithWarning(_) => None,
         super::eligibility::Eligibility::Blocked(reason) => Some(reason.message().to_string()),
     };
+    perf::mark(&format!("batch[{index}] eligibility done")); // PERF-TRACE (temporary)
     let result = match blocked {
         Some(reason) => Err((ok_status, "skipped", Some(reason))),
         None => match operation(folder) {
@@ -241,6 +261,7 @@ fn batch_step(
             Err(message) => Err((ok_status, "failed", Some(message))),
         },
     };
+    perf::mark(&format!("batch[{index}] op done")); // PERF-TRACE (temporary)
     let mut counters = counters.lock().expect("batch thread owns the counters");
     let (status, detail) = match &result {
         Ok(()) => {
@@ -256,12 +277,14 @@ fn batch_step(
             (*status, detail.clone())
         }
     };
+    perf::mark(&format!("batch[{index}] send begin")); // PERF-TRACE (temporary)
     let _ = channel.send(BatchEvent {
         index,
         path: folder.to_string_lossy().into_owned(),
         status,
         detail,
     });
+    perf::mark(&format!("batch[{index}] send done")); // PERF-TRACE (temporary)
 }
 
 /// Applies the icon to every given folder, strictly sequentially (spec
@@ -275,6 +298,7 @@ pub fn folder_icon_apply_batch(
     paths: Vec<String>,
     settings: FolderIconSettingsDto,
 ) -> Result<BatchSummaryDto, ToolError> {
+    perf::mark(&format!("cmd apply_batch enter (count={})", paths.len())); // PERF-TRACE (temporary)
     super::apply::validate_batch_len(paths.len()).map_err(ToolError::Internal)?;
     let settings = super::settings::IconSettings::from_parts(
         &settings.base_color,
@@ -284,7 +308,9 @@ pub fn folder_icon_apply_batch(
         settings.pattern_opacity,
     )
     .map_err(ToolError::Internal)?;
+    perf::mark("apply_batch core_build begin"); // PERF-TRACE (temporary)
     let built = core::build(&settings);
+    perf::mark("apply_batch core_build done"); // PERF-TRACE (temporary)
 
     state.cancel.store(false, Ordering::Relaxed);
     let counters = Mutex::new(BatchCounters::default());
@@ -311,14 +337,20 @@ pub fn folder_icon_apply_batch(
     let counters = counters.into_inner().expect("single thread");
     // One global broadcast for the WHOLE batch (never per folder): heavy,
     // may flicker briefly, but guarantees every view re-reads associations.
+    perf::mark("apply_batch assoc begin"); // PERF-TRACE (temporary)
     super::notification::notify_all_associations();
+    perf::mark("apply_batch assoc done"); // PERF-TRACE (temporary)
     // One best-effort view refresh per finished batch (after the broadcast).
+    perf::mark("apply_batch views begin"); // PERF-TRACE (temporary)
     super::notification::refresh_shell_views();
-    Ok(BatchSummaryDto {
+    perf::mark("apply_batch views done"); // PERF-TRACE (temporary)
+    let result = Ok(BatchSummaryDto {
         done: counters.done,
         skipped: counters.skipped,
         failed: counters.failed,
-    })
+    });
+    perf::mark("cmd apply_batch exit"); // PERF-TRACE (temporary)
+    result
 }
 
 /// Restores the default icon on every given folder, same rules as the
@@ -330,6 +362,7 @@ pub fn folder_icon_restore_batch(
     on_progress: Channel<BatchEvent>,
     paths: Vec<String>,
 ) -> Result<BatchSummaryDto, ToolError> {
+    perf::mark(&format!("cmd restore_batch enter (count={})", paths.len())); // PERF-TRACE (temporary)
     super::apply::validate_batch_len(paths.len()).map_err(ToolError::Internal)?;
 
     state.cancel.store(false, Ordering::Relaxed);
@@ -355,14 +388,20 @@ pub fn folder_icon_restore_batch(
         );
     }
     let counters = counters.into_inner().expect("single thread");
+    perf::mark("restore_batch assoc begin"); // PERF-TRACE (temporary)
     super::notification::notify_all_associations();
+    perf::mark("restore_batch assoc done"); // PERF-TRACE (temporary)
     // One best-effort view refresh per finished batch (after the broadcast).
+    perf::mark("restore_batch views begin"); // PERF-TRACE (temporary)
     super::notification::refresh_shell_views();
-    Ok(BatchSummaryDto {
+    perf::mark("restore_batch views done"); // PERF-TRACE (temporary)
+    let result = Ok(BatchSummaryDto {
         done: counters.done,
         skipped: counters.skipped,
         failed: counters.failed,
-    })
+    });
+    perf::mark("cmd restore_batch exit"); // PERF-TRACE (temporary)
+    result
 }
 
 #[cfg(test)]

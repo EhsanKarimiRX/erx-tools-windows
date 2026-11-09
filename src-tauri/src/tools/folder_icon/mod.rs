@@ -22,6 +22,9 @@ pub mod platform;
 
 #[cfg(test)]
 mod live_probe_test;
+#[cfg(test)]
+mod perf_bench_test; // PERF-TRACE (temporary)
+pub mod perf; // PERF-TRACE (temporary)
 pub mod probe;
 pub mod raster;
 pub mod settings;

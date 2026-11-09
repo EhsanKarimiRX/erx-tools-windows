@@ -46,6 +46,51 @@ function errorText(error: unknown): string {
   return String(error);
 }
 
+// ----- PERF-TRACE (temporary): buffered frontend timeline -----
+// One probe at module load learns whether ERX_PERF=1 is set (the Rust
+// command answers with its enabled flag). Marks are buffered locally and
+// flushed in batches — never one invoke per mark, because invoke calls
+// queue on the same main thread this instrumentation measures.
+let perfEnabled = false;
+const perfBuffer: { ts: number; label: string }[] = [];
+let perfInspectPending = 0;
+
+function perfMark(label: string) {
+  if (perfEnabled) perfBuffer.push({ ts: Date.now(), label });
+}
+
+function perfFlush() {
+  if (!perfEnabled || perfBuffer.length === 0) return;
+  const entries = perfBuffer.splice(0, perfBuffer.length);
+  invoke<boolean>("folder_icon_perf_flush", { entries })
+    .then((enabled) => {
+      perfEnabled = enabled;
+    })
+    .catch(() => {
+      perfEnabled = false;
+    });
+}
+
+/** One inspect "round" = all inspects of one addPaths call. Flushes when
+ * the round settles so inspect timings land in the log promptly. */
+function perfInspectRoundDone() {
+  perfInspectPending -= 1;
+  if (perfInspectPending <= 0) {
+    perfInspectPending = 0;
+    perfFlush();
+  }
+}
+
+// Module-load probe: one trivial invoke, only when the tool module loads.
+invoke<boolean>("folder_icon_perf_flush", { entries: [] })
+  .then((enabled) => {
+    perfEnabled = enabled;
+  })
+  .catch(() => {
+    perfEnabled = false;
+  });
+// ----- end PERF-TRACE (temporary) -----
+
 type PreviewState =
   | { status: "empty" }
   | { status: "ok"; svg: string; warnings: string[]; frames: FramePreview[] }
@@ -123,11 +168,13 @@ export default function FolderIconChanger() {
     };
     const request = ++requestRef.current;
     const timer = window.setTimeout(() => {
+      perfMark("fe preview invoke begin"); // PERF-TRACE (temporary)
       invoke<{ svg: string; warnings: string[]; frames: FramePreview[] }>(
         "folder_icon_preview_svg",
         { settings },
       )
         .then((result) => {
+          perfMark("fe preview result"); // PERF-TRACE (temporary)
           if (requestRef.current === request) {
             setPreview({
               status: "ok",
@@ -136,11 +183,14 @@ export default function FolderIconChanger() {
               frames: result.frames,
             });
           }
+          perfFlush(); // PERF-TRACE (temporary)
         })
         .catch((error) => {
+          perfMark("fe preview error"); // PERF-TRACE (temporary)
           if (requestRef.current === request) {
             setPreview({ status: "error", message: errorText(error) });
           }
+          perfFlush(); // PERF-TRACE (temporary)
         });
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
@@ -190,8 +240,10 @@ export default function FolderIconChanger() {
       if (added.length === 0) return current;
       // Inspect each new path; keep the response matching by path.
       for (const entry of added) {
+        perfMark("fe inspect invoke begin"); // PERF-TRACE (temporary)
         invoke<InspectResult>("folder_icon_inspect", { path: entry.path })
           .then((info) => {
+            perfMark("fe inspect result"); // PERF-TRACE (temporary)
             setFolders((list) =>
               list.map((item) =>
                 item.path === entry.path
@@ -204,8 +256,10 @@ export default function FolderIconChanger() {
                   : item,
               ),
             );
+            perfInspectRoundDone(); // PERF-TRACE (temporary)
           })
           .catch((error) => {
+            perfMark("fe inspect error"); // PERF-TRACE (temporary)
             setFolders((list) =>
               list.map((item) =>
                 item.path === entry.path
@@ -213,8 +267,10 @@ export default function FolderIconChanger() {
                   : item,
               ),
             );
+            perfInspectRoundDone(); // PERF-TRACE (temporary)
           });
       }
+      perfInspectPending += added.length; // PERF-TRACE (temporary)
       return [...current, ...added];
     });
   }
@@ -222,7 +278,9 @@ export default function FolderIconChanger() {
   async function pickFolders() {
     setBusy("pick");
     try {
+      perfMark("fe pick invoke begin"); // PERF-TRACE (temporary)
       const picked = await invoke<string[] | null>("folder_icon_pick_folders");
+      perfMark("fe pick invoke done"); // PERF-TRACE (temporary)
       if (picked && picked.length > 0) addPaths(picked);
     } catch (error) {
       setNote(errorText(error));
@@ -290,6 +348,7 @@ export default function FolderIconChanger() {
 
     const channel = new Channel<BatchEvent>();
     channel.onmessage = (event) => {
+      perfMark(`fe channel event idx=${event.index} status=${event.status}`); // PERF-TRACE (temporary)
       setProgress((current) =>
         current ? { ...current, done: current.done + 1 } : current,
       );
@@ -321,11 +380,15 @@ export default function FolderIconChanger() {
     };
 
     try {
+      perfMark(`fe ${command} invoke begin (targets=${targets.length})`); // PERF-TRACE (temporary)
       const summary = await invoke<BatchSummary>(command, {
         paths: targets.map((entry) => entry.path),
         onProgress: channel,
         ...extraArgs,
       });
+      perfMark(
+        `fe ${command} resolved done=${summary.done} skipped=${summary.skipped} failed=${summary.failed}`,
+      ); // PERF-TRACE (temporary)
       const verb = command === "folder_icon_apply_batch" ? "Applied" : "Restored";
       setNote(
         `${verb} ${summary.done} of ${targets.length}` +
@@ -335,6 +398,7 @@ export default function FolderIconChanger() {
       if (summary.done > 0) setShowRefreshNote(true);
     } catch (error) {
       // Validation ran before any folder was touched — reset the rows.
+      perfMark(`fe ${command} rejected`); // PERF-TRACE (temporary)
       setNote(errorText(error));
       setFolders((list) =>
         list.map((item) =>
@@ -346,16 +410,27 @@ export default function FolderIconChanger() {
     } finally {
       setBusy(null);
       setProgress(null);
+      perfFlush(); // PERF-TRACE (temporary)
     }
   }
 
   async function cancelBatch() {
     try {
+      perfMark("fe cancel invoke begin"); // PERF-TRACE (temporary)
       await invoke("folder_icon_cancel_batch");
+      perfMark("fe cancel invoke done"); // PERF-TRACE (temporary)
     } catch {
       // Nothing running — nothing to cancel.
     }
   }
+
+  // PERF-TRACE (temporary): log when React actually commits the busy
+  // transition (i.e. when "Applying…"/"Restoring…" becomes visible).
+  useEffect(() => {
+    perfMark(
+      busy === null ? "fe busy cleared (commit)" : `fe busy ${busy} committed`,
+    );
+  }, [busy]);
 
 
   const previewArea = (() => {

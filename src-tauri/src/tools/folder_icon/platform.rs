@@ -60,6 +60,7 @@ fn known_folder(guid: &GUID) -> Option<PathBuf> {
 
 /// Gathers everything the rules compare against from the real machine.
 pub fn gather_environment() -> Environment {
+    super::perf::mark("env begin (known folders)"); // PERF-TRACE (temporary)
     // Blocked THEMSELVES: profile root and the known user folders, all
     // with their real (possibly redirected) locations.
     let known_guids: [&GUID; 15] = [
@@ -133,6 +134,7 @@ pub fn gather_environment() -> Environment {
     }
 
     // Remote (network) drives.
+    super::perf::mark("env drives begin"); // PERF-TRACE (temporary)
     let mut remote_drives = Vec::new();
     for letter in b'A'..=b'Z' {
         let root = format!(r"{}:\", letter as char);
@@ -142,14 +144,17 @@ pub fn gather_environment() -> Environment {
             remote_drives.push(format!("{}:", letter as char));
         }
     }
+    super::perf::mark("env drives done"); // PERF-TRACE (temporary)
 
-    Environment {
+    let environment = Environment {
         known_folders,
         system_under,
         system_root_only,
         cloud_roots,
         remote_drives,
-    }
+    };
+    super::perf::mark("env done"); // PERF-TRACE (temporary)
+    environment
 }
 
 /// Reads the filesystem facts about one path (read-only; no side effects).

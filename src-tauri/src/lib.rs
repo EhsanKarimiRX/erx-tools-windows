@@ -62,6 +62,7 @@ pub fn run() {
             tools::folder_icon::commands::folder_icon_apply_batch,
             tools::folder_icon::commands::folder_icon_restore_batch,
             tools::folder_icon::commands::folder_icon_cancel_batch,
+            tools::folder_icon::perf::folder_icon_perf_flush, // PERF-TRACE (temporary)
             tools::system_manager::awake::commands::awake_get_status,
             tools::system_manager::awake::commands::awake_enable,
             tools::system_manager::awake::commands::awake_disable,

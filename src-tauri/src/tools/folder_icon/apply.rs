@@ -33,6 +33,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 use super::core::IconParams;
 use super::eligibility::{self, Eligibility};
 use super::ini::DesktopIni;
+use super::perf; // PERF-TRACE (temporary)
 use super::platform;
 
 /// Dev-only timeline tracing (spec 4.2-A3): enabled with the
@@ -130,11 +131,16 @@ fn is_our_icon_value(value: &str) -> bool {
 /// UPDATEITEM/UPDATEDIR pair without flush, PIDL form or retry.
 pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
     trace("apply: begin");
+    perf::mark("apply begin"); // PERF-TRACE (temporary)
+    perf::mark("apply eligibility begin"); // PERF-TRACE (temporary)
     let resolved = check_eligibility(folder)?;
     trace("apply: eligibility ok");
+    perf::mark("apply eligibility done"); // PERF-TRACE (temporary)
 
+    perf::mark("apply build_ico begin"); // PERF-TRACE (temporary)
     let ico_bytes = super::ico::build_ico(params)?;
     let name = icon_file_name(&ico_bytes);
+    perf::mark("apply build_ico done"); // PERF-TRACE (temporary)
     trace("apply: ico built");
     let icon_path = resolved.join(&name);
     let ini_path = resolved.join("desktop.ini");
@@ -162,17 +168,21 @@ pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
     //    same bytes and attributes (a same-color re-apply then rewrites
     //    nothing at all - no intermediate states, no stale-cache risk).
     let ico_current = is_current(&icon_path, &ico_bytes);
+    perf::mark("apply ico write begin"); // PERF-TRACE (temporary)
     if !ico_current {
         replace_file(&icon_path, &ico_bytes)?;
     }
+    perf::mark("apply ico write done"); // PERF-TRACE (temporary)
     trace("apply: ico written");
     // 2. Write desktop.ini, same skip rule.
     let ini_current = is_current(&ini_path, &ini_bytes);
+    perf::mark("apply ini write begin"); // PERF-TRACE (temporary)
     let write_result = if ini_current {
         Ok(())
     } else {
         replace_file(&ini_path, &ini_bytes)
     };
+    perf::mark("apply ini write done"); // PERF-TRACE (temporary)
     if let Err(error) = write_result {
         trace("apply: ini write FAILED");
         rollback_apply(&resolved, previous_ini);
@@ -195,6 +205,7 @@ pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
     trace("apply: files final (desktop.ini hidden+system throughout)");
     // 4. The folder's own attribute LAST (Read-only, preserving others) —
     //    the last file-system change the Shell sees before the notify.
+    perf::mark("apply folder attr begin"); // PERF-TRACE (temporary)
     let attrs =
         get_attributes(&resolved).ok_or_else(|| "The folder could not be accessed.".to_string())?;
     if let Err(error) = set_attributes(&resolved, attrs | FILE_ATTRIBUTE_READONLY) {
@@ -202,26 +213,33 @@ pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
         rollback_apply(&resolved, previous_ini);
         return Err(error);
     }
+    perf::mark("apply folder attr done"); // PERF-TRACE (temporary)
     trace("apply: folder attr set");
     // 5. Remove previous ERX icon files (older content hashes only —
     //    never the new one, never a foreign .ico). A locked file here is
     //    not fatal: the new name differs, so the icon still updates.
+    perf::mark("apply delete_old_icons begin"); // PERF-TRACE (temporary)
     delete_our_icon_files(&resolved, Some(&name));
+    perf::mark("apply delete_old_icons done"); // PERF-TRACE (temporary)
     trace("apply: old icons deleted");
 
     // 6. Verify the final on-disk state by reading it back (spec 4.2-B4):
     //    desktop.ini parses and points at the .ico, both files are
     //    Hidden+System, the folder is Read-only. A failed verification
     //    rolls the apply back (the state is then not what we promised).
+    perf::mark("apply verify begin"); // PERF-TRACE (temporary)
     if let Err(error) = verify_applied(&resolved, &name) {
         trace("apply: verification FAILED");
         rollback_apply(&resolved, previous_ini);
         return Err(error);
     }
+    perf::mark("apply verify done"); // PERF-TRACE (temporary)
     trace("apply: verified on disk");
 
     // 7. Notify: one UPDATEITEM per the reference pattern (4.2 experiment).
+    perf::mark("apply notify begin"); // PERF-TRACE (temporary)
     super::notification::notify_folder_now(&resolved);
+    perf::mark("apply notify done"); // PERF-TRACE (temporary)
     Ok(())
 }
 
@@ -368,7 +386,9 @@ pub fn restore_icon_for_batch(folder: &Path) -> Result<(), String> {
 /// Resolves the folder and re-checks eligibility (right before touching it).
 fn check_eligibility(folder: &Path) -> Result<PathBuf, String> {
     let resolved = eligibility::resolve(folder);
+    perf::mark("eligibility gather begin"); // PERF-TRACE (temporary)
     let env = platform::gather_environment();
+    perf::mark("eligibility gather done"); // PERF-TRACE (temporary)
     let facts = platform::path_facts(&resolved);
     match eligibility::evaluate(&resolved, facts, &env) {
         Eligibility::Allowed | Eligibility::AllowedWithWarning(_) => Ok(resolved),
