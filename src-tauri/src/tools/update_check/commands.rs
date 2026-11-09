@@ -4,6 +4,7 @@
 //! request. Nothing runs automatically (R3).
 
 use std::sync::Mutex;
+#[cfg(debug_assertions)]
 use std::time::Duration;
 
 use tauri::{AppHandle, State};
