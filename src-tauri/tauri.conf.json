@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ERX Tools for Windows",
+  "productName": "ERX Tools",
   "version": "0.2.1",
   "identifier": "com.erxtools.windows",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "ERX Tools for Windows",
+        "title": "ERX Tools",
         "width": 1000,
         "height": 700,
         "minWidth": 800,

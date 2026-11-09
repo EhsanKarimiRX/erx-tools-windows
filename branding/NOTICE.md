@@ -4,7 +4,7 @@ The source code of ERX Tools for Windows is released under the MIT License (see 
 
 The following are **not** covered by the MIT License. All rights in them are reserved by the project owner (EhsanKarimiRX):
 
-- the name "ERX Tools" and "ERX Tools for Windows"
+- the name "ERX Tools", and any name that contains it or is confusingly similar to it (for example "ERX Tools for Windows")
 - the ERX Tools logo and app icons: the files in this `branding/` folder and in `src-tauri/icons/`
 
 **You may:** fork the code and change it; mention the name to say that your project is based on or compatible with ERX Tools (for example "a fork of ERX Tools"); show the logo when linking to or reviewing the original project.

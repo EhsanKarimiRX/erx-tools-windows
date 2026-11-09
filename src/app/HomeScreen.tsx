@@ -35,7 +35,7 @@ export default function HomeScreen({
   return (
     <div className="home">
       <header className="home-header">
-        <h1>ERX Tools for Windows</h1>
+        <h1>ERX Tools</h1>
         <p className="home-subtitle">Fast, private, offline tools</p>
       </header>
 

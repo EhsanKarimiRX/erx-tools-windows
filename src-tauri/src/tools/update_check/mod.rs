@@ -44,4 +44,43 @@ mod consistency_tests {
             "tauri.conf.json and Cargo.toml (CARGO_PKG_VERSION) versions differ"
         );
     }
+
+    /// Guards the v0.2.2 rename of the installed app to "ERX Tools": the NSIS
+    /// installer derives the default install folder, the Start Menu/Desktop
+    /// shortcut names and the uninstall registry key from `productName`, and
+    /// the window title is user-visible. The identifier must never change
+    /// (it keys the app data folders), and no NSIS installer hook may be
+    /// added (owner decision, see DECISIONS.md).
+    #[test]
+    fn product_name_and_title_are_erx_tools() {
+        let tauri_conf: serde_json::Value =
+            serde_json::from_str(include_str!("../../../tauri.conf.json"))
+                .expect("src-tauri/tauri.conf.json must be valid JSON");
+
+        let product_name = tauri_conf["productName"]
+            .as_str()
+            .expect("tauri.conf.json must have a productName string");
+        let window_title = tauri_conf["app"]["windows"][0]["title"]
+            .as_str()
+            .expect("tauri.conf.json must have an app.windows[0].title string");
+        let identifier = tauri_conf["identifier"]
+            .as_str()
+            .expect("tauri.conf.json must have an identifier string");
+
+        assert_eq!(product_name, "ERX Tools", "productName must be ERX Tools");
+        assert_eq!(
+            window_title, "ERX Tools",
+            "the main window title must be ERX Tools"
+        );
+        assert_eq!(
+            identifier, "com.erxtools.windows",
+            "the identifier must not change"
+        );
+        assert!(
+            tauri_conf["bundle"]["windows"]["nsis"]
+                .get("installerHooks")
+                .is_none(),
+            "bundle.windows.nsis.installerHooks must not be present"
+        );
+    }
 }
