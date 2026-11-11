@@ -13,8 +13,9 @@
 //! 3. desktop.ini is marked Hidden + System; the folder gets the Read-only
 //!    attribute (which makes the Shell process desktop.ini and does NOT
 //!    make the folder's contents read-only).
-//! 4. The Shell is notified per folder with the full immediate set plus a
-//!    deferred retry (see  — the ONE place for all
+//! 4. The Shell is notified per folder with one UPDATEITEM. After a whole
+//!    batch the command sends one ASSOCCHANGED and schedules delayed view
+//!    refreshes (see `notification.rs` - the ONE place for all
 //!    notification strategies).
 //!
 //! Failure safety: writes go through temp-file-then-rename inside the same
@@ -109,7 +110,7 @@ pub fn is_our_icon_file_name(name: &str) -> bool {
 }
 
 /// True when an `IconResource` value points at one of OUR icon files.
-fn is_our_icon_value(value: &str) -> bool {
+pub(super) fn is_our_icon_value(value: &str) -> bool {
     let base = value.trim().rsplit(['\\', '/']).next().unwrap_or(value);
     let name = base
         .split(',')
@@ -136,6 +137,17 @@ pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
     let resolved = check_eligibility(folder)?;
     trace("apply: eligibility ok");
     perf::mark("apply eligibility done"); // PERF-TRACE (temporary)
+
+    // Shortcuts (.lnk) are changed through the shortcut itself, not through
+    // a desktop.ini (see shortcut.rs). Same eligibility check above, same
+    // notification as folders.
+    if super::shortcut::is_shortcut_path(&resolved) {
+        let result = super::shortcut::apply_shortcut_icon(&resolved, params);
+        if result.is_ok() {
+            super::notification::notify_folder_now(&resolved);
+        }
+        return result;
+    }
 
     perf::mark("apply build_ico begin"); // PERF-TRACE (temporary)
     let ico_bytes = super::ico::build_ico(params)?;
@@ -300,6 +312,11 @@ fn rollback_apply(folder: &Path, previous_ini: Option<Vec<u8>>) {
 /// else. A foreign .ico is never deleted.
 pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
     let resolved = check_eligibility(folder)?;
+    if super::shortcut::is_shortcut_path(&resolved) {
+        let outcome = super::shortcut::restore_shortcut_icon(&resolved)?;
+        super::notification::notify_folder_now(&resolved);
+        return Ok(outcome);
+    }
 
     let ini_path = resolved.join("desktop.ini");
     let bytes = match std::fs::read(&ini_path) {
@@ -348,6 +365,9 @@ pub fn restore_icon(folder: &Path) -> Result<RestoreOutcome, String> {
 
 /// Inspects a folder: Default / Custom by ERX / Custom by something else.
 pub fn inspect_folder(folder: &Path) -> Result<IconState, String> {
+    if super::shortcut::is_shortcut_path(folder) {
+        return super::shortcut::inspect_shortcut(folder);
+    }
     let ini_path = folder.join("desktop.ini");
     let bytes = match std::fs::read(&ini_path) {
         Ok(bytes) => bytes,
@@ -447,7 +467,7 @@ fn clear_attributes(path: &Path) {
 /// - new target: a plain rename (a new name never needs attribute games).
 ///
 /// The old delete-then-create and clear-attributes-first behavior is gone.
-fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(super) fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let file_name = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -498,7 +518,7 @@ fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
 
 /// True when the file already holds exactly these bytes with the final
 /// attributes (an identical re-apply then rewrites nothing).
-fn is_current(path: &Path, bytes: &[u8]) -> bool {
+pub(super) fn is_current(path: &Path, bytes: &[u8]) -> bool {
     let Some(attrs) = get_attributes(path) else {
         return false;
     };

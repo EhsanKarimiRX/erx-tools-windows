@@ -36,7 +36,7 @@ const DRIVE_REMOTE: u32 = 4;
 /// Reads one known folder. Returns `None` when the folder is not defined
 /// on this machine (e.g. OneDrive not installed) — the rules then simply
 /// do not include it.
-fn known_folder(guid: &GUID) -> Option<PathBuf> {
+pub(super) fn known_folder(guid: &GUID) -> Option<PathBuf> {
     unsafe {
         let mut path: PWSTR = ptr::null_mut();
         // KF_FLAG_DEFAULT (0): return the current (possibly redirected)

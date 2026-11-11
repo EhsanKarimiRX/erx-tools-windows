@@ -19,6 +19,8 @@ pub mod ini;
 pub mod notification;
 #[cfg(windows)]
 pub mod platform;
+#[cfg(windows)]
+pub mod shortcut;
 
 #[cfg(test)]
 mod live_probe_test;

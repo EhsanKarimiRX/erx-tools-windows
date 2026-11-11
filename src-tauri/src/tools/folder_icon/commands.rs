@@ -290,10 +290,31 @@ fn batch_step(
 /// Applies the icon to every given folder, strictly sequentially (spec
 /// 4.4: never parallel). Blocked folders are skipped, one failing folder
 /// never stops the batch, a cancelled batch skips the remaining folders.
+///
+/// Async on purpose: a plain `pub fn` command runs on the app's MAIN
+/// thread, which froze the window and held back the progress events for
+/// the whole batch. The blocking work runs on Tauri's blocking pool.
 #[cfg(windows)]
 #[tauri::command]
-pub fn folder_icon_apply_batch(
-    state: State<BatchState>,
+pub async fn folder_icon_apply_batch(
+    state: State<'_, BatchState>,
+    on_progress: Channel<BatchEvent>,
+    paths: Vec<String>,
+    settings: FolderIconSettingsDto,
+) -> Result<BatchSummaryDto, ToolError> {
+    let cancel = state.cancel.clone();
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        run_apply_batch(cancel, on_progress, paths, settings)
+    });
+    match task.await {
+        Ok(result) => result,
+        Err(error) => Err(ToolError::Internal(error.to_string())),
+    }
+}
+
+#[cfg(windows)]
+fn run_apply_batch(
+    cancel: Arc<AtomicBool>,
     on_progress: Channel<BatchEvent>,
     paths: Vec<String>,
     settings: FolderIconSettingsDto,
@@ -312,10 +333,10 @@ pub fn folder_icon_apply_batch(
     let built = core::build(&settings);
     perf::mark("apply_batch core_build done"); // PERF-TRACE (temporary)
 
-    state.cancel.store(false, Ordering::Relaxed);
+    cancel.store(false, Ordering::Relaxed);
     let counters = Mutex::new(BatchCounters::default());
     for (index, path) in paths.iter().enumerate() {
-        if state.cancel.load(Ordering::Relaxed) {
+        if cancel.load(Ordering::Relaxed) {
             let _ = on_progress.send(BatchEvent {
                 index,
                 path: path.clone(),
@@ -335,15 +356,13 @@ pub fn folder_icon_apply_batch(
         );
     }
     let counters = counters.into_inner().expect("single thread");
-    // One global broadcast for the WHOLE batch (never per folder): heavy,
-    // may flicker briefly, but guarantees every view re-reads associations.
+    // One global broadcast for the WHOLE batch (never per folder).
     perf::mark("apply_batch assoc begin"); // PERF-TRACE (temporary)
     super::notification::notify_all_associations();
     perf::mark("apply_batch assoc done"); // PERF-TRACE (temporary)
-    // One best-effort view refresh per finished batch (after the broadcast).
-    perf::mark("apply_batch views begin"); // PERF-TRACE (temporary)
-    super::notification::refresh_shell_views();
-    perf::mark("apply_batch views done"); // PERF-TRACE (temporary)
+    // Delayed view refreshes in a background thread (returns at once).
+    perf::mark("apply_batch views scheduled"); // PERF-TRACE (temporary)
+    super::notification::schedule_view_refresh();
     let result = Ok(BatchSummaryDto {
         done: counters.done,
         skipped: counters.skipped,
@@ -354,21 +373,37 @@ pub fn folder_icon_apply_batch(
 }
 
 /// Restores the default icon on every given folder, same rules as the
-/// apply batch.
+/// apply batch (async for the same reason).
 #[cfg(windows)]
 #[tauri::command]
-pub fn folder_icon_restore_batch(
-    state: State<BatchState>,
+pub async fn folder_icon_restore_batch(
+    state: State<'_, BatchState>,
+    on_progress: Channel<BatchEvent>,
+    paths: Vec<String>,
+) -> Result<BatchSummaryDto, ToolError> {
+    let cancel = state.cancel.clone();
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        run_restore_batch(cancel, on_progress, paths)
+    });
+    match task.await {
+        Ok(result) => result,
+        Err(error) => Err(ToolError::Internal(error.to_string())),
+    }
+}
+
+#[cfg(windows)]
+fn run_restore_batch(
+    cancel: Arc<AtomicBool>,
     on_progress: Channel<BatchEvent>,
     paths: Vec<String>,
 ) -> Result<BatchSummaryDto, ToolError> {
     perf::mark(&format!("cmd restore_batch enter (count={})", paths.len())); // PERF-TRACE (temporary)
     super::apply::validate_batch_len(paths.len()).map_err(ToolError::Internal)?;
 
-    state.cancel.store(false, Ordering::Relaxed);
+    cancel.store(false, Ordering::Relaxed);
     let counters = Mutex::new(BatchCounters::default());
     for (index, path) in paths.iter().enumerate() {
-        if state.cancel.load(Ordering::Relaxed) {
+        if cancel.load(Ordering::Relaxed) {
             let _ = on_progress.send(BatchEvent {
                 index,
                 path: path.clone(),
@@ -391,10 +426,8 @@ pub fn folder_icon_restore_batch(
     perf::mark("restore_batch assoc begin"); // PERF-TRACE (temporary)
     super::notification::notify_all_associations();
     perf::mark("restore_batch assoc done"); // PERF-TRACE (temporary)
-    // One best-effort view refresh per finished batch (after the broadcast).
-    perf::mark("restore_batch views begin"); // PERF-TRACE (temporary)
-    super::notification::refresh_shell_views();
-    perf::mark("restore_batch views done"); // PERF-TRACE (temporary)
+    perf::mark("restore_batch views scheduled"); // PERF-TRACE (temporary)
+    super::notification::schedule_view_refresh();
     let result = Ok(BatchSummaryDto {
         done: counters.done,
         skipped: counters.skipped,

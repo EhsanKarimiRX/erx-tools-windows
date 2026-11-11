@@ -18,6 +18,7 @@
 
 use std::path::Path;
 use std::ptr;
+use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM};
 use windows_sys::Win32::UI::Shell::{
@@ -91,6 +92,39 @@ fn refresh_shell_views_impl(send: bool) -> usize {
     *posted
 }
 
+/// Delay (ms after the batch's ASSOCCHANGED) at which the shell views are
+/// asked to refresh. Explorer needs a moment after the file changes before
+/// a refresh takes effect, so the refresh is not sent immediately. A single
+/// refresh; if icons are ever still late, add a second value (for example
+/// 5000) to this array.
+pub const VIEW_REFRESH_DELAYS_MS: [u64; 1] = [1000];
+
+/// Starts the delayed view refreshes in a background thread and returns at
+/// once (the batch command never waits for them).
+pub fn schedule_view_refresh() {
+    let _ = schedule_view_refresh_impl(&VIEW_REFRESH_DELAYS_MS, SEND_VIEW_REFRESH);
+}
+
+fn schedule_view_refresh_impl(
+    delays_ms: &'static [u64],
+    send: bool,
+) -> Option<std::thread::JoinHandle<()>> {
+    if !send {
+        return None;
+    }
+    std::thread::Builder::new()
+        .name("erx-view-refresh".into())
+        .spawn(move || {
+            let mut elapsed = 0_u64;
+            for &delay in delays_ms {
+                std::thread::sleep(Duration::from_millis(delay.saturating_sub(elapsed)));
+                elapsed = delay;
+                refresh_shell_views();
+            }
+        })
+        .ok()
+}
+
 /// True for the top-level windows that host shell views.
 fn is_view_host_class(class: &str) -> bool {
     class.eq_ignore_ascii_case("CabinetWClass")
@@ -148,10 +182,28 @@ fn window_class(hwnd: HWND) -> Option<String> {
     Some(String::from_utf16_lossy(&buffer[..len as usize]))
 }
 
-/// The full Unicode path, NUL-terminated.
+/// Shell APIs (SHChangeNotify, SHParseDisplayName) do not understand
+/// extended-length paths, and `std::fs::canonicalize` returns them on
+/// Windows (`\\?\C:\...`). Strip the prefix before telling the Shell
+/// anything. Paths that cannot be written without it (for example
+/// `\\?\Volume{...}`) are returned unchanged.
+fn shell_path(path: &Path) -> String {
+    let text = path.as_os_str().to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        let bytes = rest.as_bytes();
+        if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+            return rest.to_string();
+        }
+    }
+    text.into_owned()
+}
+
+/// The Shell-friendly Unicode path, NUL-terminated.
 fn path_wide(path: &Path) -> Vec<u16> {
-    path.as_os_str()
-        .to_string_lossy()
+    shell_path(path)
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect()
@@ -202,5 +254,31 @@ mod tests {
         notify_folder_now(&folder);
         notify_all_associations();
         std::fs::remove_dir(&folder).ok();
+    }
+
+    #[test]
+    fn shell_path_strips_the_extended_length_prefix() {
+        assert_eq!(
+            shell_path(Path::new(r"\\?\C:\Users\Me\New folder")),
+            r"C:\Users\Me\New folder"
+        );
+        assert_eq!(
+            shell_path(Path::new(r"\\?\UNC\server\share\dir")),
+            r"\\server\share\dir"
+        );
+        assert_eq!(shell_path(Path::new(r"C:\Users\Me")), r"C:\Users\Me");
+        assert_eq!(
+            shell_path(Path::new(r"\\?\Volume{1234}\dir")),
+            r"\\?\Volume{1234}\dir"
+        );
+    }
+
+    #[test]
+    fn view_refresh_schedule_returns_immediately_and_can_be_disabled() {
+        assert!(schedule_view_refresh_impl(&[1, 2], false).is_none());
+        let started = std::time::Instant::now();
+        let handle = schedule_view_refresh_impl(&[5, 10], true).expect("thread starts");
+        assert!(started.elapsed() < Duration::from_millis(200));
+        handle.join().expect("thread finishes");
     }
 }

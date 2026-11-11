@@ -52,7 +52,7 @@ impl BlockReason {
     /// The secondary reason line shown in the UI.
     pub fn message(self) -> &'static str {
         match self {
-            BlockReason::NotADirectory => "That is not a folder (or it does not exist).",
+            BlockReason::NotADirectory => "That is not a folder or a shortcut (or it does not exist).",
             BlockReason::DriveRoot => "Drive roots cannot carry folder icons.",
             BlockReason::ProtectedSystemLocation => "This is a protected Windows location.",
             BlockReason::KnownUserFolder => "Windows manages this folder's desktop.ini itself.",
@@ -154,6 +154,11 @@ pub const DRIVE_ROOT_SYSTEM_NAMES: [&str; 8] = [
 /// structural checks first, then location rules, then the reparse and
 /// warning checks.
 pub fn evaluate(path: &Path, facts: PathFacts, env: &Environment) -> Eligibility {
+    // 0. Shortcut files (.lnk) have their own, smaller rule set.
+    if facts.exists && !facts.is_dir && is_shortcut_file(path) {
+        return evaluate_shortcut(path, env);
+    }
+
     // 1. Must be an existing directory.
     if !facts.exists || !facts.is_dir {
         return Eligibility::Blocked(BlockReason::NotADirectory);
@@ -222,6 +227,38 @@ pub fn evaluate(path: &Path, facts: PathFacts, env: &Environment) -> Eligibility
         return Eligibility::AllowedWithWarning(WarningCode::CloudSyncRoot);
     }
 
+    Eligibility::Allowed
+}
+
+/// True for a shortcut file (.lnk), judged by the extension only.
+pub fn is_shortcut_file(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("lnk"))
+}
+
+/// Rules for a shortcut FILE. Known user folders such as the Desktop are
+/// protected only as folders, so a shortcut directly on the Desktop is fine.
+/// Protected system locations and network locations stay blocked; cloud-sync
+/// locations warn (the icon file lives on this PC only).
+fn evaluate_shortcut(path: &Path, env: &Environment) -> Eligibility {
+    if is_unc(path) || is_on_remote_drive(path, env) {
+        return Eligibility::Blocked(BlockReason::NetworkLocation);
+    }
+    if env
+        .system_under
+        .iter()
+        .any(|root| same_or_under_ci(path, root))
+        || is_under_drive_root_system_name(path)
+    {
+        return Eligibility::Blocked(BlockReason::ProtectedSystemLocation);
+    }
+    if env
+        .cloud_roots
+        .iter()
+        .any(|root| same_or_under_ci(path, root))
+    {
+        return Eligibility::AllowedWithWarning(WarningCode::CloudSyncRoot);
+    }
     Eligibility::Allowed
 }
 
@@ -400,6 +437,58 @@ mod tests {
             evaluate(Path::new(path), dir(true), &env()),
             Eligibility::Blocked(reason),
             "expected {path} to be blocked"
+        );
+    }
+
+    fn file(exists: bool) -> PathFacts {
+        PathFacts {
+            exists,
+            is_dir: false,
+            is_reparse_point: false,
+        }
+    }
+
+    #[test]
+    fn shortcut_files_follow_their_own_rules() {
+        let check = |path: &str| evaluate(Path::new(path), file(true), &env());
+        assert_eq!(check(r"C:\Users\Ehsan\Desktop\App.lnk"), Eligibility::Allowed);
+        assert_eq!(check(r"D:\tools\App.LNK"), Eligibility::Allowed);
+        assert_eq!(
+            check(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\App.lnk"),
+            Eligibility::Allowed
+        );
+        assert_eq!(
+            check(r"C:\Windows\Temp\App.lnk"),
+            Eligibility::Blocked(BlockReason::ProtectedSystemLocation)
+        );
+        assert_eq!(
+            check(r"C:\Program Files\Tool\App.lnk"),
+            Eligibility::Blocked(BlockReason::ProtectedSystemLocation)
+        );
+        assert_eq!(
+            check(r"\\server\share\App.lnk"),
+            Eligibility::Blocked(BlockReason::NetworkLocation)
+        );
+        assert_eq!(
+            check(r"N:\work\App.lnk"),
+            Eligibility::Blocked(BlockReason::NetworkLocation)
+        );
+        assert_eq!(
+            check(r"C:\Users\Ehsan\OneDrive\Desktop\App.lnk"),
+            Eligibility::AllowedWithWarning(WarningCode::CloudSyncRoot)
+        );
+        // Every other kind of file stays blocked.
+        for path in [r"C:\dev\App.url", r"C:\dev\notes.txt", r"C:\dev\App.lnk.txt"] {
+            assert_eq!(
+                check(path),
+                Eligibility::Blocked(BlockReason::NotADirectory),
+                "{path}"
+            );
+        }
+        // A missing .lnk is blocked like any missing path.
+        assert_eq!(
+            evaluate(Path::new(r"C:\dev\gone.lnk"), file(false), &env()),
+            Eligibility::Blocked(BlockReason::NotADirectory)
         );
     }
 

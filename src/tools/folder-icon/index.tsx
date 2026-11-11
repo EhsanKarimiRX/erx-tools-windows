@@ -481,8 +481,8 @@ export default function FolderIconChanger() {
       {/* ----- left: drop zone + folder list ----- */}
       <section className="fi-main" aria-label="Folders">
         <DropZone
-          label="Drag & drop folders here"
-          hint="Files and protected locations are checked and marked Blocked."
+          label="Drag & drop folders or shortcuts here"
+          hint="Shortcuts (.lnk) work too. Other files and protected locations are marked Blocked."
           browseLabel="Add folder"
           onBrowse={pickFolders}
           onFiles={addPaths}
@@ -554,7 +554,7 @@ export default function FolderIconChanger() {
           </>
         ) : (
           <p className="fi-placeholder-note">
-            Add one or more folders to change their icons. Nothing is written
+            Add one or more folders or shortcuts to change their icons. Nothing is written
             until you press Apply icon.
           </p>
         )}
