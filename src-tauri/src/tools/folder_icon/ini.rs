@@ -212,6 +212,32 @@ impl DesktopIni {
         let _ = end;
     }
 
+    /// The Windows Shell writes `IconFile=` and `IconIndex=` lines next to
+    /// `IconResource=` when it sets a folder icon itself. When `IconFile`
+    /// points at OUR icon file (matched by file name), removes both legacy
+    /// lines so the file is back to our canonical form. Anything else
+    /// (a foreign `IconFile`) is left untouched.
+    pub fn remove_shell_legacy_icon_keys(&mut self, icon_name: &str) {
+        let Some(section) = self.class_section_range() else {
+            return;
+        };
+        let ours = self.lines[section.clone()].iter().any(|(line, _)| {
+            key_name(line).eq_ignore_ascii_case("IconFile")
+                && file_name_of(value_after_equal(line)).eq_ignore_ascii_case(icon_name)
+        });
+        if !ours {
+            return;
+        }
+        let mut index = 0_usize;
+        self.lines.retain(|(line, _)| {
+            let in_section = section.contains(&index);
+            index += 1;
+            let key = key_name(line);
+            !(in_section
+                && (key.eq_ignore_ascii_case("IconFile") || key.eq_ignore_ascii_case("IconIndex")))
+        });
+    }
+
     /// True when the file no longer carries any `Key=Value` line — only
     /// blank lines and empty section headers — i.e. nothing meaningful.
     pub fn is_meaningless(&self) -> bool {
@@ -291,6 +317,12 @@ fn value_after_equal(line: &str) -> &str {
     line.split_once('=')
         .map(|(_, value)| value.trim())
         .unwrap_or("")
+}
+
+/// The last path component of a path-like value (quotes trimmed).
+fn file_name_of(value: &str) -> &str {
+    let base = value.trim().trim_matches('"');
+    base.rsplit(['\\', '/']).next().unwrap_or(base)
 }
 
 #[cfg(test)]
@@ -495,5 +527,27 @@ mod tests {
         let ini = DesktopIni::parse(b"").unwrap();
         assert!(ini.icon_resource().is_none());
         assert!(ini.is_meaningless());
+    }
+
+    #[test]
+    fn shell_legacy_icon_keys_of_our_icon_are_removed() {
+        let original = b"[.ShellClassInfo]\r\nIconResource=C:\\f\\erx-folder-icon-aaaaaaaa.ico,0\r\nIconFile=C:\\f\\erx-folder-icon-aaaaaaaa.ico\r\nIconIndex=0\r\nInfoTip=Keep\r\n";
+        let mut ini = DesktopIni::parse(original).unwrap();
+        ini.set_icon_resource("erx-folder-icon-aaaaaaaa.ico");
+        ini.remove_shell_legacy_icon_keys("erx-folder-icon-aaaaaaaa.ico");
+        let text = String::from_utf8(ini.serialize()).unwrap();
+        assert_eq!(
+            text,
+            "[.ShellClassInfo]\r\nIconResource=erx-folder-icon-aaaaaaaa.ico,0\r\nInfoTip=Keep\r\n"
+        );
+    }
+
+    #[test]
+    fn foreign_legacy_icon_keys_stay() {
+        let original =
+            b"[.ShellClassInfo]\r\nIconFile=C:\\custom\\mine.ico\r\nIconIndex=2\r\nInfoTip=Keep\r\n";
+        let mut ini = DesktopIni::parse(original).unwrap();
+        ini.remove_shell_legacy_icon_keys("erx-folder-icon-aaaaaaaa.ico");
+        assert_eq!(ini.serialize(), original.to_vec());
     }
 }

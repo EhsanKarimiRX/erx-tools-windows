@@ -40,12 +40,12 @@ pub fn icon_store_dir() -> Result<PathBuf, String> {
 /// COM must be initialized on the calling thread. S_OK and S_FALSE both
 /// need a matching CoUninitialize; RPC_E_CHANGED_MODE (thread already uses
 /// another model) is usable but must not be uninitialized by us.
-struct ComGuard {
+pub(super) struct ComGuard {
     initialized: bool,
 }
 
 impl ComGuard {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let result = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
         ComGuard {
             initialized: result.is_ok(),

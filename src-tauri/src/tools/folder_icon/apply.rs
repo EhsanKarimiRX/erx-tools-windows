@@ -227,6 +227,18 @@ pub fn apply_icon(folder: &Path, params: &IconParams) -> Result<(), String> {
     }
     perf::mark("apply folder attr done"); // PERF-TRACE (temporary)
     trace("apply: folder attr set");
+
+    // 4b. Shell pass: let Windows itself register the icon (the call the
+    //     folder Properties dialog makes), then restore our canonical
+    //     desktop.ini. Only when something was actually written above (an
+    //     identical re-apply must still rewrite nothing).
+    if SHELL_PASS_ENABLED && (!ico_current || !ini_current) {
+        perf::mark("apply shell pass begin"); // PERF-TRACE (temporary)
+        let report = shell_pass(&resolved, &name, &ini_bytes);
+        trace(&format!("apply: shell pass {:?}", report.outcome));
+        perf::mark("apply shell pass done"); // PERF-TRACE (temporary)
+    }
+
     // 5. Remove previous ERX icon files (older content hashes only —
     //    never the new one, never a foreign .ico). A locked file here is
     //    not fatal: the new name differs, so the icon still updates.
@@ -286,6 +298,81 @@ fn verify_applied(folder: &Path, icon_name: &str) -> Result<(), String> {
         return Err("Verification failed: the folder is not Read-only.".into());
     }
     Ok(())
+}
+
+/// Switch for the Shell pass (set to false to go back to plain file writes).
+const SHELL_PASS_ENABLED: bool = true;
+
+/// What the Shell pass did (read by tests and the trace; apply ignores it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ShellPassOutcome {
+    /// The Shell call failed; our own complete desktop.ini was put back.
+    ApiFailed,
+    /// The Shell wrote something we cannot parse; our desktop.ini was put back.
+    ParseFailed,
+    /// The Shell's file already equals our canonical form.
+    Unchanged,
+    /// The Shell's file was rewritten into our canonical form.
+    Normalized,
+}
+
+/// Diagnostics of one Shell pass.
+#[allow(dead_code)] // fields are read by tests only
+#[derive(Debug, Clone)]
+pub(super) struct ShellPassReport {
+    pub(super) hresult: i32,
+    pub(super) raw_after_api: Option<Vec<u8>>,
+    pub(super) outcome: ShellPassOutcome,
+}
+
+/// Runs AFTER our own complete write sequence (icon file, desktop.ini,
+/// attributes, Read-only folder). Asks the Windows Shell itself to register
+/// the icon (SHGetSetFolderCustomSettings, forced write), then puts our
+/// canonical desktop.ini form back: relative `IconResource=<name>,0`, no
+/// legacy `IconFile`/`IconIndex` lines, foreign content untouched. Never
+/// fails: whatever happens, the folder ends in a complete, valid state
+/// (`our_ini_bytes` is written back if the Shell's result is unusable).
+fn shell_pass(folder: &Path, icon_name: &str, our_ini_bytes: &[u8]) -> ShellPassReport {
+    let ini_path = folder.join("desktop.ini");
+    let hresult = super::shell_custom::set_folder_icon(folder, &folder.join(icon_name));
+    let raw = std::fs::read(&ini_path).ok();
+    let outcome = if hresult < 0 {
+        if raw.as_deref() != Some(our_ini_bytes) {
+            let _ = write_hidden_system(&ini_path, our_ini_bytes);
+        }
+        ShellPassOutcome::ApiFailed
+    } else {
+        match raw.as_deref().map(DesktopIni::parse) {
+            Some(Ok(mut ini)) => {
+                ini.set_icon_resource(icon_name);
+                ini.remove_shell_legacy_icon_keys(icon_name);
+                let canonical = ini.serialize();
+                if raw.as_deref() == Some(canonical.as_slice()) {
+                    ShellPassOutcome::Unchanged
+                } else {
+                    if write_hidden_system(&ini_path, &canonical).is_err() {
+                        let _ = write_hidden_system(&ini_path, our_ini_bytes);
+                    }
+                    ShellPassOutcome::Normalized
+                }
+            }
+            _ => {
+                let _ = write_hidden_system(&ini_path, our_ini_bytes);
+                ShellPassOutcome::ParseFailed
+            }
+        }
+    };
+    // The Shell may have touched the folder attributes; enforce ours.
+    if let Some(attrs) = get_attributes(folder)
+        && attrs & FILE_ATTRIBUTE_READONLY == 0
+    {
+        let _ = set_attributes(folder, attrs | FILE_ATTRIBUTE_READONLY);
+    }
+    ShellPassReport {
+        hresult,
+        raw_after_api: raw,
+        outcome,
+    }
 }
 
 /// Rolls an interrupted apply back: our icon files are removed (they are
@@ -1014,5 +1101,97 @@ mod tests {
             assert_eq!(inspect_folder(folder).unwrap(), IconState::Default);
         }
         cleanup(&base);
+    }
+
+    /// Decodes desktop.ini bytes (UTF-16 LE with BOM, otherwise UTF-8/ANSI) for assertions.
+    fn ini_text(bytes: &[u8]) -> String {
+        if bytes.starts_with(&[0xFF, 0xFE]) {
+            let units: Vec<u16> = bytes[2..]
+                .chunks_exact(2)
+                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                .collect();
+            String::from_utf16_lossy(&units)
+        } else {
+            String::from_utf8_lossy(bytes).into_owned()
+        }
+    }
+
+    /// Calls the Shell pass directly on a folder prepared exactly like apply
+    /// prepares it, prints what the Shell wrote, and checks the final state.
+    #[test]
+    fn shell_pass_reports_what_the_shell_wrote_and_leaves_a_canonical_file() {
+        let folder = make_dir("shell-pass");
+        let ico_bytes = super::super::ico::build_ico(&BLUE).unwrap();
+        let name = icon_file_name(&ico_bytes);
+        replace_file(&folder.join(&name), &ico_bytes).unwrap();
+        let mut ini = DesktopIni::new_file();
+        ini.set_icon_resource(&name);
+        let ini_bytes = ini.serialize();
+        let ini_path = folder.join("desktop.ini");
+        replace_file(&ini_path, &ini_bytes).unwrap();
+        let attrs = get_attributes(&folder).unwrap();
+        set_attributes(&folder, attrs | FILE_ATTRIBUTE_READONLY).unwrap();
+
+        let report = shell_pass(&folder, &name, &ini_bytes);
+        println!(
+            "SHELL_PASS hresult=0x{:08X} outcome={:?}",
+            report.hresult, report.outcome
+        );
+        println!(
+            "SHELL_PASS raw_after_api_text={:?}",
+            report.raw_after_api.as_ref().map(|bytes| ini_text(bytes))
+        );
+        println!(
+            "SHELL_PASS raw_after_api_first_bytes={:02X?}",
+            report
+                .raw_after_api
+                .as_ref()
+                .map(|bytes| bytes.iter().take(4).copied().collect::<Vec<u8>>())
+        );
+        println!(
+            "SHELL_PASS attrs folder=0x{:08X} ini=0x{:08X} ico=0x{:08X}",
+            get_attributes(&folder).unwrap_or(0),
+            get_attributes(&ini_path).unwrap_or(0),
+            get_attributes(&folder.join(&name)).unwrap_or(0)
+        );
+        assert!(report.hresult >= 0, "Shell call failed: 0x{:08X}", report.hresult);
+
+        let text = ini_text(&std::fs::read(&ini_path).unwrap());
+        assert!(text.contains(&format!("IconResource={name},0")), "{text:?}");
+        assert!(!text.contains("IconFile"), "{text:?}");
+        assert!(!text.contains("IconIndex"), "{text:?}");
+        verify_applied(&folder, &name).expect("verified");
+        restore_icon(&folder).expect("restore");
+        assert!(!ini_path.exists(), "meaningless ini is deleted after restore");
+        cleanup(&folder);
+    }
+
+    /// A pre-existing UTF-16 desktop.ini with foreign content must survive
+    /// apply (including the Shell pass) and restore.
+    #[test]
+    fn shell_pass_keeps_foreign_utf16_content() {
+        let folder = make_dir("shell-utf16");
+        let mut original: Vec<u8> = vec![0xFF, 0xFE];
+        for unit in "[.ShellClassInfo]\r\nInfoTip=S\u{00E9}\r\n".encode_utf16() {
+            original.extend_from_slice(&unit.to_le_bytes());
+        }
+        let ini_path = folder.join("desktop.ini");
+        std::fs::write(&ini_path, &original).unwrap();
+        set_attributes(&ini_path, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM).unwrap();
+
+        apply_icon(&folder, &BLUE).expect("apply");
+        let name = icon_file_name(&super::super::ico::build_ico(&BLUE).unwrap());
+        let text = ini_text(&std::fs::read(&ini_path).unwrap());
+        assert!(text.contains("InfoTip=S\u{00E9}"), "{text:?}");
+        assert!(text.contains(&format!("IconResource={name},0")), "{text:?}");
+        assert!(!text.contains("IconFile"), "{text:?}");
+        assert_eq!(inspect_folder(&folder).unwrap(), IconState::CustomByErx);
+
+        restore_icon(&folder).expect("restore");
+        let text = ini_text(&std::fs::read(&ini_path).unwrap());
+        assert!(text.contains("InfoTip=S\u{00E9}"), "{text:?}");
+        assert!(!text.contains("IconResource"), "{text:?}");
+        assert!(!text.contains("IconFile"), "{text:?}");
+        cleanup(&folder);
     }
 }
