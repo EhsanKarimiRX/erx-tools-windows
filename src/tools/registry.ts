@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Folder,
+  Globe,
   Image as ImageIcon,
   MonitorCog,
   NotebookPen,
@@ -48,6 +49,14 @@ export const tools: readonly ToolDefinition[] = [
     description: "Create QR codes from text or links",
     icon: QrCode,
     load: () => import("./qr-code"),
+    status: "ready",
+  },
+  {
+    id: "favicons",
+    name: "Favicons",
+    description: "Create favicon and web app icons from your logo",
+    icon: Globe,
+    load: () => import("./favicons"),
     status: "ready",
   },
   {

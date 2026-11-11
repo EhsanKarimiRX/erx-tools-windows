@@ -7,6 +7,7 @@
 
 pub mod app_info;
 pub mod error;
+pub mod favicons;
 pub mod folder_icon;
 pub mod image_convert;
 pub mod qr_code;

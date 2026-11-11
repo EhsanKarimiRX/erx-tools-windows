@@ -6,7 +6,18 @@
 the 4B core on real Explorer (icon appears/changes without logoff;
 relative path survives rename/move); the 4C experience (drag & drop,
 list, batch) awaits the owner's checklist run.** All quality gates pass,
-ARM64 cross-check passed, 190 Rust tests.
+ARM64 cross-check passed, 190 Rust tests. Favicons tool
+(docs/PROMPT_11_SPEC.md): backend and frontend are implemented; waiting
+for the owner's manual test (docs/favicons-manual-checklist.md).
+
+## PROMPT 11 STATUS (Favicons tool - implemented, awaiting manual test)
+- Spec: docs/PROMPT_11_SPEC.md. Progress log: docs/PROMPT_11_PROGRESS.md.
+- Backend: src-tauri/src/tools/favicons/ (source, render, ico, package, commands). 5 commands registered in lib.rs (favicons_pick_source, favicons_inspect_source, favicons_preview, favicons_save, favicons_reveal_folder).
+- Frontend: src/tools/favicons/ (components + favicons.css), registered in src/tools/registry.ts.
+- Padding: two options, "Favicon padding" (ico, 16, 32) and "Home screen icon padding" (Apple touch icon, Android 192/512); the maskable icon keeps a fixed margin.
+- New dependency: resvg 0.49 (default features off, raster-images on) for SVG input.
+- Manual test checklist: docs/favicons-manual-checklist.md (not run yet).
+- Open: THIRD_PARTY_LICENSES.md must be regenerated before the next release because resvg was added.
 
 ## PROMPT 4.2 STATUS (FINAL - Prompt 4.3)
 

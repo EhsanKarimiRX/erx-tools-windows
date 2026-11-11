@@ -1053,3 +1053,47 @@ message ever causes trouble.
 - The drawer now contains 9 tips total (4 new hardware + 5 existing);
   `COMMAND_TIPS_MORE.length` drives the drawer label "More commands (9)"
   automatically.
+
+## Favicons tool (Prompt 11, 2026-11-12)
+
+- **Name:** "Favicons" (tool id favicons, Rust module tools/favicons). It
+  replaces the owner's old Python program RXfavicongenerator.py.
+- **Output is a folder** `<site name>_favicon_package` (unique suffix _1,
+  _2, ...), not a ZIP. No zip dependency.
+- **Files:** favicon.ico (16, 32, 48; PNG-compressed frames),
+  favicon-16x16.png, favicon-32x32.png, apple-touch-icon.png (180, opaque
+  on the background color), android-chrome-192x192.png,
+  android-chrome-512x512.png, optional
+  android-chrome-maskable-512x512.png (logo at 60% on a solid background),
+  site.webmanifest (built with serde_json), favicon-snippet.html, and
+  favicon.svg when the source is an SVG.
+- **ICO sizes:** the old program's ICO sizes (up to 256) were reduced to
+  16/32/48 to keep favicon.ico small.
+- **Input detection:** the input type is detected by file CONTENT, never
+  by extension. Supported: PNG, JPEG, WebP, BMP, GIF, TIFF, ICO, SVG.
+  HEIC, AVIF, PDF, PSD and gzip files are rejected with a friendly
+  message.
+- **SVG support:** resvg 0.49 with default features off (no text, no
+  fonts) and raster-images on. External image hrefs are disabled; data
+  URIs work. SVG text is NOT rendered (the UI warns). The SVG is rendered
+  once into a 1024 px master and then follows the same pipeline as raster
+  images.
+- **Alpha-correct resizing:** resizing is done in premultiplied alpha
+  (Lanczos3) to avoid dark fringes at transparent edges.
+- **Two padding options:** "Favicon padding" (favicon.ico, 16, 32;
+  default 0) and "Home screen icon padding" (Apple touch icon 180, Android
+  192/512; default 10). The old Python program padded only favicon files;
+  Apple and Android icons are used for Safari and Chrome home screen
+  shortcuts, so they get padding too. The maskable icon ignores both
+  options (fixed 60% logo size) because Android crops it.
+- **Preview enlargement:** the preview enlarges the 16 and 32 px icons to
+  96 px (pixelated) so padding is visible.
+- **Commands:** `#[tauri::command(async)]` with the prefix favicons_. File
+  and folder dialogs are opened from Rust; no capability or plugin
+  permission changes were needed.
+- **Known harmless detail:** `cargo tree --duplicates` lists tiny-skia
+  0.12.0 twice (same version, different feature sets: one via image/png,
+  one via resvg).
+- **No cross-tool imports:** the UI imports nothing from other tools; the
+  color field is local (ColorField.tsx) instead of reusing the Folder Icon
+  one.

@@ -41,6 +41,9 @@ qrcodegen = "1.8"
 # QR Code Generator: PNG rasterization of the shared QR geometry (pure Rust).
 # Folder Icon: rasterizes the shared folder geometry into .ico frames.
 tiny-skia = "0.12"
+# Site Icons: parse + render the source SVG logo (re-exports usvg and
+# tiny-skia; no text/fonts, no svgz).
+resvg = { version = "0.49", default-features = false, features = ["raster-images"] }
 # QR Code Generator: embedding the logo PNG into the SVG as a data URL.
 # Folder Icon: PNG data URLs for the small previews.
 base64 = "0.22"

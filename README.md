@@ -24,6 +24,9 @@ Convert images in batches (up to 200 files at a time) with live progress, cancel
 ### QR Code Generator
 Create QR codes from text, links or Wi-Fi credentials. Sharp or rounded style, custom colors, optional logo in the center, export as PNG or SVG. The export size (256–4096 px, default 1080) is saved exactly as typed, the rounded style draws a rounded plate behind the logo, and Save uses a real Save dialog that always gives the file the right extension.
 
+### Favicons
+Create a complete favicon package (favicon.ico, PNG icons, Apple touch icon, Android and maskable icons, web manifest, HTML snippet) from one logo image (PNG, JPEG, WebP, BMP, GIF, TIFF, ICO or SVG).
+
 ### Folder Icon Changer
 Recolor Windows folder icons in any color, with optional stripe or checker patterns. It writes a multi-size `.ico` plus `desktop.ini` to the folders you choose and can restore the default icon. Offline, no admin rights.
 - Windows can take up to about 45 seconds to show a new folder icon. If one is late, reopen the folder or right-click an empty area and choose Refresh (a restart always shows it).

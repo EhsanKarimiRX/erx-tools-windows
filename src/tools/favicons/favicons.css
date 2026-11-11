@@ -1,0 +1,325 @@
+/* Favicons tool. Every class starts with fav-. Colors come ONLY from the
+   variables in src/styles/theme.css, so light/dark works automatically. */
+.fav {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fav-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.fav-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.fav-main,
+.fav-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (max-width: 820px) {
+  .fav-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fav-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fav-center {
+  text-align: center;
+}
+
+.fav-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.fav-heading {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dropzone.fav-dropzone-compact {
+  padding: 14px 16px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+}
+
+.fav-notice,
+.fav-error {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.fav-error {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.fav-notice p,
+.fav-error p {
+  margin: 0;
+}
+
+.fav-notice p + p {
+  margin-top: 4px;
+}
+
+.fav-checker {
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(45deg, var(--border) 25%, transparent 25%, transparent 75%, var(--border) 75%),
+    linear-gradient(45deg, var(--border) 25%, transparent 25%, transparent 75%, var(--border) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+
+.fav-source {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.fav-thumb {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.fav-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.fav-source-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fav-source-name {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.fav-grid {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 14px;
+  transition: opacity 0.15s;
+}
+
+.fav-grid-busy {
+  opacity: 0.55;
+}
+
+.fav-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  min-width: 0;
+}
+
+.fav-icon-box {
+  width: 110px;
+  height: 110px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fav-icon-name {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.fav-icon-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.fav-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.fav-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fav-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.fav-hint-error {
+  color: var(--error);
+}
+
+.fav-input {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  min-width: 0;
+}
+
+.fav-input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.fav-input:focus-visible,
+.fav-color-swatch:focus-visible,
+.fav-padding-row input[type="range"]:focus-visible,
+.fav-check input:focus-visible,
+.fav-snippet:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.fav-padding-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.fav-padding-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.fav-number {
+  width: 64px;
+}
+
+.fav-color-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.fav-color-swatch {
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.fav-hex {
+  width: 110px;
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.fav-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fav-save {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.fav-snippet {
+  margin: 0 0 10px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.fav-snippet-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.fav-folder {
+  margin: 0 0 8px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.fav-saved-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.fav-saved-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fav-pixelated {
+  image-rendering: pixelated;
+}
