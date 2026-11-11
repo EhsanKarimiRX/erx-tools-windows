@@ -74,7 +74,7 @@ fn page_to_open(remembered: Option<String>) -> Option<String> {
 /// Opens a URL in the default browser with `ShellExecuteW`, verb "open".
 /// Quick Launch's helper is ShellExecuteExW-based and private to that
 /// module, so this small dedicated opener matches the update page's needs.
-fn open_url_in_browser(url: &str) -> bool {
+pub(crate) fn open_url_in_browser(url: &str) -> bool {
     let operation = wide("open");
     let file = wide(url);
     // SAFETY: both string pointers point at NUL-terminated buffers that

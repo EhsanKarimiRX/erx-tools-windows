@@ -45,6 +45,8 @@ pub fn run() {
             // its module under `tools/` and one line here per command.
             // See docs/ADDING_A_TOOL.md.
             tools::app_info::get_app_info,
+            tools::app_info::open_github_page,
+            tools::app_info::save_wallpaper_to_downloads,
             tools::image_convert::commands::inspect_files,
             tools::image_convert::commands::pick_image_files,
             tools::image_convert::commands::pick_output_folder,
