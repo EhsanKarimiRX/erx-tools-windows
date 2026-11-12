@@ -3,11 +3,14 @@
  * command was verified on the owner's machine (Windows 11 Pro, build 26300)
  * on 2026-11-06, except the "Update one app" entry: it is a new wording of
  * the verified `winget upgrade` family and was NOT executed here. The two
- * badge decisions that reality overruled are recorded in
- * docs/PROMPT_5_PROGRESS.md: flushdns NEEDS elevation on this build, and
- * %USERPROFILE% only expands in Command Prompt. `winget upgrade --all` was
- * removed on purpose: it can silently update tools such as Python and break
- * projects that depend on the old version. */
+ * installed-apps commands (2026-11-12) WERE run on that machine: the list
+ * version directly, the save-to-file version with a temporary output path
+ * instead of the real Desktop. The two badge decisions that reality
+ * overruled are recorded in docs/PROMPT_5_PROGRESS.md: flushdns NEEDS
+ * elevation on this build, and %USERPROFILE% only expands in Command
+ * Prompt. `winget upgrade --all` was removed on purpose: it can silently
+ * update tools such as Python and break projects that depend on the old
+ * version. */
 
 export type TipShell = "PowerShell" | "Command Prompt" | "Either";
 
@@ -38,6 +41,37 @@ export function stepText(step: CommandStep): string {
   return step.parts.map((part) => (typeof part === "string" ? part : part.placeholder)).join("");
 }
 
+/** A code block with more lines than this is shown collapsed: only the
+ * first COMMAND_TIP_COLLAPSED_LINES lines are visible, with a More/Less
+ * button under the block. Copy always copies the full text. */
+export const COMMAND_TIP_COLLAPSED_LINES = 6;
+
+/** The first `maxLines` lines of `parts`, for the collapsed preview of a
+ * long code block. DISPLAY-ONLY: the Copy button always uses `stepText`
+ * (the full text). Placeholder parts never contain a line break, so they
+ * are kept as-is whenever their line is still visible. */
+export function visibleParts(parts: CommandPart[], maxLines: number): CommandPart[] {
+  const out: CommandPart[] = [];
+  let line = 1;
+  for (const part of parts) {
+    if (line > maxLines) break;
+    if (typeof part === "string") {
+      const pieces = part.split("\n");
+      for (let i = 0; i < pieces.length; i += 1) {
+        if (i > 0) {
+          line += 1;
+          if (line > maxLines) break;
+          out.push("\n");
+        }
+        out.push(pieces[i]);
+      }
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
+}
+
 export const COMMAND_TIPS_MAIN: CommandTip[] = [
   {
     id: "winget-upgrade-list",
@@ -66,6 +100,82 @@ export const COMMAND_TIPS_MAIN: CommandTip[] = [
     needsAdministrator: false,
     canTakeLong: false,
     usesInternet: true,
+  },
+  {
+    id: "list-installed-apps",
+    title: "List installed apps",
+    explanation:
+      "Shows a table of all apps installed for your Windows account: classic desktop programs and Microsoft Store apps. Useful when you want to rebuild a PC after a Windows reinstall. It only reads information; nothing is changed. The Source column tells you if an app is a Desktop program or a Store app. Store apps show their technical package name (for example Microsoft.WindowsCalculator) and have no install date. Built-in Windows system components and portable apps (apps that were never installed) are not listed. It can take a few seconds. Use PowerShell: this does not work in Command Prompt. If the table looks cut off, make the window wider and run it again.",
+    // The script below is copied EXACTLY, character for character (it was
+    // verified live on the owner's machine). String.raw keeps the registry
+    // path backslashes intact; do not reformat or re-indent it.
+    steps: [
+      {
+        parts: [
+          String.raw`$UninstallKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+)
+
+$Desktop = Get-ItemProperty $UninstallKeys -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName } |
+    Select-Object @{n='Name';e={$_.DisplayName}}, @{n='Version';e={$_.DisplayVersion}}, Publisher, InstallDate, @{n='Source';e={'Desktop'}}
+
+$Store = Get-AppxPackage -ErrorAction SilentlyContinue |
+    Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and -not $_.NonRemovable } |
+    Select-Object Name, @{n='Version';e={"$($_.Version)"}}, @{n='Publisher';e={$_.Publisher -replace '^CN="?([^,"]+).*','$1'}}, @{n='InstallDate';e={$null}}, @{n='Source';e={'Store'}}
+
+@($Desktop) + @($Store) |
+    Sort-Object Name |
+    Format-Table -AutoSize`,
+        ],
+      },
+    ],
+    shell: "PowerShell",
+    needsAdministrator: false,
+    canTakeLong: false,
+    usesInternet: false,
+  },
+  {
+    id: "save-installed-apps",
+    title: "Save installed apps to a file",
+    explanation:
+      'Does the same as "List installed apps" (desktop programs and Microsoft Store apps), but saves the result as InstalledPrograms.csv on your Desktop instead of showing it. Open the file with Excel or Notepad. Keep it as a backup before you reinstall Windows. If a file with the same name is already on the Desktop, it is replaced. Same limits as "List installed apps". Use PowerShell: this does not work in Command Prompt.',
+    // The script below is copied EXACTLY, character for character (it was
+    // verified live with a temp output path). $DesktopFolder instead of a
+    // literal Desktop path: it also works when the Desktop is redirected
+    // to OneDrive. String.raw keeps the backslashes intact; do not
+    // reformat or re-indent it.
+    steps: [
+      {
+        parts: [
+          String.raw`$UninstallKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+)
+
+$Desktop = Get-ItemProperty $UninstallKeys -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName } |
+    Select-Object @{n='Name';e={$_.DisplayName}}, @{n='Version';e={$_.DisplayVersion}}, Publisher, InstallDate, @{n='Source';e={'Desktop'}}
+
+$Store = Get-AppxPackage -ErrorAction SilentlyContinue |
+    Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and -not $_.NonRemovable } |
+    Select-Object Name, @{n='Version';e={"$($_.Version)"}}, @{n='Publisher';e={$_.Publisher -replace '^CN="?([^,"]+).*','$1'}}, @{n='InstallDate';e={$null}}, @{n='Source';e={'Store'}}
+
+$DesktopFolder = [Environment]::GetFolderPath("Desktop")
+
+@($Desktop) + @($Store) |
+    Sort-Object Name |
+    Export-Csv (Join-Path $DesktopFolder "InstalledPrograms.csv") -NoTypeInformation -Encoding UTF8`,
+        ],
+      },
+    ],
+    shell: "PowerShell",
+    needsAdministrator: false,
+    canTakeLong: false,
+    usesInternet: false,
   },
   {
     id: "folder-tree",

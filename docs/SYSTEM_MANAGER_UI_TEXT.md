@@ -180,6 +180,7 @@ for strings produced by Rust — the file that owns them.
 | Badges | {PowerShell / Command Prompt / Either} · Needs administrator · Can take a long time · Uses the internet |
 | Copy button | Copy → Copied (2 s) |
 | Copy failed | Couldn't copy. Select the text and press Ctrl+C. |
+| More button (per code box, only when it has more than 6 lines) | More → Less; collapsed shows the first 6 lines with a small fade at the bottom. Copy always copies the full code, collapsed or not. |
 | Placeholder note (per step, under the code box) | Replace the green text with {replaceWith} — the words "green text" are themselves shown in green |
 | Drawer toggle (closed by default) | More commands (9) |
 | Closing note | These commands are only text. ERX Tools never runs them for you. |
@@ -187,18 +188,68 @@ for strings produced by Rust — the file that owns them.
 There are NO category headings anymore. Placeholders are realistic sample
 text shown in green inside the code box (no angle brackets anywhere).
 Multi-step commands show one code box per step, each with its own Copy
-button and a small step label.
+button and a small step label. A code box with more than 6 lines starts
+collapsed (first 6 lines + fade + the More button above); the expanded/
+collapsed state is per box and resets when the section re-renders.
 
-### Main tips (COMMAND_TIPS_MAIN — 6 tips, in this order)
+### Main tips (COMMAND_TIPS_MAIN — 8 tips, in this order)
 
 | Title | Explanation | Badges | Steps (exact copy text per step; green sample text in bold) |
 |---|---|---|---|
 | List app updates | Shows which installed apps have updates. It only lists them; nothing is installed. Uses the internet (winget does that; ERX Tools does not). Not every app appears. | Either · Uses the internet | `winget upgrade` |
 | Update one app | Updates ONE app. First run "List app updates" and copy the app's Id from the Id column. Update apps one at a time and only the ones you really need: updating a tool such as Python can break projects that depend on the old version. Windows may ask for permission (UAC). Uses the internet. | Either · Uses the internet | `winget upgrade --id ` + **Publisher.AppName** + ` --exact` — note: Replace the green text with the app's Id: copy it from the Id column of the "List app updates" result. If the Id looks cut off, make the window wider and run the list command again. |
+| List installed apps | Shows a table of all apps installed for your Windows account: classic desktop programs and Microsoft Store apps. Useful when you want to rebuild a PC after a Windows reinstall. It only reads information; nothing is changed. The Source column tells you if an app is a Desktop program or a Store app. Store apps show their technical package name (for example Microsoft.WindowsCalculator) and have no install date. Built-in Windows system components and portable apps (apps that were never installed) are not listed. It can take a few seconds. Use PowerShell: this does not work in Command Prompt. If the table looks cut off, make the window wider and run it again. | PowerShell | the 17-line script in the fenced block "Copy text: List installed apps" below (starts collapsed in the app: More shows all of it) |
+| Save installed apps to a file | Does the same as "List installed apps" (desktop programs and Microsoft Store apps), but saves the result as InstalledPrograms.csv on your Desktop instead of showing it. Open the file with Excel or Notepad. Keep it as a backup before you reinstall Windows. If a file with the same name is already on the Desktop, it is replaced. Same limits as "List installed apps". Use PowerShell: this does not work in Command Prompt. | PowerShell | the 19-line script in the fenced block "Copy text: Save installed apps to a file" below (starts collapsed in the app: More shows all of it) |
 | Show a folder tree | Lists the folders and files inside a folder. For a big folder the result can be very long. | Either | `tree "` + **C:\path\to\folder** + `" /f` — note: Replace the green text with your own folder path. Keep the quotation marks. |
 | Laptop battery health report | Creates an HTML battery report named battery-report.html in your user folder. Laptops only. Use Command Prompt: the %USERPROFILE% part is not understood by PowerShell. | Command Prompt | `powercfg /batteryreport /output "%USERPROFILE%\battery-report.html"` |
 | System information | Prints the Windows version, RAM, uptime and more. | Either | `systeminfo` |
 | Show a saved Wi-Fi password | Shows the saved password of a Wi-Fi network on THIS PC. Private: do not share the output. In the result of Step 2, look for the line "Key Content". | Either | Step 1: list the saved networks → `netsh wlan show profiles`; Step 2: show the password → `netsh wlan show profile name="` + **NetworkName** + `" key=clear` — note: Replace the green text with the network name from Step 1. Keep the quotation marks. |
+
+Copy text: List installed apps (COMMAND_TIPS_MAIN):
+
+```text
+$UninstallKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+)
+
+$Desktop = Get-ItemProperty $UninstallKeys -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName } |
+    Select-Object @{n='Name';e={$_.DisplayName}}, @{n='Version';e={$_.DisplayVersion}}, Publisher, InstallDate, @{n='Source';e={'Desktop'}}
+
+$Store = Get-AppxPackage -ErrorAction SilentlyContinue |
+    Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and -not $_.NonRemovable } |
+    Select-Object Name, @{n='Version';e={"$($_.Version)"}}, @{n='Publisher';e={$_.Publisher -replace '^CN="?([^,"]+).*','$1'}}, @{n='InstallDate';e={$null}}, @{n='Source';e={'Store'}}
+
+@($Desktop) + @($Store) |
+    Sort-Object Name |
+    Format-Table -AutoSize
+```
+
+Copy text: Save installed apps to a file (COMMAND_TIPS_MAIN):
+
+```text
+$UninstallKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+)
+
+$Desktop = Get-ItemProperty $UninstallKeys -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName } |
+    Select-Object @{n='Name';e={$_.DisplayName}}, @{n='Version';e={$_.DisplayVersion}}, Publisher, InstallDate, @{n='Source';e={'Desktop'}}
+
+$Store = Get-AppxPackage -ErrorAction SilentlyContinue |
+    Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and -not $_.NonRemovable } |
+    Select-Object Name, @{n='Version';e={"$($_.Version)"}}, @{n='Publisher';e={$_.Publisher -replace '^CN="?([^,"]+).*','$1'}}, @{n='InstallDate';e={$null}}, @{n='Source';e={'Store'}}
+
+$DesktopFolder = [Environment]::GetFolderPath("Desktop")
+
+@($Desktop) + @($Store) |
+    Sort-Object Name |
+    Export-Csv (Join-Path $DesktopFolder "InstalledPrograms.csv") -NoTypeInformation -Encoding UTF8
+```
 
 ### "More commands" drawer (COMMAND_TIPS_MORE — 9 tips, closed by default)
 

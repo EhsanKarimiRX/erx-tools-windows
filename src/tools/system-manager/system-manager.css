@@ -594,6 +594,7 @@
 }
 
 .sm-tip-command-text {
+  position: relative;
   flex: 1;
   margin: 0;
   padding: 8px 10px;
@@ -608,7 +609,21 @@
   cursor: text;
 }
 
-.sm-tip-copy {
+/* Bottom fade of a collapsed code block (only the first lines visible).
+   Ends in the code box's own background color, so it blends in. */
+.sm-tip-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22px;
+  border-radius: 0 0 7px 7px;
+  background: linear-gradient(to bottom, transparent, var(--surface-hover));
+  pointer-events: none;
+}
+
+.sm-tip-copy,
+.sm-tip-more {
   flex-shrink: 0;
   padding: 6px 14px;
   background: var(--surface);
@@ -619,9 +634,16 @@
   color: var(--text);
 }
 
-.sm-tip-copy:hover {
+.sm-tip-copy:hover,
+.sm-tip-more:hover {
   background: var(--surface-hover);
   border-color: var(--border-strong);
+}
+
+/* The More/Less toggle of a collapsed code block sits under the block,
+   left-aligned. */
+.sm-tip-more {
+  align-self: flex-start;
 }
 
 .sm-tip-list {

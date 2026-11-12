@@ -1,9 +1,15 @@
-import { Fragment, useCallback, useState } from "react";
+import { Fragment, useCallback, useId, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import InfoNote from "./InfoNote";
 import SectionCard from "./SectionCard";
 import type { CommandStep, CommandTip, TipShell } from "./commandTips";
-import { COMMAND_TIPS_MAIN, COMMAND_TIPS_MORE, stepText } from "./commandTips";
+import {
+  COMMAND_TIPS_MAIN,
+  COMMAND_TIPS_MORE,
+  COMMAND_TIP_COLLAPSED_LINES,
+  stepText,
+  visibleParts,
+} from "./commandTips";
 
 /** Copies text with an honest fallback chain (spec 5f): the async
  * clipboard API first, then the classic hidden-textarea trick, and a
@@ -39,10 +45,14 @@ function ShellBadge({ shell }: { shell: TipShell }) {
 }
 
 /** One step of one command: its own code box and its own Copy button, so
- * the copied text is always exactly the one line shown in that box. */
+ * the copied text is always exactly the full text of that step. A code box
+ * longer than COMMAND_TIP_COLLAPSED_LINES lines starts collapsed (first
+ * lines + fade + a More button); Copy always copies the whole code. */
 function StepBox({ step, tipTitle }: { step: CommandStep; tipTitle: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const codeId = useId();
 
   const copy = useCallback(async () => {
     const result = await copyText(stepText(step));
@@ -53,14 +63,18 @@ function StepBox({ step, tipTitle }: { step: CommandStep; tipTitle: string }) {
     }
   }, [step]);
 
+  const collapsible = stepText(step).split("\n").length > COMMAND_TIP_COLLAPSED_LINES;
+  const collapsed = collapsible && !expanded;
+  const shownParts = collapsed ? visibleParts(step.parts, COMMAND_TIP_COLLAPSED_LINES) : step.parts;
+
   return (
     <div className="sm-tip-step">
       {step.label !== undefined && <div className="sm-tip-step-label">{step.label}</div>}
       <div className="sm-tip-command">
         {/* The parts are joined with NOTHING between them — whitespace is
             significant inside <pre> and the copy text must match exactly. */}
-        <pre className="sm-tip-command-text">
-          {step.parts.map((part, index) =>
+        <pre className="sm-tip-command-text" id={codeId}>
+          {shownParts.map((part, index) =>
             typeof part === "string" ? (
               <Fragment key={index}>{part}</Fragment>
             ) : (
@@ -69,6 +83,7 @@ function StepBox({ step, tipTitle }: { step: CommandStep; tipTitle: string }) {
               </span>
             ),
           )}
+          {collapsed && <span className="sm-tip-fade" aria-hidden="true" />}
         </pre>
         <button
           type="button"
@@ -79,6 +94,18 @@ function StepBox({ step, tipTitle }: { step: CommandStep; tipTitle: string }) {
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
+      {collapsible && (
+        <button
+          type="button"
+          className="sm-tip-more"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+          aria-controls={codeId}
+          aria-label={expanded ? `Show less of ${tipTitle}` : `Show more of ${tipTitle}`}
+        >
+          {expanded ? "Less" : "More"}
+        </button>
+      )}
       {failed && (
         <p className="sm-icon-row-error" role="alert">
           {COPY_FAILED}

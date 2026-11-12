@@ -121,13 +121,21 @@ Manager.
 
 ## Command Tips
 
-A static, copy-only list: 6 main commands plus 9 in the collapsed
+A static, copy-only list: 8 main commands plus 9 in the collapsed
 "More commands" drawer; no category headings. Multi-step commands have one
-box per step, each with its own Copy button. Placeholders are realistic
-sample text shown in green (angle brackets would break PowerShell commands).
+box per step, each with its own Copy button. A code box with more than six
+lines starts collapsed: only the first six lines are visible (with a small
+fade at the bottom) and a small More button under the box expands it and
+turns into Less — Copy always copies the full code either way. Placeholders
+are realistic sample text shown in green (angle brackets would break
+PowerShell commands).
 `winget upgrade --all` was removed on purpose (it can silently update tools
 such as Python and break projects) — the list shows how to update one app
-with `winget upgrade --id <Id> --exact` instead. The drawer starts with four
+with `winget upgrade --id <Id> --exact` instead. The two installed-apps
+commands (list them, or save the list as a CSV on the Desktop) are
+PowerShell-only and were verified live on the development machine; the
+save version ran with a temporary output path so no test file was left on
+the Desktop. The drawer starts with four
 hardware-check tips for checking a second-hand or suspicious laptop/PC:
 graphics card hardware IDs, BIOS model/serial, RAM modules and total, and
 drive size/model. Still static and copy-only: ERX Tools never runs them;
