@@ -2,22 +2,24 @@
 
 ## Current status
 
-**Prompt 4 (Folder Icon Changer) — code complete (4A–4C), owner verified
-the 4B core on real Explorer (icon appears/changes without logoff;
-relative path survives rename/move); the 4C experience (drag & drop,
-list, batch) awaits the owner's checklist run.** All quality gates pass,
-ARM64 cross-check passed, 190 Rust tests. Favicons tool
-(docs/PROMPT_11_SPEC.md): backend and frontend are implemented; waiting
-for the owner's manual test (docs/favicons-manual-checklist.md).
+**v0.2.3 release in preparation (2026-11-12).** Ready and in the app:
+Image Converter (with HEIC input), QR Code Generator, Folder Icon Changer
+(folders and Windows shortcuts, much faster icon update after the Shell
+pass), System Manager (Awake, Desktop Icons, Organize, Quick Launch,
+Command Tips), the Favicons tool, the About button and the update button
+on the home screen. Encrypted Notes is still a placeholder tile. The owner
+hand-tested Favicons, Folder Icon (including shortcuts), About and the new
+Command Tips on 2026-11-12. Next: the four v0.2.3 installers, then the
+GitHub release.
 
-## PROMPT 11 STATUS (Favicons tool - implemented, awaiting manual test)
+## PROMPT 11 STATUS (Favicons tool - implemented, manually tested)
 - Spec: docs/PROMPT_11_SPEC.md. Progress log: docs/PROMPT_11_PROGRESS.md.
 - Backend: src-tauri/src/tools/favicons/ (source, render, ico, package, commands). 5 commands registered in lib.rs (favicons_pick_source, favicons_inspect_source, favicons_preview, favicons_save, favicons_reveal_folder).
 - Frontend: src/tools/favicons/ (components + favicons.css), registered in src/tools/registry.ts.
 - Padding: two options, "Favicon padding" (ico, 16, 32) and "Home screen icon padding" (Apple touch icon, Android 192/512); the maskable icon keeps a fixed margin.
 - New dependency: resvg 0.49 (default features off, raster-images on) for SVG input.
-- Manual test checklist: docs/favicons-manual-checklist.md (not run yet).
-- Open: THIRD_PARTY_LICENSES.md must be regenerated before the next release because resvg was added.
+- Manual test checklist: docs/favicons-manual-checklist.md — run by the owner on 2026-11-12 (the file's boxes are kept as the template for the next tool).
+- THIRD_PARTY_LICENSES.md was regenerated for v0.2.3 (resvg and its crates are now listed).
 
 ## PROMPT 4.2 STATUS (FINAL - Prompt 4.3)
 
@@ -439,25 +441,21 @@ app mid-batch, light/dark theme.
 
 ## Known issues
 
-- The test harness (in-app browser) does not synthesize button-activating
-  Enter key events (no default action on synthetic keydown). Not an app bug:
-  tiles are native `<button>` elements, whose Enter/Space activation is
-  guaranteed in real browsers and WebView2. Keyboard focus movement was
-  verified; activation will be confirmed in the desktop window.
-- Placeholder tools are marked `status: "ready"` so they can be opened for
-  testing; each shows "This tool is not built yet."
+- Encrypted Notes is still a placeholder tile ("This tool is not built
+  yet."); its tile opens so the screen can be seen.
+- Folder icons now register quickly through the Shell pass, but Windows
+  can still take a while to repaint a view it already cached; the tool's
+  note under the result tells the user to reopen the folder or refresh.
 
 ## Next steps
 
-1. **Prompt 3 — QR Code Generator**: 3A done. Owner verifies the preview
-   (scan with phone); then 3B (PNG export, Website/Wi-Fi tabs, options)
-   and 3C (logo, polish, docs, manual checklist).
-2. Prompt 2 — Image Converter: owner runs the manual checklist; any
-   findings go here.
-3. Later tools: Folder Icon Changer, Encrypted Notes (needs Persian/RTL
-   text support; secret state only in Rust).
-4. Installer work (separate prompts): NSIS x64 + ARM64, icons, versioning,
-   optional code signing and CI.
+1. **v0.2.3 release:** bump done; next is `npm run release:build` (four
+   installers + SHA256SUMS), the owner's install check, then the GitHub
+   release with the tag `v0.2.3` (owner publishes).
+2. After v0.2.3: Encrypted Notes (needs Persian/RTL text support; secret
+   state only in Rust), then optional code signing and CI.
+3. Later tools: add the next entry to `src/tools/registry.ts` following
+   docs/ADDING_A_TOOL.md.
 
 ## Open questions
 

@@ -29,6 +29,7 @@ Create a complete favicon package (favicon.ico, PNG icons, Apple touch icon, And
 
 ### Folder Icon Changer
 Recolor Windows folder icons in any color, with optional stripe or checker patterns. It writes a multi-size `.ico` plus `desktop.ini` to the folders you choose and can restore the default icon. Offline, no admin rights.
+- Windows shortcuts (`.lnk`) work too: drop a shortcut and its own icon is changed, without touching the shortcut's target (the icon is kept in the app's own icon folder).
 - Windows usually shows a new folder icon within a few seconds. If one is late, open a different folder and then come back to it, or right-click an empty area and choose Refresh (a restart always shows it).
 - Deleting a customized folder may show a Windows warning about `desktop.ini`. That is normal: the file only stores the icon settings.
 
@@ -38,10 +39,14 @@ Everyday Windows utilities in one panel:
 - **Desktop Icons** — show or hide This PC, Recycle Bin, Control Panel, Network and your user folder on the desktop.
 - **Organize** — tidy loose files into folders. The *Desktop* tab sorts the Desktop into Apps, Documents and More. The *Folder* tab sorts any folder (or Downloads) by format, by date (photo date taken, created or modified; by year or by month; files without a date go to "Date not found") or by size. It shows a plain-language preview first, never deletes or overwrites anything, leaves existing sub-folders alone, and can undo the last run.
 - **Quick Launch** — one-click buttons for Control Panel, Defragment and Optimize Drives, Command Prompt, PowerShell (PowerShell 7 if installed), Device Manager, Services and Microsoft PC Manager (it opens the app if installed, otherwise offers its Microsoft Store page).
-- **Command Tips** — a list of handy Windows commands you can copy and run yourself. ERX Tools never runs them for you.
+- **Command Tips** — a list of handy Windows commands you can copy and run yourself. ERX Tools never runs them for you. It includes "List installed apps" and "Save installed apps to a file", which cover the classic desktop programs and the Microsoft Store apps of your Windows account (portable apps that were never installed are not listed). Long commands start collapsed and expand with a More button.
 
 ### Encrypted Notes
 Planned. Currently a placeholder tile.
+
+## About the app
+
+The round **i** button at the bottom-right of the home screen shows the app version, a short note about the MIT License and a **View on GitHub** button that opens the project's GitHub page in your browser.
 
 ## Requirements
 
@@ -133,7 +138,7 @@ Built with [Tauri 2](https://tauri.app/), [React](https://react.dev/), TypeScrip
 
 ## Name and logo
 
-The source code is released under the MIT License (see below). The **ERX Tools** name and the ERX Tools **logo** (the files in the `branding/` folder and the app icons) are **not** covered by that license. You are welcome to fork the code and change it, but please give your version its own name and its own logo, and do not present it as the official ERX Tools. Details: [branding/NOTICE.md](branding/NOTICE.md).
+The source code is released under the MIT License (see below). The **ERX Tools** name, the ERX Tools **logo** (the files in the `branding/` folder, `src/assets/erx-logo.png` and the app icons) and the ERX Tools **wallpaper** (`src-tauri/assets/erx-wallpaper.jpg`) are **not** covered by that license; they were made for the project and remain the project owner's. You are welcome to fork the code and change it, but please give your version its own name, its own logo and its own wallpaper, and do not present it as the official ERX Tools. Details: [branding/NOTICE.md](branding/NOTICE.md).
 
 ## License
 
