@@ -24,7 +24,7 @@ const DEBOUNCE_MS = 50;
  * successful folder. Plain, calm, honest - Windows 11 does not always
  * repaint custom folder icons immediately. */
 const REFRESH_NOTE =
-  "Icons can take up to 45 seconds to update. If a folder still shows " +
+  "Icons usually update within a few seconds. If a folder still shows " +
   "its old icon, open a different folder and then come back to it. On " +
   "the Desktop, you can also right-click an empty area and choose " +
   "Refresh. If nothing changes after a minute, restart your computer " +
