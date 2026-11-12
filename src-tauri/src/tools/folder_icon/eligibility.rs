@@ -52,7 +52,9 @@ impl BlockReason {
     /// The secondary reason line shown in the UI.
     pub fn message(self) -> &'static str {
         match self {
-            BlockReason::NotADirectory => "That is not a folder or a shortcut (or it does not exist).",
+            BlockReason::NotADirectory => {
+                "That is not a folder or a shortcut (or it does not exist)."
+            }
             BlockReason::DriveRoot => "Drive roots cannot carry folder icons.",
             BlockReason::ProtectedSystemLocation => "This is a protected Windows location.",
             BlockReason::KnownUserFolder => "Windows manages this folder's desktop.ini itself.",
@@ -451,7 +453,10 @@ mod tests {
     #[test]
     fn shortcut_files_follow_their_own_rules() {
         let check = |path: &str| evaluate(Path::new(path), file(true), &env());
-        assert_eq!(check(r"C:\Users\Ehsan\Desktop\App.lnk"), Eligibility::Allowed);
+        assert_eq!(
+            check(r"C:\Users\Ehsan\Desktop\App.lnk"),
+            Eligibility::Allowed
+        );
         assert_eq!(check(r"D:\tools\App.LNK"), Eligibility::Allowed);
         assert_eq!(
             check(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\App.lnk"),
@@ -478,7 +483,11 @@ mod tests {
             Eligibility::AllowedWithWarning(WarningCode::CloudSyncRoot)
         );
         // Every other kind of file stays blocked.
-        for path in [r"C:\dev\App.url", r"C:\dev\notes.txt", r"C:\dev\App.lnk.txt"] {
+        for path in [
+            r"C:\dev\App.url",
+            r"C:\dev\notes.txt",
+            r"C:\dev\App.lnk.txt",
+        ] {
             assert_eq!(
                 check(path),
                 Eligibility::Blocked(BlockReason::NotADirectory),

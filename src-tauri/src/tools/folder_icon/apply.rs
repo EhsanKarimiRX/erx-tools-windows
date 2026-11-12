@@ -1121,10 +1121,11 @@ mod tests {
         );
         println!(
             "SHELL_PASS raw_after_api_first_bytes={:02X?}",
-            report
-                .raw_after_api
-                .as_ref()
-                .map(|bytes| bytes.iter().take(4).copied().collect::<Vec<u8>>())
+            report.raw_after_api.as_ref().map(|bytes| bytes
+                .iter()
+                .take(4)
+                .copied()
+                .collect::<Vec<u8>>())
         );
         println!(
             "SHELL_PASS attrs folder=0x{:08X} ini=0x{:08X} ico=0x{:08X}",
@@ -1132,7 +1133,11 @@ mod tests {
             get_attributes(&ini_path).unwrap_or(0),
             get_attributes(&folder.join(&name)).unwrap_or(0)
         );
-        assert!(report.hresult >= 0, "Shell call failed: 0x{:08X}", report.hresult);
+        assert!(
+            report.hresult >= 0,
+            "Shell call failed: 0x{:08X}",
+            report.hresult
+        );
 
         let text = ini_text(&std::fs::read(&ini_path).unwrap());
         assert!(text.contains(&format!("IconResource={name},0")), "{text:?}");
@@ -1140,7 +1145,10 @@ mod tests {
         assert!(!text.contains("IconIndex"), "{text:?}");
         verify_applied(&folder, &name).expect("verified");
         restore_icon(&folder).expect("restore");
-        assert!(!ini_path.exists(), "meaningless ini is deleted after restore");
+        assert!(
+            !ini_path.exists(),
+            "meaningless ini is deleted after restore"
+        );
         cleanup(&folder);
     }
 

@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use windows_sys::Win32::UI::Shell::{
-    FCSM_ICONFILE, FCS_FORCEWRITE, SHFOLDERCUSTOMSETTINGS, SHGetSetFolderCustomSettings,
+    FCS_FORCEWRITE, FCSM_ICONFILE, SHFOLDERCUSTOMSETTINGS, SHGetSetFolderCustomSettings,
 };
 
 fn wide(path: &Path) -> Vec<u16> {

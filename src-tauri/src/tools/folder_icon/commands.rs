@@ -350,9 +350,8 @@ pub async fn folder_icon_restore_batch(
     paths: Vec<String>,
 ) -> Result<BatchSummaryDto, ToolError> {
     let cancel = state.cancel.clone();
-    let task = tauri::async_runtime::spawn_blocking(move || {
-        run_restore_batch(cancel, on_progress, paths)
-    });
+    let task =
+        tauri::async_runtime::spawn_blocking(move || run_restore_batch(cancel, on_progress, paths));
     match task.await {
         Ok(result) => result,
         Err(error) => Err(ToolError::Internal(error.to_string())),

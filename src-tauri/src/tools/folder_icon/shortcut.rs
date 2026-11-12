@@ -205,8 +205,9 @@ mod tests {
     }
 
     fn params(color: &str) -> IconParams {
-        let settings = super::super::settings::IconSettings::from_parts(color, "none", "#FFFFFF", 3, 70)
-            .expect("settings");
+        let settings =
+            super::super::settings::IconSettings::from_parts(color, "none", "#FFFFFF", 3, 70)
+                .expect("settings");
         super::super::core::build(&settings).params
     }
 
@@ -216,10 +217,13 @@ mod tests {
         let link: IShellLinkW =
             unsafe { CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER) }.expect("link");
         unsafe {
-            link.SetPath(w!(r"C:\Windows\System32\notepad.exe")).expect("path");
+            link.SetPath(w!(r"C:\Windows\System32\notepad.exe"))
+                .expect("path");
             link.SetArguments(w!("/A")).expect("arguments");
-            link.SetWorkingDirectory(w!(r"C:\Windows")).expect("working dir");
-            link.SetDescription(w!("ERX test shortcut")).expect("description");
+            link.SetWorkingDirectory(w!(r"C:\Windows"))
+                .expect("working dir");
+            link.SetDescription(w!("ERX test shortcut"))
+                .expect("description");
         }
         let file: IPersistFile = link.cast().expect("persist");
         let path = dir.join("test.lnk");
@@ -229,7 +233,10 @@ mod tests {
     }
 
     fn text(buffer: &[u16]) -> String {
-        let len = buffer.iter().position(|&unit| unit == 0).unwrap_or(buffer.len());
+        let len = buffer
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(buffer.len());
         String::from_utf16_lossy(&buffer[..len])
     }
 
@@ -241,12 +248,18 @@ mod tests {
         let mut working = [0_u16; 520];
         let mut description = [0_u16; 520];
         unsafe {
-            link.GetPath(&mut target, std::ptr::null_mut(), 0).expect("target");
+            link.GetPath(&mut target, std::ptr::null_mut(), 0)
+                .expect("target");
             link.GetArguments(&mut arguments).expect("arguments");
             link.GetWorkingDirectory(&mut working).expect("working dir");
             link.GetDescription(&mut description).expect("description");
         }
-        (text(&target), text(&arguments), text(&working), text(&description))
+        (
+            text(&target),
+            text(&arguments),
+            text(&working),
+            text(&description),
+        )
     }
 
     #[test]
@@ -264,7 +277,11 @@ mod tests {
         assert_eq!(index, 0);
         assert!(Path::new(&icon).starts_with(&store));
         assert!(Path::new(&icon).is_file());
-        assert_eq!(fields(&lnk), before, "target, arguments, working dir, description unchanged");
+        assert_eq!(
+            fields(&lnk),
+            before,
+            "target, arguments, working dir, description unchanged"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -289,7 +306,10 @@ mod tests {
         let (second_icon, _) = current_icon(&lnk).unwrap();
         assert_ne!(first_icon.to_lowercase(), second_icon.to_lowercase());
         assert!(Path::new(&second_icon).is_file());
-        assert!(Path::new(&first_icon).is_file(), "other shortcuts may still use the old icon");
+        assert!(
+            Path::new(&first_icon).is_file(),
+            "other shortcuts may still use the old icon"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -300,10 +320,16 @@ mod tests {
         let store = dir.join("store");
         let lnk = make_shortcut(&dir);
         let before = fields(&lnk);
-        assert_eq!(restore_shortcut_icon(&lnk).unwrap(), RestoreOutcome::AlreadyDefault);
+        assert_eq!(
+            restore_shortcut_icon(&lnk).unwrap(),
+            RestoreOutcome::AlreadyDefault
+        );
 
         apply_shortcut_icon_in(&store, &lnk, &params("#0078D4")).expect("apply");
-        assert_eq!(restore_shortcut_icon(&lnk).unwrap(), RestoreOutcome::Restored);
+        assert_eq!(
+            restore_shortcut_icon(&lnk).unwrap(),
+            RestoreOutcome::Restored
+        );
         assert_eq!(inspect_shortcut(&lnk).unwrap(), IconState::Default);
         assert_eq!(fields(&lnk), before);
         let _ = std::fs::remove_dir_all(&dir);
@@ -316,7 +342,10 @@ mod tests {
         let lnk = make_shortcut(&dir);
         write_icon(&lnk, r"C:\Windows\System32\shell32.dll", 3).expect("foreign icon");
         assert_eq!(inspect_shortcut(&lnk).unwrap(), IconState::CustomByOther);
-        assert_eq!(restore_shortcut_icon(&lnk).unwrap(), RestoreOutcome::Restored);
+        assert_eq!(
+            restore_shortcut_icon(&lnk).unwrap(),
+            RestoreOutcome::Restored
+        );
         assert_eq!(inspect_shortcut(&lnk).unwrap(), IconState::Default);
         let _ = std::fs::remove_dir_all(&dir);
     }
