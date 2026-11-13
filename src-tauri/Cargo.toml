@@ -87,3 +87,19 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Quantum Resistance Vault: Argon2id and the ciphers are far too slow in
+# unoptimized debug/test builds (the tests run Argon2id with 8-264 MiB).
+# Optimizing only these crates keeps `cargo test` fast. Release is unaffected.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.zstd-sys]
+opt-level = 3
