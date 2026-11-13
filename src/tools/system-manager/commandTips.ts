@@ -10,7 +10,9 @@
  * elevation on this build, and %USERPROFILE% only expands in Command
  * Prompt. `winget upgrade --all` was removed on purpose: it can silently
  * update tools such as Python and break projects that depend on the old
- * version. */
+ * version. The two internet-check on/off commands (2026-11-13) WERE run on
+ * the same machine: internet turned off, PC restarted, internet checked,
+ * then turned back on. They worked as expected on Windows 11. */
 
 export type TipShell = "PowerShell" | "Command Prompt" | "Either";
 
