@@ -54,6 +54,26 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Sh
 # pulls in, so this only merges extra features — no new crate in the tree.
 windows = { version = "0.62", default-features = false, features = ["Win32_Graphics_Imaging", "Win32_System_Com", "Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem"] }
 kamadak-exif = "0.6.2"
+# Quantum Resistance Vault: passphrase key derivation (Argon2id).
+argon2 = "0.6.0"
+# Quantum Resistance Vault: HKDF subkey derivation.
+hkdf = "0.13.0"
+# Quantum Resistance Vault: HMAC header commitment tag.
+hmac = "0.13.0"
+# Quantum Resistance Vault: SHA-256 integrity hash and HKDF/HMAC base.
+sha2 = "0.11.1"
+# Quantum Resistance Vault: wipes keys and passphrase from memory.
+zeroize = "1.9.1"
+# Quantum Resistance Vault: passphrase NFKC normalization.
+unicode-normalization = "0.1.26"
+# Quantum Resistance Vault: OS randomness for salts, nonces and word choice.
+getrandom = "0.4.3"
+# Quantum Resistance Vault: streaming compression before encryption.
+zstd = "0.14.4"
+# Quantum Resistance Vault: XChaCha20-Poly1305 cipher.
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc", "zeroize"] }
+# Quantum Resistance Vault: STREAM construction (chunked AEAD) for chacha20poly1305.
+aead-stream = { version = "0.6.0", features = ["alloc"] }
 
 [dev-dependencies]
 # QR read-back tests only — never ships in the app binary.
