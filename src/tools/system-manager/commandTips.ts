@@ -231,6 +231,40 @@ $DesktopFolder = [Environment]::GetFolderPath("Desktop")
     canTakeLong: false,
     usesInternet: false,
   },
+  {
+    id: "turn-off-internet-check",
+    title: "Turn off the Windows internet check",
+    explanation:
+      "Windows regularly checks that your connection really has internet by contacting a Microsoft server. If that check fails or is blocked (this happens in some countries), Windows can label a working Wi-Fi as having no internet, which some people notice as a Wi-Fi that seems to keep disconnecting. This command turns the check off. Run it in PowerShell opened as Administrator, then restart your PC. Side effects: the network icon may no longer show the real internet status, and some Microsoft apps that rely on this check may behave differently. If anything looks wrong, use the next command to turn the check back on.",
+    steps: [
+      {
+        parts: [
+          String.raw`Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\NlaSvc\Parameters\Internet" -Name "EnableActiveProbing" -Value 0`,
+        ],
+      },
+    ],
+    shell: "PowerShell",
+    needsAdministrator: true,
+    canTakeLong: false,
+    usesInternet: false,
+  },
+  {
+    id: "turn-on-internet-check",
+    title: "Turn the Windows internet check back on",
+    explanation:
+      "Undoes the previous command and brings back the Windows default, so Windows checks the internet connection by itself again. Run it in PowerShell opened as Administrator, then restart your PC.",
+    steps: [
+      {
+        parts: [
+          String.raw`Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\NlaSvc\Parameters\Internet" -Name "EnableActiveProbing" -Value 1`,
+        ],
+      },
+    ],
+    shell: "PowerShell",
+    needsAdministrator: true,
+    canTakeLong: false,
+    usesInternet: false,
+  },
 ];
 
 export const COMMAND_TIPS_MORE: CommandTip[] = [
