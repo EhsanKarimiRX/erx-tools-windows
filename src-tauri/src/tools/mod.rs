@@ -13,5 +13,6 @@ pub mod image_convert;
 pub mod qr_code;
 pub mod system_manager;
 pub mod update_check;
+pub mod vault;
 
 pub use error::ToolError;
