@@ -259,7 +259,7 @@ fn encrypt_plan_reports_conflicts_and_advice() {
         VaultError::CannotOpenFile
     );
     assert_eq!(
-        plan_encrypt(dir.path(), None, PartSize::Off).unwrap_err(),
+        plan_encrypt(&dir.path().join("missing-item"), None, PartSize::Off).unwrap_err(),
         VaultError::CannotOpenFile
     );
     let missing = dir.path().join("nope");

@@ -58,6 +58,30 @@ pub enum VaultError {
     )]
     FolderNotSupported,
     #[error(
+        "\"{path}\" is a link, device or other special item and cannot be encrypted. Remove it from the folder and try again."
+    )]
+    UnsupportedEntry { path: String },
+    #[error("\"{path}\" has a name that cannot be stored safely. Rename it and try again.")]
+    UnsupportedName { path: String },
+    #[error(
+        "\"{path}\" could not be read. Check that no program is using it and that you may open it, then try again."
+    )]
+    CannotReadEntry { path: String },
+    #[error(
+        "\"{path}\" changed while it was being encrypted. Close the programs that use it and try again."
+    )]
+    FileChanged { path: String },
+    #[error(
+        "The folder has too many nested levels or too many items. Compress it into a ZIP file first, then encrypt the ZIP file."
+    )]
+    FolderTooBig,
+    #[error(
+        "The output folder is inside the folder you are encrypting. Choose another output folder."
+    )]
+    OutputInsideFolder,
+    #[error("The encrypted folder contains an unsafe or duplicate path, so it was not restored.")]
+    UnsafeArchive,
+    #[error(
         "Not enough free disk space on the destination drive. About {needed_mib} MiB are needed."
     )]
     NotEnoughSpace { needed_mib: u64 },

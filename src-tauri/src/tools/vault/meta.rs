@@ -6,7 +6,7 @@
 //! so the length of the name is hidden as well.
 //!
 //! Layout (1024 bytes, little-endian):
-//!   0     1  kind (0 = one file; other values are reserved)
+//!   0     1  kind (0 = one file, 1 = folder archive)
 //!   1     2  length of the name in bytes
 //!   3     n  the name, UTF-8
 //!   3+n   -  zeros up to the end of the block
@@ -22,6 +22,8 @@ use super::error::VaultError;
 pub const META_LEN: usize = 1024;
 /// Kind value for a single file.
 pub const KIND_FILE: u8 = 0;
+/// Kind value for a folder (stored as an archive, see `archive`).
+pub const KIND_FOLDER: u8 = 1;
 const KIND_LEN: usize = 1;
 const NAME_LEN_LEN: usize = 2;
 const NAME_AT: usize = KIND_LEN + NAME_LEN_LEN;
@@ -47,6 +49,13 @@ impl FileMeta {
         })
     }
 
+    /// Metadata for a folder with the given original name.
+    pub fn folder(name: &str) -> Result<Self, VaultError> {
+        let mut meta = Self::file(name)?;
+        meta.kind = KIND_FOLDER;
+        Ok(meta)
+    }
+
     /// The fixed-size block.
     pub fn encode(&self) -> Result<[u8; META_LEN], VaultError> {
         let name = self.name.as_bytes();
@@ -69,7 +78,7 @@ impl FileMeta {
             return Err(VaultError::CorruptedData);
         }
         let kind = bytes.first().copied().ok_or(VaultError::Internal)?;
-        if kind != KIND_FILE {
+        if kind != KIND_FILE && kind != KIND_FOLDER {
             return Err(VaultError::UnsupportedVersion);
         }
         let length_bytes = bytes.get(KIND_LEN..NAME_AT).ok_or(VaultError::Internal)?;

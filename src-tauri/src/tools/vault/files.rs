@@ -110,7 +110,7 @@ fn same_file(first: &Path, second: &Path) -> bool {
     }
 }
 
-fn rename_with_retry(from: &Path, to: &Path) -> io::Result<()> {
+pub(super) fn rename_with_retry(from: &Path, to: &Path) -> io::Result<()> {
     let mut attempt = 0;
     loop {
         match fs::rename(from, to) {
@@ -128,7 +128,7 @@ fn rename_with_retry(from: &Path, to: &Path) -> io::Result<()> {
 
 /// Moves the finished temporary parts to their final names. Temporary
 /// files are removed on every failure.
-fn commit(base: &Path, parts: &[PartPaths], overwrite: bool) -> Result<(), VaultError> {
+pub(super) fn commit(base: &Path, parts: &[PartPaths], overwrite: bool) -> Result<(), VaultError> {
     let cleanup = || {
         for part in parts {
             let _ = fs::remove_file(&part.temp);

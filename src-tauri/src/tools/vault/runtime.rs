@@ -22,6 +22,7 @@ use zeroize::Zeroizing;
 use super::engine::{self, EncryptSettings};
 use super::error::VaultError;
 use super::files;
+use super::folder;
 use super::kdf::{KEY_LEN, KdfParams, MAX_T_COST};
 use super::parts::{MAX_PARTS, PartSize, SplitReader, TEMP_EXTENSION, part_path};
 use super::space;
@@ -256,6 +257,10 @@ pub fn count_parts(first: &Path) -> u32 {
 /// Everything the UI needs to know before encrypting a file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncryptPlan {
+    /// True when the source is a folder.
+    pub is_folder: bool,
+    /// Number of files that will be encrypted (1 for a single file).
+    pub item_count: u64,
     pub file_name: String,
     pub size_bytes: u64,
     pub out_dir: PathBuf,
@@ -275,6 +280,9 @@ pub fn plan_encrypt(
     part_size: PartSize,
 ) -> Result<EncryptPlan, VaultError> {
     let metadata = fs::metadata(source).map_err(|_| VaultError::CannotOpenFile)?;
+    if metadata.is_dir() {
+        return folder::plan_folder(source, chosen_dir, part_size);
+    }
     if !metadata.is_file() {
         return Err(VaultError::CannotOpenFile);
     }
@@ -284,6 +292,8 @@ pub fn plan_encrypt(
     let size_bytes = metadata.len();
     Ok(EncryptPlan {
         file_name: file_name_of(source),
+        is_folder: false,
+        item_count: 1,
         size_bytes,
         conflicts: files::find_conflicts(&base_path),
         compress_by_default: engine::should_compress(source),
@@ -298,6 +308,8 @@ pub fn plan_encrypt(
 /// Everything the UI needs to know before decrypting a file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecryptPlan {
+    /// True when the encrypted data is a folder.
+    pub is_folder: bool,
     pub file_name: String,
     pub part_count: u32,
     /// Encrypted bytes of all parts that exist right now.
@@ -310,11 +322,13 @@ pub struct DecryptPlan {
 pub fn plan_decrypt(first: &Path, chosen_dir: Option<&Path>) -> Result<DecryptPlan, VaultError> {
     // Opening the reader checks the file is a first part of a vault file.
     let total_bytes = SplitReader::open(first)?.logical_total();
+    let is_folder = folder::peek_is_folder(first)?;
     let out_dir = resolve_out_dir(first, chosen_dir)?;
     let output_path =
         files::default_restore_path(first, &out_dir).ok_or(VaultError::CannotOpenFile)?;
     Ok(DecryptPlan {
         file_name: file_name_of(first),
+        is_folder,
         part_count: count_parts(first),
         total_bytes,
         output_exists: output_path.exists(),
@@ -400,13 +414,13 @@ pub fn run_encrypt(
 ) -> Result<EncryptOutcome, VaultError> {
     cleanup_stale_temp(&job.out_dir, STALE_TEMP_AGE);
     let base =
-        files::hidden_output_path(&job.source, &job.out_dir).ok_or(VaultError::CannotOpenFile)?;
+        folder::output_path_for(&job.source, &job.out_dir).ok_or(VaultError::CannotOpenFile)?;
 
     emit(VaultEvent::Phase {
         phase: Phase::Deriving,
     });
     let mut throttle = Throttle::new(PROGRESS_INTERVAL);
-    let result = files::encrypt_file(
+    let result = folder::encrypt_path(
         &job.source,
         &base,
         job.part_size.limit_bytes(),
@@ -466,7 +480,7 @@ pub fn run_decrypt(
         phase: Phase::Deriving,
     });
     let mut throttle = Throttle::new(PROGRESS_INTERVAL);
-    let result = files::decrypt_file_restoring_name(
+    let result = folder::decrypt_path(
         &job.first_part,
         &out_path,
         words,

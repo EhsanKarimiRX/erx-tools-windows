@@ -77,7 +77,7 @@ fn version_flags_and_kdf_id_are_checked() {
         Err(VaultError::CorruptedHeader)
     );
     assert_eq!(
-        Header::parse(&with_bytes(FLAGS_AT, &[2, 0])),
+        Header::parse(&with_bytes(FLAGS_AT, &[4, 0])),
         Err(VaultError::UnsupportedVersion)
     );
     assert_eq!(

@@ -12,6 +12,8 @@
 //! - `parts`      : split writer / joined reader for multi-part files.
 //! - `space`      : free disk space check.
 //! - `files`      : file-level encrypt / decrypt (temp files, rename).
+//! - `archive`    : a folder tree as one byte stream (folder encryption).
+//! - `folder`     : folder encrypt / decrypt (temp folder, rename).
 //! - `verify`     : verify-after-writing (full decrypt into nothing).
 //! - `runtime`    : tuning, progress, planning and jobs (no Tauri types).
 //! - `commands`   : the Tauri commands (thin layer over `runtime`).
@@ -24,10 +26,12 @@
 // line in plan step V7 and re-check with clippy.
 #![allow(dead_code)]
 
+pub mod archive;
 pub mod commands;
 pub mod engine;
 pub mod error;
 pub mod files;
+pub mod folder;
 pub mod format;
 pub mod kdf;
 pub mod meta;
@@ -43,6 +47,8 @@ pub mod wordlist;
 mod engine_test;
 #[cfg(test)]
 mod files_test;
+#[cfg(test)]
+mod folder_test;
 #[cfg(test)]
 mod format_test;
 #[cfg(test)]

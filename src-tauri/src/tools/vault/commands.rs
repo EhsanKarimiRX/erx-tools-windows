@@ -204,6 +204,8 @@ pub fn vault_pick_folder(app: tauri::AppHandle) -> Option<String> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptPlanDto {
+    pub is_folder: bool,
+    pub item_count: u64,
     pub file_name: String,
     pub size_bytes: u64,
     pub output_dir: String,
@@ -218,6 +220,7 @@ pub struct EncryptPlanDto {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecryptPlanDto {
+    pub is_folder: bool,
     pub file_name: String,
     pub part_count: u32,
     pub total_bytes: u64,
@@ -228,21 +231,20 @@ pub struct DecryptPlanDto {
 
 /// Facts about a file the user wants to encrypt (size, output name,
 /// existing files in the way, free space, compression advice).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_prepare_encrypt(
     path: String,
     output_dir: Option<String>,
     part_size: String,
 ) -> Result<EncryptPlanDto, ToolError> {
     let size = parse_part_size(&part_size).ok_or_else(unknown_part_size)?;
-    if Path::new(&path).is_dir() {
-        return Err(user_error(VaultError::FolderNotSupported));
-    }
     let chosen = output_dir.map(PathBuf::from);
     let plan = plan_encrypt(Path::new(&path), chosen.as_deref(), size).map_err(user_error)?;
     Ok(EncryptPlanDto {
         file_name: plan.file_name,
         size_bytes: plan.size_bytes,
+        is_folder: plan.is_folder,
+        item_count: plan.item_count,
         output_dir: path_text(&plan.out_dir),
         output_base_path: path_text(&plan.base_path),
         conflicts: plan.conflicts.iter().map(path_text).collect(),
@@ -264,6 +266,7 @@ pub fn vault_prepare_decrypt(
     Ok(DecryptPlanDto {
         file_name: plan.file_name,
         part_count: plan.part_count,
+        is_folder: plan.is_folder,
         total_bytes: plan.total_bytes,
         output_dir: path_text(&plan.out_dir),
         output_path: path_text(&plan.output_path),

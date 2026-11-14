@@ -95,7 +95,7 @@ fn damaged_metadata_blocks_are_refused() {
     assert!(FileMeta::decode(&good[..META_LEN - 1]).is_err());
 
     let mut bad = good;
-    bad[0] = 1;
+    bad[0] = 2;
     assert_eq!(
         FileMeta::decode(&bad).unwrap_err(),
         VaultError::UnsupportedVersion

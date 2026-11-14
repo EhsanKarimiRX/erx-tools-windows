@@ -27,6 +27,7 @@ use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
 
 use super::error::VaultError;
+use super::format::FLAG_FOLDER;
 use super::format::{
     CHUNK_SIZE, FLAG_ZSTD, HEADER_LEN, Header, NONCE_PREFIX_LEN, SALT_LEN, TAG_LEN, UUID_LEN,
 };
@@ -34,7 +35,7 @@ use super::kdf::{
     KEY_LEN, KdfParams, MIN_M_COST_KIB_FOR_ENCRYPTION, commitment_tag, derive_keys,
     verify_commitment,
 };
-use super::meta::{FileMeta, META_LEN};
+use super::meta::{FileMeta, KIND_FOLDER, META_LEN};
 use super::passphrase::{normalize_passphrase, validate_typed_words};
 
 type Cipher = XChaCha20Poly1305;
@@ -264,17 +265,17 @@ fn pump<R: Read, S: Write>(
 /// words from the built-in list). `progress` gets the number of source
 /// bytes read so far; returning false cancels with `Cancelled`. On any
 /// error the caller must delete the incomplete output.
-pub fn encrypt_stream_named<R: Read, W: Write>(
+pub fn encrypt_stream_meta<R: Read, W: Write>(
     source: &mut R,
     output: &mut W,
     passphrase: &str,
     settings: &EncryptSettings,
-    original_name: &str,
+    meta: &FileMeta,
     progress: &mut dyn FnMut(u64) -> bool,
 ) -> Result<EncryptSummary, VaultError> {
     let normalized = normalize_passphrase(passphrase);
     validate_typed_words(&normalized)?;
-    let meta_block = FileMeta::file(original_name)?.encode()?;
+    let meta_block = meta.encode()?;
 
     let mut file_uuid = [0u8; UUID_LEN];
     let mut salt = [0u8; SALT_LEN];
@@ -284,7 +285,7 @@ pub fn encrypt_stream_named<R: Read, W: Write>(
     fill_random(&mut nonce_prefix)?;
 
     let mut header = Header {
-        flags: if settings.compress { FLAG_ZSTD } else { 0 },
+        flags: header_flags(settings.compress, meta.kind),
         file_uuid,
         kdf: settings.kdf,
         salt,
@@ -325,6 +326,32 @@ pub fn encrypt_stream_named<R: Read, W: Write>(
         input_bytes: total,
         output_bytes: (HEADER_LEN as u64).saturating_add(chunk_bytes),
     })
+}
+
+/// Encrypts a single file stream and stores its original name (may be
+/// empty) inside the encryption.
+pub fn encrypt_stream_named<R: Read, W: Write>(
+    source: &mut R,
+    output: &mut W,
+    passphrase: &str,
+    settings: &EncryptSettings,
+    original_name: &str,
+    progress: &mut dyn FnMut(u64) -> bool,
+) -> Result<EncryptSummary, VaultError> {
+    let meta = FileMeta::file(original_name)?;
+    encrypt_stream_meta(source, output, passphrase, settings, &meta, progress)
+}
+
+/// Header flags for the compression setting and the kind of data.
+fn header_flags(compress: bool, kind: u8) -> u16 {
+    let mut flags = 0;
+    if compress {
+        flags |= FLAG_ZSTD;
+    }
+    if kind == KIND_FOLDER {
+        flags |= FLAG_FOLDER;
+    }
+    flags
 }
 
 /// Same as `encrypt_stream_named` with an empty original name.

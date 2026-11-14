@@ -5,7 +5,7 @@
 //!   offset  size  field
 //!        0     8  magic "ERXVAULT"
 //!        8     2  format version (1)
-//!       10     2  flags (bit 0: payload is zstd-compressed)
+//!       10     2  flags (bit 0: zstd-compressed, bit 1: folder archive)
 //!       12    16  file UUID (random)
 //!       28     1  KDF id (1 = Argon2id v0x13)
 //!       29     4  Argon2 memory cost in KiB
@@ -28,7 +28,9 @@ pub const MAGIC: [u8; 8] = *b"ERXVAULT";
 pub const FORMAT_VERSION: u16 = 1;
 /// Flag bit 0: the payload is a zstd frame (otherwise raw bytes).
 pub const FLAG_ZSTD: u16 = 1;
-const KNOWN_FLAGS: u16 = FLAG_ZSTD;
+/// Flag bit 1: the data is a folder archive (see `archive`), not one file.
+pub const FLAG_FOLDER: u16 = 2;
+const KNOWN_FLAGS: u16 = FLAG_ZSTD | FLAG_FOLDER;
 pub const KDF_ARGON2ID_V13: u8 = 1;
 pub const UUID_LEN: usize = 16;
 pub const SALT_LEN: usize = 16;
@@ -54,6 +56,11 @@ pub struct Header {
 }
 
 impl Header {
+    /// True when the data is a folder archive (not a single file).
+    pub fn is_folder(&self) -> bool {
+        self.flags & FLAG_FOLDER != 0
+    }
+
     /// True when the payload is zstd-compressed.
     pub fn is_compressed(&self) -> bool {
         self.flags & FLAG_ZSTD != 0
