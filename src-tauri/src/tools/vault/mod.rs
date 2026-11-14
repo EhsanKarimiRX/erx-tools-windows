@@ -52,6 +52,8 @@ mod folder_test;
 #[cfg(test)]
 mod format_test;
 #[cfg(test)]
+mod large_test;
+#[cfg(test)]
 mod parts_test;
 #[cfg(test)]
 mod passphrase_test;
