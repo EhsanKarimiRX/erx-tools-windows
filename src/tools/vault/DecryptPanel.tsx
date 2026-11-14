@@ -158,7 +158,10 @@ export default function DecryptPanel({ active, onBusyChange }: DecryptPanelProps
       <div className="vt-panel" hidden={!active}>
         <div className="vt-card vt-done">
           <h2 className="vt-card-title">Decrypted successfully</h2>
-          <p>The original file ({formatBytes(result.outputBytes)}) was restored:</p>
+          <p>
+            The original {plan?.isFolder ? "folder" : "file"} ({formatBytes(result.outputBytes)})
+            was restored:
+          </p>
           <p className="vt-path">{result.outputPath}</p>
           <p className="vt-note">
             Its integrity was checked: it matches the file that was encrypted.
@@ -277,7 +280,7 @@ export default function DecryptPanel({ active, onBusyChange }: DecryptPanelProps
                 }}
               />
               <p className="vt-note">
-                The restored file gets its original name and type (shown when it is done). If
+                The restored {shownPlan.isFolder ? "folder" : "file"} gets its original name (shown when it is done). If
                 that name is already used in the folder, a number is added, so nothing is
                 overwritten.
               </p>

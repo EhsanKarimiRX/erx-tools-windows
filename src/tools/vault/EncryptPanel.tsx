@@ -58,6 +58,15 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
     }
   }, [chooseFile]);
 
+  const browseFolder = useCallback(async () => {
+    try {
+      const picked = await invoke<string | null>("vault_pick_folder");
+      if (picked) chooseFile(picked);
+    } catch (problem) {
+      setMessage(`Could not open the folder dialog: ${errorText(problem)}`);
+    }
+  }, [chooseFile]);
+
   const onDrop = useCallback(
     (paths: string[]) => {
       const first = paths[0];
@@ -241,8 +250,8 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
         <h2 className="vt-card-title">1. Choose the file</h2>
         {!hasFile ? (
           <DropZone
-            label="Drag the file to encrypt here"
-            hint="Any file type, up to 20 GB"
+            label="Drag a file or a folder to encrypt here"
+            hint="Any file type, or a whole folder - up to 20 GB"
             browseLabel="Choose file"
             onBrowse={() => void browse()}
             onFiles={onDrop}
@@ -253,7 +262,11 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
             <div>
               <p className="vt-file-name">{shownPlan?.fileName ?? sourcePath}</p>
               {shownPlan !== null && (
-                <p className="vt-note">{formatBytes(shownPlan.sizeBytes)}</p>
+                <p className="vt-note">
+                  {shownPlan.isFolder
+                    ? `Folder: ${shownPlan.itemCount} files, ${formatBytes(shownPlan.sizeBytes)}`
+                    : formatBytes(shownPlan.sizeBytes)}
+                </p>
               )}
             </div>
             <div className="vt-actions">
@@ -271,9 +284,21 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
                 onClick={startOver}
                 disabled={running}
               >
-                Remove file
+                {shownPlan?.isFolder ? "Remove folder" : "Remove file"}
               </button>
             </div>
+          </div>
+        )}
+        {!hasFile && (
+          <div className="vt-actions">
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => void browseFolder()}
+              disabled={!active || running}
+            >
+              Choose a folder instead
+            </button>
           </div>
         )}
         {planError !== null && (
@@ -360,6 +385,13 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
                   setOverwrite(false);
                 }}
               />
+              {shownPlan.isFolder && (
+                <p className="vt-note">
+                  Folder: every file and subfolder is stored, including empty ones. File dates
+                  and attributes (hidden, read-only) are not kept, and links or shortcuts inside
+                  the folder are not supported. Do not change the folder while it is encrypted.
+                </p>
+              )}
               <p className="vt-note">Output: {shownPlan.outputBasePath}</p>
               <p className="vt-note">
                 The file type is not part of the output name. The original name (with its

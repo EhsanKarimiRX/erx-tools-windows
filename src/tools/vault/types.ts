@@ -41,6 +41,8 @@ export interface RefreshResult {
 }
 
 export interface EncryptPlan {
+  isFolder: boolean;
+  itemCount: number;
   fileName: string;
   sizeBytes: number;
   outputDir: string;
@@ -61,6 +63,7 @@ export interface EncryptResult {
 }
 
 export interface DecryptPlan {
+  isFolder: boolean;
   fileName: string;
   partCount: number;
   totalBytes: number;
