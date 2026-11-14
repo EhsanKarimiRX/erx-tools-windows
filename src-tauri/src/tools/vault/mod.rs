@@ -7,6 +7,9 @@
 //! - `format`     : the .erx header (layout, parsing, validation).
 //! - `kdf`        : Argon2id, HKDF subkeys, header commitment tag.
 //! - `engine`     : streaming compress + encrypt / decrypt of one stream.
+//! - `parts`      : split writer / joined reader for multi-part files.
+//! - `space`      : free disk space check.
+//! - `files`      : file-level encrypt / decrypt (temp files, rename).
 //!
 //! Hard rules for this module: no `unwrap()` / `expect()` / panicking
 //! indexing in non-test code (the release profile uses `panic = "abort"`),
@@ -18,15 +21,22 @@
 
 pub mod engine;
 pub mod error;
+pub mod files;
 pub mod format;
 pub mod kdf;
+pub mod parts;
 pub mod passphrase;
+pub mod space;
 pub mod wordlist;
 
 #[cfg(test)]
 mod engine_test;
 #[cfg(test)]
+mod files_test;
+#[cfg(test)]
 mod format_test;
+#[cfg(test)]
+mod parts_test;
 #[cfg(test)]
 mod passphrase_test;
 #[cfg(test)]
