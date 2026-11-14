@@ -5,9 +5,9 @@
 //!
 //! Events sent to the UI (through the Tauri channel, by the command layer):
 //! - `Phase`    : "tuning" (first encryption of a run only), "deriving"
-//!                (Argon2id, no percentage possible), "verifying".
+//!   (Argon2id, no percentage possible), "verifying".
 //! - `Progress` : `done` / `total` bytes. The first `Progress` after
-//!                "deriving" tells the UI to switch to a percentage bar.
+//!   "deriving" tells the UI to switch to a percentage bar.
 
 use std::fs;
 use std::path::{Path, PathBuf};
