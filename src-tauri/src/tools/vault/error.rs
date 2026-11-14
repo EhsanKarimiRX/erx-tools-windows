@@ -46,6 +46,14 @@ pub enum VaultError {
     #[error("There is not enough free disk space.")]
     DiskFull,
     #[error(
+        "The check after writing failed. The new file was removed; your original is untouched. Try again, or choose another drive."
+    )]
+    VerifyFailed,
+    #[error("Another vault operation is already running.")]
+    Busy,
+    #[error("The folder cannot be used.")]
+    BadFolder,
+    #[error(
         "Not enough free disk space on the destination drive. About {needed_mib} MiB are needed."
     )]
     NotEnoughSpace { needed_mib: u64 },

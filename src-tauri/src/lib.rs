@@ -19,6 +19,7 @@ pub fn run() {
         .manage(tools::folder_icon::commands::BatchState::default())
         .manage(tools::system_manager::awake::commands::AwakeRuntime::default())
         .manage(tools::update_check::commands::UpdateState::default())
+        .manage(tools::vault::commands::VaultState::default())
         .setup(|app| {
             // Awake startup: resolve the state folder, run the app-start
             // reconcile (R4) and start the 5-second background thread.
@@ -89,6 +90,20 @@ pub fn run() {
             // when the user clicks the update button on the home screen.
             tools::update_check::commands::check_for_updates,
             tools::update_check::commands::open_update_page,
+            // Quantum Resistance Vault: passphrase session, dialogs,
+            // planning, encrypt / decrypt with progress, cancel.
+            tools::vault::commands::vault_generate_passphrase,
+            tools::vault::commands::vault_refresh_word,
+            tools::vault::commands::vault_confirm_saved,
+            tools::vault::commands::vault_clear_passphrase,
+            tools::vault::commands::vault_pick_source_file,
+            tools::vault::commands::vault_pick_vault_file,
+            tools::vault::commands::vault_pick_folder,
+            tools::vault::commands::vault_prepare_encrypt,
+            tools::vault::commands::vault_prepare_decrypt,
+            tools::vault::commands::vault_encrypt_file,
+            tools::vault::commands::vault_decrypt_file,
+            tools::vault::commands::vault_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

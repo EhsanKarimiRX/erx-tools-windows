@@ -10,15 +10,19 @@
 //! - `parts`      : split writer / joined reader for multi-part files.
 //! - `space`      : free disk space check.
 //! - `files`      : file-level encrypt / decrypt (temp files, rename).
+//! - `verify`     : verify-after-writing (full decrypt into nothing).
+//! - `runtime`    : tuning, progress, planning and jobs (no Tauri types).
+//! - `commands`   : the Tauri commands (thin layer over `runtime`).
 //!
 //! Hard rules for this module: no `unwrap()` / `expect()` / panicking
 //! indexing in non-test code (the release profile uses `panic = "abort"`),
 //! and never log words, keys or file contents.
 
-// TEMPORARY: nothing calls this module yet. Remove this line when the
-// Tauri commands are wired up (plan step V5) and re-check with clippy.
+// TEMPORARY: some helpers are not used by the commands yet. Remove this
+// line in plan step V7 and re-check with clippy.
 #![allow(dead_code)]
 
+pub mod commands;
 pub mod engine;
 pub mod error;
 pub mod files;
@@ -26,7 +30,9 @@ pub mod format;
 pub mod kdf;
 pub mod parts;
 pub mod passphrase;
+pub mod runtime;
 pub mod space;
+pub mod verify;
 pub mod wordlist;
 
 #[cfg(test)]
@@ -39,5 +45,7 @@ mod format_test;
 mod parts_test;
 #[cfg(test)]
 mod passphrase_test;
+#[cfg(test)]
+mod runtime_test;
 #[cfg(test)]
 mod wordlist_test;
