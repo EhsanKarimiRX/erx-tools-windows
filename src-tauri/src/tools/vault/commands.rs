@@ -165,7 +165,7 @@ pub fn vault_clear_passphrase(state: State<'_, VaultState>) -> Result<(), ToolEr
 // ---------------------------------------------------------------------------
 
 /// Native dialog to pick the file to encrypt.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_pick_source_file(app: tauri::AppHandle) -> Option<String> {
     app.dialog()
         .file()
@@ -176,7 +176,7 @@ pub fn vault_pick_source_file(app: tauri::AppHandle) -> Option<String> {
 }
 
 /// Native dialog to pick the first part of an encrypted file.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_pick_vault_file(app: tauri::AppHandle) -> Option<String> {
     app.dialog()
         .file()
@@ -188,7 +188,7 @@ pub fn vault_pick_vault_file(app: tauri::AppHandle) -> Option<String> {
 }
 
 /// Native dialog to pick an output folder.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_pick_folder(app: tauri::AppHandle) -> Option<String> {
     app.dialog()
         .file()
