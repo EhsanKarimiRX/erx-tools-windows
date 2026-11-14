@@ -7,6 +7,7 @@ import {
   MonitorCog,
   NotebookPen,
   QrCode,
+  ShieldCheck,
 } from "lucide-react";
 
 /** Lifecycle status of a tool; controls how its home tile behaves. */
@@ -81,6 +82,14 @@ export const tools: readonly ToolDefinition[] = [
     description: "Awake, desktop icons, organizer and quick launchers.",
     icon: MonitorCog,
     load: () => import("./system-manager"),
+    status: "ready",
+  },
+  {
+    id: "vault",
+    name: "Quantum Resistance Vault",
+    description: "Encrypt large files with a quantum-resistant design",
+    icon: ShieldCheck,
+    load: () => import("./vault"),
     status: "ready",
   },
 ];

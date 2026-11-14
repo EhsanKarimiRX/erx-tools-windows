@@ -1,0 +1,351 @@
+/* Quantum Resistance Vault styles. Imported by the tool component, so Vite
+   loads them lazily with the tool's chunk. */
+
+.vt {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.vt-intro {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ----- Tabs ----- */
+
+.vt-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.vt-tab {
+  padding: 7px 18px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.vt-tab:hover:enabled {
+  background: var(--surface-hover);
+}
+
+.vt-tab:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vt-tab-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ----- Panels and cards ----- */
+
+.vt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vt-panel[hidden] {
+  display: none;
+}
+
+.vt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.vt-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.vt-fieldset {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vt-fieldset:disabled {
+  opacity: 0.6;
+}
+
+.vt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vt-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.vt-inline {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.vt-select {
+  padding: 6px 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.vt-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13.5px;
+  resize: vertical;
+}
+
+.vt-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.vt-check input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.vt-block {
+  display: block;
+}
+
+.vt-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ----- Messages ----- */
+
+.vt-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.vt-path {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+.vt-ok {
+  margin: 0;
+  color: #2e7d32;
+  font-size: 13px;
+}
+
+.vt-error {
+  margin: 0;
+  color: var(--error);
+  font-size: 13px;
+}
+
+.vt-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--error);
+  border-radius: 10px;
+  color: var(--error);
+  font-size: 12.5px;
+}
+
+.vt-warning p {
+  margin: 0;
+}
+
+/* ----- Chosen file ----- */
+
+.vt-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.vt-file-name {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+/* ----- Passphrase ----- */
+
+.vt-pass {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vt-words {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.vt-word {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.vt-word-number {
+  min-width: 18px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.vt-word-text {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.vt-word-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.vt-word-refresh:hover:enabled {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.vt-word-refresh:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vt-word-left {
+  font-size: 11.5px;
+}
+
+.vt-strength {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ----- Running operation ----- */
+
+.vt-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vt-status-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vt-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vt-status-row .progress {
+  flex: 1;
+}
+
+.vt-indeterminate {
+  flex: 1;
+  height: 8px;
+  overflow: hidden;
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.vt-indeterminate-fill {
+  width: 35%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  animation: vt-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes vt-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(290%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vt-indeterminate-fill {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* ----- Done ----- */
+
+.vt-done p {
+  margin: 0;
+  font-size: 13.5px;
+}

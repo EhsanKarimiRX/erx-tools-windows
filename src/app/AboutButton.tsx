@@ -126,6 +126,12 @@ export default function AboutButton({ version }: { version: string | null }) {
                 and GLM Flash models.
               </p>
               <p className="about-license">
+                Passphrase words in the Quantum Resistance Vault come from the EFF Large Wordlist
+                for Passphrases by the Electronic Frontier Foundation, licensed under CC BY 3.0 US
+                (https://creativecommons.org/licenses/by/3.0/us/). The dice numbers were removed
+                from the list.
+              </p>
+              <p className="about-license">
                 Released under the MIT License. The ERX Tools name and logo are not covered by the MIT License.
               </p>
             </div>
