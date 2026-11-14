@@ -54,6 +54,10 @@ pub enum VaultError {
     #[error("The folder cannot be used.")]
     BadFolder,
     #[error(
+        "Folders cannot be encrypted yet. Compress the folder into a ZIP file first, then encrypt the ZIP file."
+    )]
+    FolderNotSupported,
+    #[error(
         "Not enough free disk space on the destination drive. About {needed_mib} MiB are needed."
     )]
     NotEnoughSpace { needed_mib: u64 },

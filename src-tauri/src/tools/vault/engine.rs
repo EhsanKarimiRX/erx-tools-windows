@@ -1,12 +1,13 @@
 //! The encryption engine: one logical stream in, one logical stream out.
-//! Splitting into parts, temp files and renaming come later (step V4).
+//! Splitting into parts, temp files and renaming live in `parts` / `files`.
 //!
 //! SECURITY-CRITICAL MODULE. Layout of the encrypted stream:
 //!
 //!   file       = header (144 bytes) | chunk 1 | chunk 2 | ... | last chunk
 //!   plaintext  = payload | trailer
 //!   payload    = one zstd frame (flag set) or the raw file bytes
-//!   trailer    = original length (u64 LE) | SHA-256 of the original (40 bytes)
+//!   trailer    = metadata block (1024 bytes, see `meta`)
+//!                | original length (u64 LE) | SHA-256 of the original (32)
 //!
 //! The plaintext is cut into 1 MiB pieces and each piece is sealed with
 //! XChaCha20-Poly1305 inside the STREAM (BE32) construction. Every piece
@@ -14,7 +15,8 @@
 //! 1..=1 MiB (+16). A full piece is only sealed once more data arrives, so
 //! the last piece always exists and always ends with the trailer. The
 //! header is the AAD of every piece. The STREAM last-block flag makes
-//! truncation fail authentication.
+//! truncation fail authentication. The original file name lives in the
+//! metadata block, i.e. inside the encryption.
 
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -32,6 +34,7 @@ use super::kdf::{
     KEY_LEN, KdfParams, MIN_M_COST_KIB_FOR_ENCRYPTION, commitment_tag, derive_keys,
     verify_commitment,
 };
+use super::meta::{FileMeta, META_LEN};
 use super::passphrase::{normalize_passphrase, validate_typed_words};
 
 type Cipher = XChaCha20Poly1305;
@@ -41,8 +44,10 @@ type StreamNonce = aead_stream::Nonce<Cipher, StreamBE32<Cipher>>;
 
 /// Poly1305 tag appended to every sealed chunk.
 const TAG_SIZE: usize = 16;
-/// Trailer: original length (8) + SHA-256 (32).
-const TRAILER_LEN: usize = 40;
+/// Integrity block: original length (8) + SHA-256 (32).
+const DIGEST_BLOCK_LEN: usize = 40;
+/// Everything after the payload: metadata block + integrity block.
+const TRAILER_LEN: usize = META_LEN + DIGEST_BLOCK_LEN;
 /// Bytes read from the source per step.
 const READ_BUFFER_LEN: usize = 256 * 1024;
 /// zstd compression level (decision: level 3).
@@ -101,10 +106,13 @@ pub struct EncryptSummary {
     pub output_bytes: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecryptSummary {
     /// Bytes of the restored file.
     pub output_bytes: u64,
+    /// The metadata block: the ORIGINAL file name chosen by whoever made
+    /// the file. Untrusted: pass it through `names::safe_file_name`.
+    pub meta: FileMeta,
 }
 
 fn internal_io() -> io::Error {
@@ -249,21 +257,24 @@ fn pump<R: Read, S: Write>(
     Ok(total)
 }
 
-/// Encrypts `source` into `output`.
+/// Encrypts `source` into `output` and stores `original_name` (may be
+/// empty) inside the encryption.
 ///
 /// `passphrase` is normalized and validated here (it must consist of
 /// words from the built-in list). `progress` gets the number of source
 /// bytes read so far; returning false cancels with `Cancelled`. On any
 /// error the caller must delete the incomplete output.
-pub fn encrypt_stream<R: Read, W: Write>(
+pub fn encrypt_stream_named<R: Read, W: Write>(
     source: &mut R,
     output: &mut W,
     passphrase: &str,
     settings: &EncryptSettings,
+    original_name: &str,
     progress: &mut dyn FnMut(u64) -> bool,
 ) -> Result<EncryptSummary, VaultError> {
     let normalized = normalize_passphrase(passphrase);
     validate_typed_words(&normalized)?;
+    let meta_block = FileMeta::file(original_name)?.encode()?;
 
     let mut file_uuid = [0u8; UUID_LEN];
     let mut salt = [0u8; SALT_LEN];
@@ -304,6 +315,7 @@ pub fn encrypt_stream<R: Read, W: Write>(
 
     let digest = hasher.finalize();
     let mut trailer = Vec::with_capacity(TRAILER_LEN);
+    trailer.extend_from_slice(&meta_block);
     trailer.extend_from_slice(&total.to_le_bytes());
     trailer.extend_from_slice(&digest);
     sink.write_all(&trailer)?;
@@ -313,6 +325,17 @@ pub fn encrypt_stream<R: Read, W: Write>(
         input_bytes: total,
         output_bytes: (HEADER_LEN as u64).saturating_add(chunk_bytes),
     })
+}
+
+/// Same as `encrypt_stream_named` with an empty original name.
+pub fn encrypt_stream<R: Read, W: Write>(
+    source: &mut R,
+    output: &mut W,
+    passphrase: &str,
+    settings: &EncryptSettings,
+    progress: &mut dyn FnMut(u64) -> bool,
+) -> Result<EncryptSummary, VaultError> {
+    encrypt_stream_named(source, output, passphrase, settings, "", progress)
 }
 
 /// Hashes and counts everything written through it (the restored file).
@@ -364,7 +387,7 @@ impl<'a, W: Write> Sink<'a, W> {
 }
 
 /// Adds decrypted plaintext to the tail buffer and releases everything
-/// except the last 40 bytes (the trailer) to the sink.
+/// except the last `TRAILER_LEN` bytes (the trailer) to the sink.
 fn feed<W: Write>(
     tail: &mut Vec<u8>,
     plain: &[u8],
@@ -395,7 +418,8 @@ fn read_block<R: Read>(input: &mut R, block: &mut Vec<u8>, size: usize) -> Resul
 /// `typed_passphrase` is what the user typed; it is normalized and checked
 /// against the word list here. `progress` gets the number of input bytes
 /// consumed so far; returning false cancels with `Cancelled`. On any
-/// error the caller must delete the incomplete output.
+/// error the caller must delete the incomplete output. The summary carries
+/// the (untrusted) original file name.
 pub fn decrypt_stream<R: Read, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -476,7 +500,12 @@ pub fn decrypt_stream<R: Read, W: Write>(
         return Err(VaultError::CorruptedData);
     }
     let writer = sink.finish()?;
-    let (length_bytes, hash_bytes) = tail.split_at_checked(8).ok_or(VaultError::Internal)?;
+    let (meta_bytes, digest_block) = tail
+        .split_at_checked(META_LEN)
+        .ok_or(VaultError::Internal)?;
+    let (length_bytes, hash_bytes) = digest_block
+        .split_at_checked(8)
+        .ok_or(VaultError::Internal)?;
     let expected_length =
         u64::from_le_bytes(<[u8; 8]>::try_from(length_bytes).map_err(|_| VaultError::Internal)?);
     let HashingWriter {
@@ -489,8 +518,10 @@ pub fn decrypt_stream<R: Read, W: Write>(
     if count != expected_length || actual_bytes != hash_bytes {
         return Err(VaultError::IntegrityMismatch);
     }
+    let meta = FileMeta::decode(meta_bytes)?;
     inner.flush()?;
     Ok(DecryptSummary {
         output_bytes: count,
+        meta,
     })
 }

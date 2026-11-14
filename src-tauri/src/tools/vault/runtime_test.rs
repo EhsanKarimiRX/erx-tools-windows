@@ -226,21 +226,21 @@ fn encrypt_plan_reports_conflicts_and_advice() {
     assert_eq!(plan.file_name, "doc.bin");
     assert_eq!(plan.size_bytes, 1000);
     assert_eq!(plan.out_dir.as_path(), dir.path());
-    assert_eq!(plan.base_path, dir.path().join("doc.bin.erx"));
+    assert_eq!(plan.base_path, dir.path().join("doc.erx"));
     assert!(plan.conflicts.is_empty());
     assert!(plan.compress_by_default);
     assert!(!plan.suggest_split);
     assert!(plan.required_bytes > 1000);
 
-    fs::write(dir.path().join("doc.bin.erx"), b"old").unwrap();
+    fs::write(dir.path().join("doc.erx"), b"old").unwrap();
     let plan = plan_encrypt(&source, None, PartSize::Gib1).unwrap();
-    assert_eq!(plan.conflicts, vec![dir.path().join("doc.bin.erx")]);
+    assert_eq!(plan.conflicts, vec![dir.path().join("doc.erx")]);
 
     // Another output folder has no conflict and is used for the name.
     let other = TestDir::new();
     let plan = plan_encrypt(&source, Some(other.path()), PartSize::Off).unwrap();
     assert_eq!(plan.out_dir.as_path(), other.path());
-    assert_eq!(plan.base_path, other.path().join("doc.bin.erx"));
+    assert_eq!(plan.base_path, other.path().join("doc.erx"));
     assert!(plan.conflicts.is_empty());
 
     // Already compressed formats are not compressed by default.
@@ -333,7 +333,7 @@ fn encrypt_and_decrypt_jobs_round_trip_with_events() {
     else {
         panic!("encryption did not finish");
     };
-    assert_eq!(parts, vec![dir.path().join("doc.bin.erx")]);
+    assert_eq!(parts, vec![dir.path().join("doc.erx")]);
     assert_eq!(input_bytes, 600_000);
     assert_eq!(output_bytes, fs::metadata(&parts[0]).unwrap().len());
     assert!(verified);

@@ -6,7 +6,10 @@
 //! - nothing existing is overwritten unless `overwrite` is true, and the
 //!   source itself is never overwritten;
 //! - on ANY error or cancel every temporary file is removed;
-//! - the final rename happens only after all parts are complete.
+//! - the final rename happens only after all parts are complete;
+//! - the output name of an encrypted file hides the file type; the original
+//!   name is stored inside the encryption and restored when decrypting,
+//!   after it passed `names::safe_file_name`.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufWriter, Write};
@@ -15,6 +18,7 @@ use std::time::Duration;
 
 use super::engine::{self, EncryptSettings};
 use super::error::VaultError;
+use super::names::{numbered_name, safe_file_name};
 use super::parts::{
     MAX_PARTS, PartPaths, SplitReader, SplitWriter, part_path, random_token, temp_path,
 };
@@ -42,9 +46,18 @@ pub struct DecryptFileSummary {
     pub output_bytes: u64,
 }
 
-/// `<out_dir>/<source file name>.erx`
+/// `<out_dir>/<source file name>.erx` (keeps the original extension; the
+/// app itself uses `hidden_output_path`).
 pub fn default_output_path(source: &Path, out_dir: &Path) -> Option<PathBuf> {
     let mut name = source.file_name()?.to_os_string();
+    name.push(".erx");
+    Some(out_dir.join(name))
+}
+
+/// `<out_dir>/<source file name without its last extension>.erx`, so the
+/// file type is not visible in the name of the encrypted file.
+pub fn hidden_output_path(source: &Path, out_dir: &Path) -> Option<PathBuf> {
+    let mut name = source.file_stem()?.to_os_string();
     name.push(".erx");
     Some(out_dir.join(name))
 }
@@ -150,7 +163,8 @@ fn commit(base: &Path, parts: &[PartPaths], overwrite: bool) -> Result<(), Vault
 }
 
 /// Encrypts `source` into `base` (`name.erx`, or `name.erx.001`... when
-/// `part_limit` is set).
+/// `part_limit` is set). The original file name is stored inside the
+/// encryption.
 ///
 /// `progress(done, total)` counts source bytes; returning false cancels.
 /// The caller decides about compression through `settings`.
@@ -169,6 +183,10 @@ pub fn encrypt_file(
         return Err(VaultError::CannotOpenFile);
     }
     let total = metadata.len();
+    let original_name = source
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
 
     let dir = match base.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
@@ -186,11 +204,12 @@ pub fn encrypt_file(
 
     // Dropping the writer on any early return deletes the temporary files.
     let mut writer = SplitWriter::new(base, part_limit, random_token()?)?;
-    engine::encrypt_stream(
+    engine::encrypt_stream_named(
         &mut input,
         &mut writer,
         passphrase,
         settings,
+        &original_name,
         &mut |done: u64| progress(done, total),
     )?;
     let parts = writer.finish()?;
@@ -225,28 +244,76 @@ impl Drop for TempFile {
     }
 }
 
-/// Decrypts the file set starting at `first_part` into `out_path`.
-///
-/// `progress(done, total)` counts encrypted input bytes; returning false
-/// cancels. The output is written under a temporary name and only
-/// renamed once the integrity check passed.
-pub fn decrypt_file(
+/// Where a decrypted file goes.
+#[derive(Clone, Copy)]
+enum Target<'a> {
+    /// Exactly this path; an existing file needs `overwrite`.
+    Exact(&'a Path),
+    /// The original name stored inside the file, in the folder of
+    /// `fallback`. `fallback` itself is used when the stored name is empty
+    /// or unsafe.
+    Restore { fallback: &'a Path },
+}
+
+/// The final path for a restored file. An existing file is only replaced
+/// when `overwrite` is true; otherwise a number is added to the name.
+fn restored_path(
+    fallback: &Path,
+    stored_name: &str,
     first_part: &Path,
-    out_path: &Path,
+    overwrite: bool,
+) -> Result<PathBuf, VaultError> {
+    let dir = match fallback.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let wanted = match safe_file_name(stored_name) {
+        Some(name) => dir.join(name),
+        None => fallback.to_path_buf(),
+    };
+    if overwrite && !same_file(&wanted, first_part) {
+        return Ok(wanted);
+    }
+    if !wanted.exists() {
+        return Ok(wanted);
+    }
+    let base_name = wanted
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    for number in 1..1000u32 {
+        let candidate = dir.join(numbered_name(&base_name, number));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err(VaultError::OutputExists)
+}
+
+fn decrypt_inner(
+    first_part: &Path,
+    target: Target<'_>,
     typed_passphrase: &str,
     overwrite: bool,
     progress: &mut dyn FnMut(u64, u64) -> bool,
 ) -> Result<DecryptFileSummary, VaultError> {
     let mut reader = SplitReader::open(first_part)?;
     let total = reader.logical_total();
-    if same_file(out_path, first_part) {
+    let base_path = match target {
+        Target::Exact(path) => path,
+        Target::Restore { fallback } => fallback,
+    };
+    if same_file(base_path, first_part) {
         return Err(VaultError::OutputIsSource);
     }
-    if out_path.exists() && !overwrite {
+    if let Target::Exact(path) = target
+        && path.exists()
+        && !overwrite
+    {
         return Err(VaultError::OutputExists);
     }
 
-    let temp = temp_path(out_path, &random_token()?);
+    let temp = temp_path(base_path, &random_token()?);
     let file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -270,13 +337,64 @@ pub fn decrypt_file(
     file.sync_all().map_err(VaultError::from)?;
     drop(file);
 
-    if !overwrite && out_path.exists() {
-        return Err(VaultError::OutputExists);
-    }
-    rename_with_retry(&guard.path, out_path).map_err(|_| VaultError::Io)?;
+    let final_path = match target {
+        Target::Exact(path) => {
+            if !overwrite && path.exists() {
+                return Err(VaultError::OutputExists);
+            }
+            path.to_path_buf()
+        }
+        Target::Restore { fallback } => {
+            restored_path(fallback, &summary.meta.name, first_part, overwrite)?
+        }
+    };
+    rename_with_retry(&guard.path, &final_path).map_err(|_| VaultError::Io)?;
     guard.keep = true;
     Ok(DecryptFileSummary {
-        output_path: out_path.to_path_buf(),
+        output_path: final_path,
         output_bytes: summary.output_bytes,
     })
+}
+
+/// Decrypts the file set starting at `first_part` into exactly `out_path`.
+///
+/// `progress(done, total)` counts encrypted input bytes; returning false
+/// cancels. The output is written under a temporary name and only
+/// renamed once the integrity check passed.
+pub fn decrypt_file(
+    first_part: &Path,
+    out_path: &Path,
+    typed_passphrase: &str,
+    overwrite: bool,
+    progress: &mut dyn FnMut(u64, u64) -> bool,
+) -> Result<DecryptFileSummary, VaultError> {
+    decrypt_inner(
+        first_part,
+        Target::Exact(out_path),
+        typed_passphrase,
+        overwrite,
+        progress,
+    )
+}
+
+/// Decrypts the file set and gives the result its ORIGINAL name (stored
+/// inside the encryption) in the folder of `fallback_path`. Unsafe or
+/// missing names fall back to `fallback_path`. An existing file is never
+/// replaced unless `overwrite` is true; a number is added instead.
+pub fn decrypt_file_restoring_name(
+    first_part: &Path,
+    fallback_path: &Path,
+    typed_passphrase: &str,
+    overwrite: bool,
+    progress: &mut dyn FnMut(u64, u64) -> bool,
+) -> Result<DecryptFileSummary, VaultError> {
+    decrypt_inner(
+        first_part,
+        Target::Restore {
+            fallback: fallback_path,
+        },
+        typed_passphrase,
+        overwrite,
+        progress,
+    )
 }

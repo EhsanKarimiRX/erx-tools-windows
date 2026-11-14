@@ -280,7 +280,7 @@ pub fn plan_encrypt(
     }
     let out_dir = resolve_out_dir(source, chosen_dir)?;
     let base_path =
-        files::default_output_path(source, &out_dir).ok_or(VaultError::CannotOpenFile)?;
+        files::hidden_output_path(source, &out_dir).ok_or(VaultError::CannotOpenFile)?;
     let size_bytes = metadata.len();
     Ok(EncryptPlan {
         file_name: file_name_of(source),
@@ -400,7 +400,7 @@ pub fn run_encrypt(
 ) -> Result<EncryptOutcome, VaultError> {
     cleanup_stale_temp(&job.out_dir, STALE_TEMP_AGE);
     let base =
-        files::default_output_path(&job.source, &job.out_dir).ok_or(VaultError::CannotOpenFile)?;
+        files::hidden_output_path(&job.source, &job.out_dir).ok_or(VaultError::CannotOpenFile)?;
 
     emit(VaultEvent::Phase {
         phase: Phase::Deriving,
@@ -466,7 +466,7 @@ pub fn run_decrypt(
         phase: Phase::Deriving,
     });
     let mut throttle = Throttle::new(PROGRESS_INTERVAL);
-    let result = files::decrypt_file(
+    let result = files::decrypt_file_restoring_name(
         &job.first_part,
         &out_path,
         words,

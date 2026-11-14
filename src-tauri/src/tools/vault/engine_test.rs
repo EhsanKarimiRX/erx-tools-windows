@@ -9,7 +9,7 @@ use super::passphrase::PassphraseError;
 use super::wordlist;
 
 const CHUNK: usize = 1_048_576;
-const TRAILER: usize = 40;
+const TRAILER: usize = 1064;
 
 fn phrase_from(skip: usize) -> String {
     wordlist::words()

@@ -6,6 +6,8 @@
 //! - `error`      : the vault error type (user-facing messages).
 //! - `format`     : the .erx header (layout, parsing, validation).
 //! - `kdf`        : Argon2id, HKDF subkeys, header commitment tag.
+//! - `meta`       : the encrypted metadata block (original file name).
+//! - `names`      : safe file names for restored files.
 //! - `engine`     : streaming compress + encrypt / decrypt of one stream.
 //! - `parts`      : split writer / joined reader for multi-part files.
 //! - `space`      : free disk space check.
@@ -28,6 +30,8 @@ pub mod error;
 pub mod files;
 pub mod format;
 pub mod kdf;
+pub mod meta;
+pub mod names;
 pub mod parts;
 pub mod passphrase;
 pub mod runtime;
@@ -45,6 +49,8 @@ mod format_test;
 mod parts_test;
 #[cfg(test)]
 mod passphrase_test;
+#[cfg(test)]
+mod restore_test;
 #[cfg(test)]
 mod runtime_test;
 #[cfg(test)]

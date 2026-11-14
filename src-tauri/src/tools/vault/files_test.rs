@@ -106,11 +106,11 @@ fn round_trip_without_splitting() {
 fn split_layout_is_exact_and_round_trips() {
     let dir = TestDir::new();
     let data = noise(50_000, 2);
-    // Stream = 144 header + 50,000 + 40 trailer + 16 tag = 50,200 bytes.
-    // 4096-byte parts carry 4068 payload bytes -> 12 full parts + 1,384.
+    // Stream = 144 header + 50,000 + 1,064 trailer + 16 tag = 51,224 bytes.
+    // 4096-byte parts carry 4068 payload bytes -> 12 full parts + 2,408.
     let (_source, base, summary) = encrypt(&dir, "doc.txt", &data, Some(4096));
     assert_eq!(summary.parts.len(), 13);
-    assert_eq!(summary.output_bytes, 50_564);
+    assert_eq!(summary.output_bytes, 51_588);
     for (index, part) in summary.parts.iter().enumerate() {
         let number = u32::try_from(index + 1).unwrap();
         assert_eq!(part, &part_path(&base, true, number));
@@ -118,7 +118,7 @@ fn split_layout_is_exact_and_round_trips() {
         if index < 12 {
             assert_eq!(length, 4096);
         } else {
-            assert_eq!(length, 1412);
+            assert_eq!(length, 2436);
         }
     }
     assert!(no_temp_files(dir.path()));
@@ -156,7 +156,7 @@ fn compressible_data_shrinks_and_round_trips() {
         &mut |_done: u64, _total: u64| true,
     )
     .unwrap();
-    assert!(summary.output_bytes < 1000);
+    assert!(summary.output_bytes < 3000);
     let out = dir.path().join("restored.bin");
     decrypt(&base, &out, &passphrase()).unwrap();
     assert_eq!(fs::read(&out).unwrap(), data);

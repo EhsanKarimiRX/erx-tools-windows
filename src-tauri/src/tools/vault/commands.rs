@@ -235,6 +235,9 @@ pub fn vault_prepare_encrypt(
     part_size: String,
 ) -> Result<EncryptPlanDto, ToolError> {
     let size = parse_part_size(&part_size).ok_or_else(unknown_part_size)?;
+    if Path::new(&path).is_dir() {
+        return Err(user_error(VaultError::FolderNotSupported));
+    }
     let chosen = output_dir.map(PathBuf::from);
     let plan = plan_encrypt(Path::new(&path), chosen.as_deref(), size).map_err(user_error)?;
     Ok(EncryptPlanDto {
