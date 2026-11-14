@@ -149,7 +149,7 @@ export default function DecryptPanel({ active, onBusyChange }: DecryptPanelProps
 
   const hasFile = firstPart !== null;
   const shownPlan = hasFile ? plan : null;
-  const blockedByExisting = shownPlan !== null && shownPlan.outputExists && !overwrite;
+  const blockedByExisting = false;
   const canDecrypt =
     shownPlan !== null && words.trim() !== "" && !running && !blockedByExisting;
 
@@ -211,14 +211,24 @@ export default function DecryptPanel({ active, onBusyChange }: DecryptPanelProps
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => void browse()}
-              disabled={running}
-            >
-              Choose another file
-            </button>
+            <div className="vt-actions">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => void browse()}
+                disabled={running}
+              >
+                Choose another file
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={startOver}
+                disabled={running}
+              >
+                Remove file
+              </button>
+            </div>
           </div>
         )}
         {planError !== null && (
@@ -266,23 +276,11 @@ export default function DecryptPanel({ active, onBusyChange }: DecryptPanelProps
                   setOverwrite(false);
                 }}
               />
-              <p className="vt-note">Restored file: {shownPlan.outputPath}</p>
-              {shownPlan.outputExists && (
-                <div className="vt-warning" role="alert">
-                  <p>
-                    A file with this name already exists in that folder (it may be
-                    your original). Choose another folder, or replace it.
-                  </p>
-                  <label className="vt-check">
-                    <input
-                      type="checkbox"
-                      checked={overwrite}
-                      onChange={(event) => setOverwrite(event.target.checked)}
-                    />
-                    <span>Replace the existing file</span>
-                  </label>
-                </div>
-              )}
+              <p className="vt-note">
+                The restored file gets its original name and type (shown when it is done). If
+                that name is already used in the folder, a number is added, so nothing is
+                overwritten.
+              </p>
             </fieldset>
 
             {running ? (

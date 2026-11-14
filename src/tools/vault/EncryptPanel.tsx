@@ -256,14 +256,24 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
                 <p className="vt-note">{formatBytes(shownPlan.sizeBytes)}</p>
               )}
             </div>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => void browse()}
-              disabled={running}
-            >
-              Choose another file
-            </button>
+            <div className="vt-actions">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => void browse()}
+                disabled={running}
+              >
+                Choose another file
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={startOver}
+                disabled={running}
+              >
+                Remove file
+              </button>
+            </div>
           </div>
         )}
         {planError !== null && (
@@ -351,6 +361,10 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
                 }}
               />
               <p className="vt-note">Output: {shownPlan.outputBasePath}</p>
+              <p className="vt-note">
+                The file type is not part of the output name. The original name (with its
+                type) is stored inside the encrypted data and restored when you decrypt.
+              </p>
 
               {hasConflicts && (
                 <div className="vt-warning" role="alert">
