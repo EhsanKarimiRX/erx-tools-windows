@@ -17,6 +17,22 @@ const WORD_COUNTS: number[] = Array.from(
   (_unused, index) => MIN_WORDS + index,
 );
 
+/** Seconds left until the clipboard is wiped; counts down once a second. */
+function ClipboardCountdown() {
+  const [left, setLeft] = useState(CLIPBOARD_CLEAR_MS / 1000);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setLeft((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <>
+      {left} {left === 1 ? "second" : "seconds"}
+    </>
+  );
+}
+
 /** Best effort: the browser cannot tell whether the text is still ours. */
 async function wipeClipboard(): Promise<void> {
   try {
@@ -38,6 +54,7 @@ export default function PassphraseSection({
   const [confirmed, setConfirmed] = useState(false);
   const [working, setWorking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyRound, setCopyRound] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const clearTimer = useRef<number | null>(null);
 
@@ -113,6 +130,7 @@ export default function PassphraseSection({
       await navigator.clipboard.writeText(info.words.join(" "));
       if (clearTimer.current !== null) window.clearTimeout(clearTimer.current);
       setCopied(true);
+      setCopyRound((round) => round + 1);
       clearTimer.current = window.setTimeout(() => {
         clearTimer.current = null;
         setCopied(false);
@@ -232,9 +250,16 @@ export default function PassphraseSection({
               <Copy size={14} aria-hidden="true" /> Copy words
             </button>
             {copied && (
-              <span className="vt-note">
-                Copied. The clipboard is cleared in 30 seconds.
-              </span>
+              <div className="vt-copied" role="note">
+                <p>
+                  <strong>Copied.</strong>{" "}
+                  <span className="vt-blink">
+                    The clipboard will be cleared in <ClipboardCountdown key={copyRound} />.
+                  </span>{" "}
+                  After that the words can no longer be pasted, so paste them somewhere
+                  safe first (a note or a document) or write them down.
+                </p>
+              </div>
             )}
           </div>
 

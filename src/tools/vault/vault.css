@@ -196,6 +196,20 @@
   margin: 0;
 }
 
+/* ----- File and folder pick boxes ----- */
+
+.vt-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .vt-pick {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ----- Chosen file ----- */
 
 .vt-file {
@@ -340,6 +354,51 @@
     animation: none;
     width: 100%;
     opacity: 0.5;
+  }
+}
+
+/* ----- Clipboard notice (shown after "Copy words") ----- */
+
+.vt-copied {
+  --vt-warn: #b45309;
+  flex: 1 1 100%;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--vt-warn);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .vt-copied {
+    --vt-warn: #ffb74d;
+  }
+}
+
+.vt-copied p {
+  margin: 0;
+}
+
+.vt-blink {
+  color: var(--vt-warn);
+  font-weight: 700;
+  animation: vt-blink 1.1s ease-in-out infinite;
+}
+
+@keyframes vt-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vt-blink {
+    animation: none;
+    text-decoration: underline;
   }
 }
 

@@ -14,6 +14,10 @@ interface EncryptPanelProps {
   onBusyChange: (busy: boolean) => void;
 }
 
+/** Both drop boxes show the highlight while something is dragged over the
+ * window; the drop itself is handled once, by the first box. */
+const ignoreDrop = () => undefined;
+
 /** "a, b, c and 2 more" */
 function listFiles(paths: string[]): string {
   const shown = paths.slice(0, 3).join(", ");
@@ -247,16 +251,26 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
   return (
     <div className="vt-panel" hidden={!active}>
       <section className="vt-card">
-        <h2 className="vt-card-title">1. Choose the file</h2>
+        <h2 className="vt-card-title">1. Choose a file or a folder</h2>
         {!hasFile ? (
-          <DropZone
-            label="Drag a file or a folder to encrypt here"
-            hint="Any file type, or a whole folder - up to 20 GB"
-            browseLabel="Choose file"
-            onBrowse={() => void browse()}
-            onFiles={onDrop}
-            disabled={!active || running}
-          />
+          <div className="vt-pick">
+            <DropZone
+              label="Drag a file here"
+              hint="Any file type - up to 20 GB"
+              browseLabel="Choose file"
+              onBrowse={() => void browse()}
+              onFiles={onDrop}
+              disabled={!active || running}
+            />
+            <DropZone
+              label="Drag a folder here"
+              hint="A whole folder with everything in it"
+              browseLabel="Choose folder"
+              onBrowse={() => void browseFolder()}
+              onFiles={ignoreDrop}
+              disabled={!active || running}
+            />
+          </div>
         ) : (
           <div className="vt-file">
             <div>
@@ -277,6 +291,14 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
                 disabled={running}
               >
                 Choose another file
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => void browseFolder()}
+                  disabled={running}
+                >
+                  Choose another folder
               </button>
               <button
                 type="button"
@@ -287,18 +309,6 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
                 {shownPlan?.isFolder ? "Remove folder" : "Remove file"}
               </button>
             </div>
-          </div>
-        )}
-        {!hasFile && (
-          <div className="vt-actions">
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => void browseFolder()}
-              disabled={!active || running}
-            >
-              Choose a folder instead
-            </button>
           </div>
         )}
         {planError !== null && (
