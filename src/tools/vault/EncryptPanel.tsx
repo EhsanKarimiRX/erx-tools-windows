@@ -256,7 +256,7 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
           <div className="vt-pick">
             <DropZone
               label="Drag a file here"
-              hint="Any file type - up to 20 GB"
+              hint="Any file type - tested up to 8 GB"
               browseLabel="Choose file"
               onBrowse={() => void browse()}
               onFiles={onDrop}
