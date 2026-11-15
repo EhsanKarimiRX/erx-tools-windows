@@ -247,7 +247,9 @@ impl Drop for TempFile {
 /// Where a decrypted file goes.
 #[derive(Clone, Copy)]
 enum Target<'a> {
-    /// Exactly this path; an existing file needs `overwrite`.
+    /// Exactly this path; an existing file needs `overwrite`. Only the
+    /// test helper `decrypt_file` builds it.
+    #[cfg_attr(not(test), allow(dead_code))]
     Exact(&'a Path),
     /// The original name stored inside the file, in the folder of
     /// `fallback`. `fallback` itself is used when the stored name is empty
@@ -361,6 +363,7 @@ fn decrypt_inner(
 /// `progress(done, total)` counts encrypted input bytes; returning false
 /// cancels. The output is written under a temporary name and only
 /// renamed once the integrity check passed.
+#[cfg(test)]
 pub fn decrypt_file(
     first_part: &Path,
     out_path: &Path,

@@ -42,8 +42,10 @@ pub struct KdfParams {
 }
 
 impl KdfParams {
-    /// Default until the one-time benchmark exists (plan step V5):
-    /// 128 MiB, 3 passes, 1 lane.
+    /// Example production-strength parameters (128 MiB, 3 passes, 1 lane).
+    /// Tests only: the app tunes the number of passes at run time (see
+    /// `runtime.rs`).
+    #[cfg(test)]
     pub const DEFAULT: Self = Self {
         m_cost_kib: 128 * 1024,
         t_cost: 3,

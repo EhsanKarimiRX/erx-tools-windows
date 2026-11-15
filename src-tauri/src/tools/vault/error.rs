@@ -54,10 +54,6 @@ pub enum VaultError {
     #[error("The folder cannot be used.")]
     BadFolder,
     #[error(
-        "Folders cannot be encrypted yet. Compress the folder into a ZIP file first, then encrypt the ZIP file."
-    )]
-    FolderNotSupported,
-    #[error(
         "\"{path}\" is a link, device or other special item and cannot be encrypted. Remove it from the folder and try again."
     )]
     UnsupportedEntry { path: String },

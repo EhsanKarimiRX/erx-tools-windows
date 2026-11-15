@@ -22,8 +22,6 @@ use super::wordlist::{self, WORDLIST_LEN};
 pub const MIN_WORDS: usize = 6;
 /// Most words a passphrase may have.
 pub const MAX_WORDS: usize = 12;
-/// Default word count offered by the UI.
-pub const DEFAULT_WORDS: usize = 10;
 /// Word counts below this value get a "weak" warning.
 pub const WEAK_BELOW_WORDS: usize = 8;
 /// How many times one word slot may be replaced.
@@ -184,6 +182,7 @@ pub struct PassphraseSession {
 
 impl PassphraseSession {
     /// An empty session (no passphrase yet).
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -260,6 +259,7 @@ impl PassphraseSession {
     }
 
     /// Number of words in the current passphrase (0 when none).
+    #[cfg(test)]
     pub fn word_count(&self) -> usize {
         self.slots.len()
     }
@@ -274,6 +274,7 @@ impl PassphraseSession {
     }
 
     /// True after `confirm_saved`.
+    #[cfg(test)]
     pub fn is_confirmed(&self) -> bool {
         self.confirmed
     }

@@ -22,10 +22,6 @@
 //! indexing in non-test code (the release profile uses `panic = "abort"`),
 //! and never log words, keys or file contents.
 
-// TEMPORARY: some helpers are not used by the commands yet. Remove this
-// line in plan step V7 and re-check with clippy.
-#![allow(dead_code)]
-
 pub mod archive;
 pub mod commands;
 pub mod engine;

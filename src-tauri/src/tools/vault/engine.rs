@@ -355,6 +355,7 @@ fn header_flags(compress: bool, kind: u8) -> u16 {
 }
 
 /// Same as `encrypt_stream_named` with an empty original name.
+#[cfg(test)]
 pub fn encrypt_stream<R: Read, W: Write>(
     source: &mut R,
     output: &mut W,
