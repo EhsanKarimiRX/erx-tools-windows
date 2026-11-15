@@ -14,6 +14,8 @@ pub mod smbios;
 #[cfg(windows)]
 pub mod basic;
 #[cfg(windows)]
+pub mod gpu;
+#[cfg(windows)]
 pub mod memory;
 #[cfg(windows)]
 pub mod storage;
