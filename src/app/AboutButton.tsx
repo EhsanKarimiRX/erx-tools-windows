@@ -122,8 +122,8 @@ export default function AboutButton({ version }: { version: string | null }) {
                 tools that almost everyone who uses Windows will need at some point.
               </p>
               <p>
-                It was built by combining Claude Sonnet 5.5 with the Z.ai agent, using the DeepSeek Flash
-                and GLM Flash models.
+                It was built by combining Claude Sonnet 5.5 with the Z.ai agent, using the GLM Flash
+                models (earlier versions also used DeepSeek Flash).
               </p>
               <p className="about-license">
                 Passphrase words in the Quantum Resistance Vault come from the EFF Large Wordlist
