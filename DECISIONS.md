@@ -1097,3 +1097,22 @@ message ever causes trouble.
 - **No cross-tool imports:** the UI imports nothing from other tools; the
   color field is local (ColorField.tsx) instead of reusing the Folder Icon
   one.
+
+## Quantum Resistance Vault (v0.3.0, 2026-11)
+
+The technical details of the file format are in docs/VAULT_FORMAT.md. This section records WHY things were decided.
+
+- **Symmetric cryptography only.** No RSA and no elliptic curves; the data is protected by a key made from a long random passphrase. "Quantum resistance" is a design goal here, never a promise.
+- **Random words, not passwords chosen by the user.** The EFF Large Wordlist (7776 words, CC BY 3.0 US, dice numbers removed). Default 10 words (about 129 bits), range 6 to 12, a warning below 8. The words come from Windows randomness with rejection sampling, are all different, and a word can be replaced at most 3 times. They live in Rust only; the web page gets them for display and never sends them back.
+- **Argon2id with 256 MiB, passes tuned to about 0.7 seconds on the user's PC (at least 2).** The parameters are stored in the header so any PC can decrypt. Reading accepts only 8 MiB to 512 MiB, 1 to 10 passes and 1 to 8 lanes, so a damaged or hostile header cannot make the app allocate gigabytes.
+- **XChaCha20-Poly1305 in the STREAM construction with 1 MiB chunks.** Chosen for big files (constant memory, truncation detected through the last-block flag) and for the 24-byte nonce.
+- **The header is the associated data of every chunk, plus an HMAC-SHA256 commitment tag.** A wrong passphrase is detected before any data is decrypted, and any change to the header breaks every chunk.
+- **Zstandard level 3, skipped for types that are already compressed.** A speed decision only. Known side effect: the size of the output shows how well the data compresses.
+- **The file name is stored inside the encryption in a fixed 1024-byte block.** The output is named without the original file type; the real name returns when decrypting and is treated as untrusted (cleaned into a safe name).
+- **Folders become one archive stream** with sorted names. File dates, attributes and permissions are NOT stored. Links and devices are refused. Limits: 500,000 items, 64 levels, 2048 bytes per path.
+- **Split output in parts of 500 MB, 1 GB or 2 GB** (below the FAT32 limit), at most 999 parts. The part header only gives friendly error messages; the real protection is the authentication of the stream.
+- **The original is never changed and nothing is overwritten.** The output is written to a temporary .erxtmp file, checked by decrypting it into nothing (verify-after-writing), and then renamed. Cancel removes the temporary files (tested by hand by the owner). Leftovers of a crash or End task that are at least one hour old are removed when the next operation starts in the same output folder (covered by an automated kill test).
+- **No panics in the Vault code.** The release profile uses panic = "abort", so non-test code has no unwrap, expect or panicking indexing. Keys and passphrases are kept in zeroizing buffers.
+- **Test-only code.** encrypt_stream, decrypt_file, KdfParams::DEFAULT and a few passphrase helpers exist only for tests (cfg(test)); the temporary dead_code allowance was removed.
+- **Size claims.** The UI and the docs say "tested up to 8 GB". The manual test was an 8.4 GB folder (about 65 seconds, 12 to 18 MB of memory, with and without split output, Microsoft Defender on). The format itself has no practical limit. An earlier text promised 20 GB; it was removed because it was never tested.
+- **Honest limits** are shown in the README and the release notes: no recovery, no professional audit, the original stays on disk, the header is visible, no protection against malware, tested on Windows 11 x64 only.

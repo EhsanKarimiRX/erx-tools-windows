@@ -2,6 +2,10 @@
 
 ## Current status
 
+**v0.3.0 release in preparation (2026-11-15).** New in this version: the Quantum Resistance Vault (encrypts and decrypts files and whole folders with a passphrase of random words; XChaCha20-Poly1305, Argon2id, optional Zstandard compression, split output) and two new System Manager commands (turn the Windows internet-connection check off and on). Done and committed: the Vault code with 635 passing tests (24 heavy tests are ignored by default), the dead-code cleanup, version 0.3.0 in all five places, the EFF credit in the About dialog and in THIRD_PARTY_LICENSES.md, the README, the release notes (docs/releases/v0.3.0.md) and docs/VAULT_FORMAT.md. Hand-tested by the owner on Windows 11 x64 with Microsoft Defender on: an 8.4 GB folder (about 65 seconds, 12 to 18 MB of memory) with and without split output, decrypting it again, and cancelling in the middle. Not done yet: the four installers, the install check, the push and the GitHub release (tag v0.3.0; the owner publishes). Not tested: Windows 10, ARM64 (compile check only) and files larger than 8 GB.
+
+## Previous status (v0.2.3, history)
+
 **v0.2.3 release in preparation (2026-11-12).** Ready and in the app:
 Image Converter (with HEIC input), QR Code Generator, Folder Icon Changer
 (folders and Windows shortcuts, much faster icon update after the Shell
@@ -447,7 +451,15 @@ app mid-batch, light/dark theme.
   can still take a while to repaint a view it already cached; the tool's
   note under the result tells the user to reopen the folder or refresh.
 
-## Next steps
+## Next steps (v0.3.0)
+
+1. Build the four installers: `npm run release:build` (about 30 to 60 minutes).
+2. Check the checksums, the architectures and the sizes; copy THIRD_PARTY_LICENSES.md into release-artifacts/v0.3.0; write the sizes into docs/releases/v0.3.0.md.
+3. Install the x64 installer over v0.2.3 and check the app by hand.
+4. The owner pushes, then publishes the GitHub release v0.3.0 (not a pre-release).
+5. Afterwards: Encrypted Notes, optional code signing and CI.
+
+## Old next steps (v0.2.3, history)
 
 1. **v0.2.3 release:** bump done; next is `npm run release:build` (four
    installers + SHA256SUMS), the owner's install check, then the GitHub
