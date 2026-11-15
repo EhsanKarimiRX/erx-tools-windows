@@ -1104,7 +1104,7 @@ dependencies = [
 
 [[package]]
 name = "erx-tools"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "aead-stream",
  "argon2",
