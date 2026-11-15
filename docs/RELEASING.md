@@ -8,13 +8,13 @@ This is the checklist for every future release. It is written for the owner, who
 - **Rust targets** installed: run `rustup target list --installed` — both `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc` must appear.
 - **Node.js** 18 or newer (`node --version`).
 - **Network access** for the first build: `tauri build` downloads the NSIS tools once, and each "with-webview2" build downloads Microsoft's WebView2 installer (100–200 MB each).
-- **Free disk space**: several GB for the build outputs.
+- **Free disk space**: about 10 GB for the release build. The debug build folder (`src-tauri\target\debug`) can grow to 30 GB or more during development; when you do not need it, delete it (it is rebuilt automatically): `cmd /c rmdir /s /q src-tauri\target\debug`.
 
 ## 2. Pick the version
 
 Use the three-part form `MAJOR.MINOR.PATCH` (for example `0.2.1`). The git tag must always be exactly `v` + the version (for example `v0.2.1`). Never publish a release as "pre-release" — the app's update check ignores pre-releases.
 
-## 3. Bump the version in all three places
+## 3. Bump the version in all five places
 
 Run these in order (replace `X.Y.Z` with the real version):
 
@@ -23,13 +23,13 @@ cd C:\dev\erxtools
 npm version X.Y.Z --no-git-tag-version
 ```
 
-Then set `version = "X.Y.Z"` in `src-tauri/Cargo.toml` (under `[package]`) and `"version": "X.Y.Z"` in `src-tauri/tauri.conf.json`. Then run `cargo check` inside `src-tauri` so `Cargo.lock` picks the new version up, and `cargo test version` — it fails if the three versions differ, so it must pass.
+Then set `version = "X.Y.Z"` in `src-tauri/Cargo.toml` (under `[package]`) and `"version": "X.Y.Z"` in `src-tauri/tauri.conf.json`. Then run `cargo check` inside `src-tauri` so `Cargo.lock` picks the new version up, and `cargo test version_is_consistent` — it fails if the versions differ, so it must pass. The five places are: `package.json` and `package-lock.json` (both changed by `npm version`), `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` (changed by `cargo check`).
 
 ## 4. Write the release notes
 
 Create `docs/releases/vX.Y.Z.md` (copy the most recent file in `docs/releases/` and edit it). This text is what gets pasted into the GitHub release description later.
 
-## Rename in v0.2.2
+## History: the rename in v0.2.2 (nothing to do for v0.3.0 and later)
 
 - Since v0.2.2 the `productName` in `src-tauri/tauri.conf.json` is **ERX Tools** (previously "ERX Tools for Windows"). The NSIS default install folder (`%LOCALAPPDATA%\ERX Tools`), the Start Menu/Desktop shortcut names, the uninstall registry key and the installer window title all derive from `productName` (verified by reading the generated `src-tauri/target/release/nsis/x64/installer.nsi`), so **v0.2.2 installs NEXT TO an existing v0.2.0/v0.2.1 ("ERX Tools for Windows") and does not replace it**.
 - No migration hook was added, on purpose (owner decision: not worth the risk).
@@ -60,7 +60,7 @@ The agent commits everything tracked. **The owner runs `git push` personally** (
 
 1. Open https://github.com/EhsanKarimiRX/erx-tools-windows/releases and click **Draft a new release**.
 2. Click **Choose a tag**, type `vX.Y.Z`, and click **Create new tag: vX.Y.Z on publish**. Leave the target branch as `main`.
-3. **Release title:** `ERX Tools for Windows vX.Y.Z (early beta)` (or the version's real status wording).
+3. **Release title:** `ERX Tools vX.Y.Z` (or the version's real status wording).
 4. **Description:** open `docs/releases/vX.Y.Z.md` in Notepad, select all, copy, and paste it into the description box.
 5. Drag **6 files** from `release-artifacts/vX.Y.Z/` into the "Attach binaries by dropping them here" box: the four `ERX-Tools-X.Y.Z-…-setup….exe` files, `SHA256SUMS.txt`, and `THIRD_PARTY_LICENSES.md`. Wait until every file finishes uploading (the large ones take a while).
 6. **Leave "Set as a pre-release" UNCHECKED** (the app's update button ignores pre-releases). Leave **"Set as the latest release"** checked.
@@ -86,7 +86,7 @@ The notices live in `THIRD_PARTY_LICENSES.md` in the repo root. To regenerate th
 1. In `src-tauri` run:
 
    ```
-   cargo about generate about.hbs > ..\target\rust-licenses.md
+   cmd /c "cargo about generate about.hbs > ..\target\rust-licenses.md"
    ```
 
    (`about.toml` lists the accepted licenses — including MPL-2.0 — and `about.hbs` is the Markdown template. If `cargo about generate` reports a crate under a license that is not in the accepted list, do not just add it: ask the owner.)
