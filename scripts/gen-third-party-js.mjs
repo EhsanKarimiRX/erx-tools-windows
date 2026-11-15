@@ -94,11 +94,13 @@ if (!rustFile) {
 
 // ---- Part 2: assemble the final THIRD_PARTY_LICENSES.md ----
 const rustSection = readFileSync(rustFile, "utf8").trimEnd();
-const header = `# Third-party licenses for ERX Tools for Windows
+const header = `# Third-party licenses for ERX Tools
 
-ERX Tools for Windows is MIT-licensed. It includes the following third-party components, each under its own license. Generated for version ${tauriConf.version}.
+ERX Tools is MIT-licensed. It includes the following third-party components, each under its own license. Generated for version ${tauriConf.version}.
 
 Windows components such as WebView2 and the HEIF/HEVC codecs are provided by Microsoft and are not part of this file.
+
+The Quantum Resistance Vault builds passphrases from the EFF Large Wordlist (eff_large_wordlist.txt), copyright Electronic Frontier Foundation, licensed under the Creative Commons Attribution 3.0 United States license (CC BY 3.0 US), https://creativecommons.org/licenses/by/3.0/us/ . Source of the list: https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt . Changes made: the dice numbers in front of each word were removed; the words themselves are unchanged. The list is data, not code, so it is not part of the Rust or JavaScript sections below. EFF does not endorse ERX Tools.
 
 `;
 
