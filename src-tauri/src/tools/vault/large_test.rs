@@ -10,8 +10,9 @@
 
 use std::fs::{self, File};
 use std::io::{BufWriter, Read, Write};
-use std::path::Path;
-use std::time::Instant;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
@@ -21,6 +22,7 @@ use super::files::{
 };
 use super::folder::{decrypt_path, encrypt_path, output_path_for};
 use super::parts_test::TestDir;
+use super::runtime::{STALE_TEMP_AGE, cleanup_stale_temp};
 use super::wordlist;
 
 const MIB: u64 = 1024 * 1024;
@@ -55,11 +57,10 @@ fn noise(len: usize, seed: u64) -> Vec<u8> {
 
 /// Writes `blocks` blocks of noise; every block differs. Returns the size.
 fn write_noise_file(path: &Path, blocks: u64) -> u64 {
-    let mut block = noise(BLOCK, 7);
     let mut writer = BufWriter::with_capacity(1 << 20, File::create(path).unwrap());
     let mut total = 0u64;
     for index in 0..blocks {
-        block[..8].copy_from_slice(&index.to_le_bytes());
+        let block = noise(BLOCK, (index * 2 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
         writer.write_all(&block).unwrap();
         total += BLOCK as u64;
     }
@@ -144,7 +145,7 @@ fn check_memory(label: &str) {
 fn progress_printer(label: &'static str) -> impl FnMut(u64, u64) -> bool {
     let mut next = 10u64;
     move |done: u64, total: u64| {
-        let percent = if total == 0 { 100 } else { done * 100 / total };
+        let percent = (done * 100).checked_div(total).unwrap_or(100);
         if percent >= next {
             println!("{label}: {percent}%");
             next = percent / 10 * 10 + 10;
@@ -178,6 +179,13 @@ fn large_incompressible_file_round_trips_in_parts_with_bounded_memory() {
         "encrypted into {} parts in {:?}",
         summary.parts.len(),
         started.elapsed()
+    );
+    println!(
+        "DIAG size {size}, summary.input_bytes {}, source on disk {}, parts {}, output_bytes {}",
+        summary.input_bytes,
+        fs::metadata(&source).unwrap().len(),
+        summary.parts.len(),
+        summary.output_bytes
     );
     assert_eq!(summary.input_bytes, size);
     assert_eq!(summary.parts.len(), 4);
@@ -240,6 +248,154 @@ fn large_compressible_file_shrinks_and_round_trips() {
     assert_eq!(restored.output_path, out.path().join("big.txt"));
     assert_eq!(sha256_of(&restored.output_path), source_hash);
     check_memory("after decrypting");
+}
+
+fn temp_files(dir: &Path) -> Vec<String> {
+    let mut found: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".erxtmp"))
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn medium_incompressible_multi_part_file_reports_exact_sizes() {
+    let dir = TestDir::new();
+    let source = dir.path().join("mid.bin");
+    let size = write_noise_file(&source, 5);
+    let on_disk = fs::metadata(&source).unwrap().len();
+    assert_eq!(on_disk, size, "the generated file has the wrong size");
+    let source_hash = sha256_of(&source);
+
+    let base = hidden_output_path(&source, dir.path()).unwrap();
+    let summary = encrypt_file(
+        &source,
+        &base,
+        Some(2 * MIB),
+        &passphrase(),
+        &EncryptSettings::for_tests(true),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    println!(
+        "DIAG size {size}, input_bytes {}, parts {}, output_bytes {}",
+        summary.input_bytes,
+        summary.parts.len(),
+        summary.output_bytes
+    );
+    assert_eq!(summary.input_bytes, size, "input_bytes is wrong");
+    assert!(
+        (3..=4).contains(&summary.parts.len()),
+        "unexpected number of parts: {}",
+        summary.parts.len()
+    );
+
+    let out = TestDir::new();
+    let fallback = default_restore_path(&summary.parts[0], out.path()).unwrap();
+    let restored = decrypt_file_restoring_name(
+        &summary.parts[0],
+        &fallback,
+        &passphrase(),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert_eq!(restored.output_bytes, size, "output_bytes is wrong");
+    assert_eq!(sha256_of(&restored.output_path), source_hash);
+}
+
+/// Helper for the kill test below. It runs in a CHILD process (started by
+/// the kill test), encrypts the file named by ERX_VAULT_CHILD_SOURCE into the
+/// same folder and is killed by the parent while it works. Without the
+/// environment variable it does nothing.
+#[test]
+#[ignore = "helper process for the kill test; does nothing without the env variable"]
+fn child_encrypt_helper() {
+    let Ok(source) = std::env::var("ERX_VAULT_CHILD_SOURCE") else {
+        return;
+    };
+    let source = PathBuf::from(source);
+    let dir = source.parent().unwrap().to_path_buf();
+    let base = hidden_output_path(&source, &dir).unwrap();
+    let _ = encrypt_file(
+        &source,
+        &base,
+        Some(8 * MIB),
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    );
+}
+
+#[test]
+#[ignore = "starts a child process and kills it; takes up to a minute"]
+fn killing_the_app_during_encryption_leaves_only_temp_files_that_cleanup_removes() {
+    let dir = TestDir::new();
+    let source = dir.path().join("kill.bin");
+    write_noise_file(&source, 120);
+
+    let exe = std::env::current_exe().unwrap();
+    let mut child = std::process::Command::new(exe)
+        .args([
+            "tools::vault::large_test::child_encrypt_helper",
+            "--exact",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("ERX_VAULT_CHILD_SOURCE", &source)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let started = Instant::now();
+    let mut seen = false;
+    while started.elapsed() < Duration::from_secs(120) {
+        if !temp_files(dir.path()).is_empty() {
+            seen = true;
+            break;
+        }
+        if child.try_wait().unwrap().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let finished_early = child.try_wait().unwrap().is_some();
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(seen, "no temporary file appeared");
+    assert!(
+        !finished_early,
+        "the child finished before it could be killed"
+    );
+
+    // After the kill: the source and temporary files only; nothing that looks
+    // like a finished encrypted file.
+    let leftovers = temp_files(dir.path());
+    assert!(!leftovers.is_empty());
+    let all: Vec<String> = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        all.iter()
+            .all(|name| name == "kill.bin" || name.ends_with(".erxtmp")),
+        "unexpected files after the kill: {all:?}"
+    );
+
+    // Young temporary files are NOT touched by the real age limit ...
+    assert_eq!(cleanup_stale_temp(dir.path(), STALE_TEMP_AGE), 0);
+    assert_eq!(temp_files(dir.path()), leftovers);
+    // ... and old ones are removed (age zero simulates "an hour later").
+    assert_eq!(
+        cleanup_stale_temp(dir.path(), Duration::ZERO),
+        leftovers.len()
+    );
+    assert!(temp_files(dir.path()).is_empty());
 }
 
 #[test]
