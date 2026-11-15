@@ -1,0 +1,338 @@
+/* System information card (top of System Manager). The card is ALWAYS dark
+   (owner decision) and sits on a dark stage, so it looks the same in the
+   light and in the dark theme. Everything is local: no fonts, no images. */
+
+.sic-stage {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 28px;
+  background: #090a0e;
+  border-radius: 16px;
+}
+
+.sic-scene {
+  width: min(100%, 620px);
+  perspective: 1100px;
+}
+
+.sic-card {
+  --sic-muted: #969ba8;
+  --sic-text: #f5f6fa;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  aspect-ratio: 5 / 3; /* a minimum shape: the card grows when text wraps */
+  padding: clamp(18px, 4.2%, 28px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--sic-text);
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.035) 42%, rgba(255, 255, 255, 0.07)),
+    rgba(22, 24, 31, 0.72);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  transform: rotateX(0) rotateY(0) translateY(0);
+  transform-style: preserve-3d;
+  transition:
+    transform 0.45s cubic-bezier(0.2, 0.75, 0.25, 1),
+    box-shadow 0.45s ease,
+    border-color 0.35s ease;
+}
+
+/* Glow and sheen live in their own clipped layer, so the card itself can
+   grow with its text. */
+.sic-fx {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.sic-fx::before {
+  content: "";
+  position: absolute;
+  width: 72%;
+  aspect-ratio: 1;
+  top: -58%;
+  left: -18%;
+  border-radius: 50%;
+  opacity: 0.22;
+  background:
+    radial-gradient(circle at 32% 34%, rgba(157, 92, 255, 0.48), transparent 62%),
+    radial-gradient(circle at 68% 58%, rgba(255, 105, 180, 0.36), transparent 64%),
+    radial-gradient(circle at 54% 72%, rgba(78, 174, 255, 0.34), transparent 66%);
+  filter: blur(18px);
+  transform: translate3d(0, 0, 0) scale(0.85);
+  transition:
+    opacity 0.45s ease,
+    transform 0.65s cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.sic-fx::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  background: linear-gradient(118deg, transparent 28%, rgba(255, 255, 255, 0.1) 46%, transparent 62%);
+  transform: translateX(-55%);
+  transition:
+    transform 0.8s ease,
+    opacity 0.35s ease;
+}
+
+.sic-card:hover {
+  transform: rotateX(5deg) rotateY(-5deg) translateY(-8px);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 38px 85px rgba(0, 0, 0, 0.58),
+    0 8px 30px rgba(164, 104, 255, 0.13),
+    0 0 26px rgba(93, 177, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.sic-card:hover .sic-fx::before {
+  opacity: 1;
+  transform: translate3d(22%, 18%, 0) scale(1.2);
+}
+
+.sic-card:hover .sic-fx::after {
+  opacity: 1;
+  transform: translateX(55%);
+}
+
+.sic-header,
+.sic-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sic-eyebrow {
+  margin: 0 0 5px;
+  color: var(--sic-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.sic-title {
+  margin: 0;
+  font-size: clamp(17px, 2.5vw, 21px);
+  font-weight: 750;
+  letter-spacing: 0.045em;
+}
+
+.sic-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid rgba(125, 231, 173, 0.23);
+  border-radius: 999px;
+  background: rgba(72, 190, 126, 0.09);
+  color: #a5edc2;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.sic-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #79e6a8;
+  box-shadow: 0 0 10px rgba(121, 230, 168, 0.75);
+}
+
+.sic-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 32px;
+}
+
+.sic-item {
+  min-width: 0;
+}
+
+.sic-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--sic-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Names are never cut: long text wraps onto more lines. */
+.sic-value {
+  display: block;
+  color: var(--sic-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.sic-muted {
+  color: var(--sic-muted);
+  font-weight: 500;
+}
+
+.sic-detail {
+  display: block;
+  margin-top: 3px;
+  color: #aeb3bf;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.sic-battery-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sic-track {
+  width: 74px;
+  height: 5px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.sic-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f4b45c, #8be0a8);
+}
+
+.sic-footer {
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: #9da2af;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sic-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sic-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e9ebf1;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.sic-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.sic-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sic-button:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 2px;
+}
+
+.sic-spin {
+  animation: sic-spin 0.8s linear infinite;
+}
+
+@keyframes sic-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sic-error {
+  margin: 0;
+  color: #ffb4a8;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* The "All hardware" list below the card uses the app theme. */
+.sic-more-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.sic-more-title {
+  margin: 6px 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sic-more-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.sic-more-row:last-child {
+  border-bottom: none;
+}
+
+.sic-more-name {
+  font-weight: 600;
+}
+
+.sic-more-detail {
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sic-card,
+  .sic-fx::before,
+  .sic-fx::after {
+    transition-duration: 0.01ms !important;
+  }
+
+  .sic-card:hover {
+    transform: none;
+  }
+
+  .sic-spin {
+    animation: none;
+  }
+}
