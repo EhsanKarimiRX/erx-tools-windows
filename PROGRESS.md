@@ -472,3 +472,12 @@ app mid-batch, light/dark theme.
 ## Open questions
 
 - None currently.
+
+## v0.3.0 released (2026-11-15)
+
+This section replaces "Current status" and "Next steps (v0.3.0)" above; those stay as history.
+
+- v0.3.0 was published on GitHub: tag v0.3.0 on main, title "ERX Tools v0.3.0", not marked as pre-release, 6 files attached (4 installers, SHA256SUMS.txt, THIRD_PARTY_LICENSES.md).
+- The owner checked after publishing: the release page shows all files, and a downloaded installer has the same SHA-256 as SHA256SUMS.txt. The installed v0.3.0 works (Vault, the two internet-check commands, About credits).
+- Tested only on Windows 11 x64. Windows 10, ARM64 (compiled only) and files larger than 8 GB are untested.
+- Next ideas: Encrypted Notes (placeholder tile now), code signing, CI, smaller debug builds.
