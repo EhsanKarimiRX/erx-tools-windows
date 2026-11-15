@@ -134,6 +134,9 @@ export default function AboutButton({ version }: { version: string | null }) {
               <p className="about-license">
                 Released under the MIT License. The ERX Tools name and logo are not covered by the MIT License.
               </p>
+              <p className="about-license">
+                Vault passphrases use the EFF Large Wordlist by the Electronic Frontier Foundation (CC BY 3.0 US). The dice numbers were removed from the list.
+              </p>
             </div>
 
             {eggMessage !== null && (
