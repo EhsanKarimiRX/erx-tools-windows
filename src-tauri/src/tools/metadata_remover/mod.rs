@@ -12,5 +12,7 @@
 #![allow(dead_code)]
 
 pub mod executor;
+pub mod jpeg;
 pub mod model;
+pub mod orientation;
 pub mod safe_write;
