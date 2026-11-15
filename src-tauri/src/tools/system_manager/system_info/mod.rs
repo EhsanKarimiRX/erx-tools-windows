@@ -10,3 +10,10 @@
 pub mod bytes;
 pub mod core;
 pub mod smbios;
+
+#[cfg(windows)]
+pub mod basic;
+#[cfg(windows)]
+pub mod memory;
+#[cfg(windows)]
+pub mod winreg;
