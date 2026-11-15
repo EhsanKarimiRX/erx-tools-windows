@@ -6,6 +6,16 @@ Fully offline, no admin rights needed, English UI. Every section is honest:
 no silent failures, no fake progress, plain-English reasons for anything
 that did not happen.
 
+## Device card (top of the page)
+
+A read-only card above the five sections. It shows the processor (cores and threads), the graphics card, RAM (type, total and modules), the first internal drive, the Windows version, and battery health (or uptime on a PC without a battery). It is read again every time System Manager opens and with the small refresh button; nothing updates by itself.
+
+- When there is more than one graphics card, drive or RAM module, the cell shows the first one plus "+N more" and a **More** button opens the full list.
+- The discrete graphics card comes first; a PC without one shows the processor's graphics.
+- Whatever Windows or the BIOS does not report is shown as "Not reported". The card never guesses.
+- Empty RAM or drive slots are not shown: Windows cannot tell reliably.
+- No administrator rights, no network, no computer name or serial numbers. See DECISIONS.md for how each value is read.
+
 ## Awake
 
 Keeps the PC awake during long, expensive computer runs.

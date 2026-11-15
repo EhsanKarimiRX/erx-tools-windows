@@ -34,7 +34,7 @@ Recolor Windows folder icons in any color, with optional stripe or checker patte
 - Deleting a customized folder may show a Windows warning about `desktop.ini`. That is normal: the file only stores the icon settings.
 
 ### System Manager
-Everyday Windows utilities in one panel:
+Everyday Windows utilities in one panel. At the top, a read-only **device card** shows your processor, graphics card, RAM, drives, Windows version and battery health (or uptime on a PC without a battery). It is read again every time System Manager opens, changes nothing and sends nothing anywhere; whatever Windows does not report is shown as "Not reported". Below it:
 - **Awake** — keeps the PC from sleeping during long runs. It temporarily sets the Windows sleep, hibernate and screen-off timeouts to *Never* and puts your original values back when you turn it off. Your original values are saved to disk first, so they can be restored even after a crash. Options: let the screen turn off normally, and an optional auto-off timer. Awake only blocks *automatic* sleep; clicking Sleep or closing a laptop lid still follows Windows.
 - **Desktop Icons** — show or hide This PC, Recycle Bin, Control Panel, Network and your user folder on the desktop.
 - **Organize** — tidy loose files into folders. The *Desktop* tab sorts the Desktop into Apps, Documents and More. The *Folder* tab sorts any folder (or Downloads) by format, by date (photo date taken, created or modified; by year or by month; files without a date go to "Date not found") or by size. It shows a plain-language preview first, never deletes or overwrites anything, leaves existing sub-folders alone, and can undo the last run.
