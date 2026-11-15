@@ -1,6 +1,6 @@
-# ERX Tools for Windows
+# ERX Tools
 
-A small, offline toolbox for Windows. Every tool opens from a simple square tile on the home screen and does one job: convert images, make QR codes, recolor folder icons, keep the PC awake, tidy up folders, and open common Windows tools.
+A small, offline toolbox for Windows. Every tool opens from a simple square tile on the home screen and does one job: convert images, make QR codes, recolor folder icons, keep the PC awake, tidy up folders, encrypt files, and open common Windows tools.
 
 > **Early beta.** ERX Tools is new and is being tested with friends. Installers are on the [Releases page](https://github.com/EhsanKarimiRX/erx-tools-windows/releases) (see [Download](#download)). So far it has only been tested on Windows 11 (see [Tested on](#tested-on)).
 
@@ -39,14 +39,29 @@ Everyday Windows utilities in one panel:
 - **Desktop Icons** — show or hide This PC, Recycle Bin, Control Panel, Network and your user folder on the desktop.
 - **Organize** — tidy loose files into folders. The *Desktop* tab sorts the Desktop into Apps, Documents and More. The *Folder* tab sorts any folder (or Downloads) by format, by date (photo date taken, created or modified; by year or by month; files without a date go to "Date not found") or by size. It shows a plain-language preview first, never deletes or overwrites anything, leaves existing sub-folders alone, and can undo the last run.
 - **Quick Launch** — one-click buttons for Control Panel, Defragment and Optimize Drives, Command Prompt, PowerShell (PowerShell 7 if installed), Device Manager, Services and Microsoft PC Manager (it opens the app if installed, otherwise offers its Microsoft Store page).
-- **Command Tips** — a list of handy Windows commands you can copy and run yourself. ERX Tools never runs them for you. It includes "List installed apps" and "Save installed apps to a file", which cover the classic desktop programs and the Microsoft Store apps of your Windows account (portable apps that were never installed are not listed). Long commands start collapsed and expand with a More button.
+- **Command Tips** — a list of handy Windows commands you can copy and run yourself. ERX Tools never runs them for you. It includes "List installed apps" and "Save installed apps to a file", which cover the classic desktop programs and the Microsoft Store apps of your Windows account (portable apps that were never installed are not listed). Long commands start collapsed and expand with a More button. It also has two commands that turn Windows' internet-connection check off and on (they need PowerShell as administrator).
+
+### Quantum Resistance Vault
+Encrypt files and whole folders with a passphrase of random words, and decrypt them again later. Everything happens on your PC; nothing is uploaded.
+- **Passphrase:** the app creates 6 to 12 random words (10 by default) from the [EFF Large Wordlist](https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt). You can replace single words, and you confirm that you saved the words before encrypting. To decrypt, you type the words. There is no recovery: **if the words are lost, the files are lost.**
+- **Encryption:** the data is compressed with Zstandard when that helps, then encrypted with ChaCha20-Poly1305 using a 256-bit key. The key is made from your words with Argon2id (256 MiB of memory, tuned on your PC to take about 0.7 seconds), which makes guessing the words slow. Any change to an encrypted file is detected when you decrypt it.
+- **Quantum resistance:** the design uses only symmetric cryptography (no RSA or elliptic curves) and a long random passphrase, so it is designed to resist quantum computers. That is a design goal, not a promise: nobody can guarantee that encryption is unbreakable.
+- **Big files:** up to 20 GB per file, processed as a stream, so memory use stays small (about 18 MB in our test with an 8 GB folder). The result can be split into parts of 500 MB, 1 GB or 2 GB. Progress is live and you can cancel at any time; a cancelled run leaves no files behind.
+- **Careful with your files:** the original is never changed or deleted, an existing file is never overwritten (a number is added to the name), and the new file is read back and checked after it is written. The original file name is stored inside the encryption; the output is named `name.erx` (the file type is hidden) and the real name comes back when you decrypt.
+- **Folders:** a whole folder becomes one encrypted file with its structure inside. Links and special items (devices) cannot be encrypted.
+- **Limits, honestly:**
+  - There is no recovery and no password reset.
+  - The code has had no professional security audit and the Vault is new. Keep another backup of anything you cannot replace.
+  - The original stays on your disk after encrypting. Delete it yourself; a normal delete is not a secure erase.
+  - An encrypted file still shows that it is an ERX file, its approximate size, how many parts there are, whether it holds a file or a folder, and whether it was compressed. File names, file types and the folder structure are hidden.
+  - It cannot protect you from malware or a keylogger on your PC, or from someone who gets your words.
 
 ### Encrypted Notes
-Planned. Currently a placeholder tile.
+Planned for a later version. Currently a placeholder tile.
 
 ## About the app
 
-The round **i** button at the bottom-right of the home screen shows the app version, a short note about the MIT License and a **View on GitHub** button that opens the project's GitHub page in your browser.
+The round **i** button at the bottom-right of the home screen shows the app version, a short note about the MIT License, the credit for the EFF word list used by the Vault, and a **View on GitHub** button that opens the project's GitHub page in your browser.
 
 ## Requirements
 
@@ -85,7 +100,8 @@ Download the installer for your PC from the [latest release](https://github.com/
 - The only network request ERX Tools makes is the **update check**, and only when you click the update button next to the version number on the home screen. It is one HTTPS request to GitHub asking for the latest release number. Nothing is downloaded or installed automatically, and nothing about you or your files is sent. Like any web server, GitHub can see your IP address and the app version. Everything else works offline; the app sends no telemetry and loads no remote content. The webview has a strict Content-Security-Policy and only Tauri's core default permissions.
 - The UI never touches the file system directly; all file work goes through Rust commands.
 - Some buttons hand off to Windows (for example opening the Microsoft Store page for PC Manager). That is Windows doing it, not ERX Tools.
-- The code has had no professional security audit.
+- The Quantum Resistance Vault works fully offline. The passphrase words are created and kept in memory by the Rust code, not by the web page.
+- The code has had no professional security audit. This matters most for the Vault; see its limits under Tools.
 
 ## Development
 
@@ -124,7 +140,7 @@ To add a tool, see [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md). Design decisi
 
 ## How this project is built
 
-ERX Tools is a product of one owner, who is not a professional programmer, built together with AI. The owner decides what to build and how it should behave. An AI consultant helps design each feature and writes detailed step-by-step specifications, and an AI coding agent writes the code from them. The owner tests every feature by hand. Automated checks run on every step: TypeScript strict mode, `rustfmt`, `clippy` with warnings as errors, and more than 370 Rust tests.
+ERX Tools is a product of one owner, who is not a professional programmer, built together with AI. The owner decides what to build and how it should behave. An AI consultant helps design each feature and writes detailed step-by-step specifications, and an AI coding agent writes the code from them. The owner tests every feature by hand. Automated checks run on every step: TypeScript strict mode, `rustfmt`, `clippy` with warnings as errors, and more than 600 Rust tests.
 
 ## Credits
 
@@ -132,7 +148,7 @@ ERX Tools is a product of one owner, who is not a professional programmer, built
 |---|---|
 | **EhsanKarimiRX** (project owner) | Idea, product design, every feature decision, requirements, hands-on testing and acceptance, and publishing. |
 | **Claude Sonnet 5.5** (Anthropic), in the Claude desktop app | Consultant and prompt writer: discussed each feature with the owner, designed the technical specifications and the step-by-step build prompts, and reviewed the agent's reports. |
-| **GLM 5.3 Flash** (about 90% of the implementation, by the owner's estimate) and **GLM 5.3** (the early stage), in Z Code (the z.ai desktop app) | The coding agents: wrote and tested the code by following those prompts. |
+| **GLM 5.3 Flash** (all of v0.3.0 and, by the owner's estimate, about 90% of the code of the earlier releases), **GLM 5.3** (the early stage) and **DeepSeek Flash** (about 3 to 6% of the code of the earlier releases), in Z Code (the z.ai desktop app) | The coding agents: wrote and tested the code by following those prompts. |
 
 Built with [Tauri 2](https://tauri.app/), [React](https://react.dev/), TypeScript and Rust.
 
