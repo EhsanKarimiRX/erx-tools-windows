@@ -4,10 +4,9 @@
 //! nothing anywhere. Pure logic (text helpers, parsers) is separated from the
 //! thin Windows readers so it can be unit tested.
 
-// Temporary: removed in the last step (SC7) when everything is wired up.
-#![allow(dead_code)]
-
 pub mod bytes;
+pub mod card;
+pub mod commands;
 pub mod core;
 pub mod smbios;
 
