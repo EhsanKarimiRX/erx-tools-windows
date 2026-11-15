@@ -10,6 +10,7 @@ pub mod error;
 pub mod favicons;
 pub mod folder_icon;
 pub mod image_convert;
+pub mod metadata_remover;
 pub mod qr_code;
 pub mod system_manager;
 pub mod update_check;
