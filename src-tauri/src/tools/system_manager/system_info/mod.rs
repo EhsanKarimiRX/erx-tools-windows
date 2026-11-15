@@ -16,4 +16,6 @@ pub mod basic;
 #[cfg(windows)]
 pub mod memory;
 #[cfg(windows)]
+pub mod storage;
+#[cfg(windows)]
 pub mod winreg;
