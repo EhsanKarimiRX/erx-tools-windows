@@ -26,6 +26,7 @@ pub enum FileFormat {
     Heic,
     Mp4,
     Mov,
+    Mkv,
 }
 
 impl FileFormat {
@@ -41,11 +42,12 @@ impl FileFormat {
             FileFormat::Heic => "HEIC",
             FileFormat::Mp4 => "MP4",
             FileFormat::Mov => "MOV",
+            FileFormat::Mkv => "MKV",
         }
     }
 
     pub fn is_video(self) -> bool {
-        matches!(self, FileFormat::Mp4 | FileFormat::Mov)
+        matches!(self, FileFormat::Mp4 | FileFormat::Mov | FileFormat::Mkv)
     }
 }
 

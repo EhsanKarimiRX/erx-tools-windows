@@ -17,6 +17,7 @@ pub mod executor;
 pub mod found;
 pub mod gif;
 pub mod jpeg;
+pub mod mkv;
 pub mod model;
 pub mod mp4;
 pub mod orientation;

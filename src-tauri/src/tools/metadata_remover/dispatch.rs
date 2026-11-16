@@ -20,7 +20,7 @@ const HEAD_BYTES: u64 = 64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Detected {
     Known(FileFormat),
-    /// A Matroska / WebM file (a handler comes in a later step).
+    /// A Matroska / WebM file.
     Matroska,
     /// A format we recognize but do not support; the name is shown to the user.
     Unsupported(&'static str),
@@ -117,7 +117,7 @@ pub fn analyze_reader<R: Read + Seek>(
     limited.read_to_end(&mut head).map_err(|_| cannot_read())?;
     let format = match detect(&head) {
         Detected::Known(format) => format,
-        Detected::Matroska => return Err("MKV files are not supported yet".to_string()),
+        Detected::Matroska => FileFormat::Mkv,
         Detected::Unsupported(name) => return Err(format!("{name} files are not supported")),
         Detected::Unknown => return Err("not a supported photo or video file".to_string()),
     };
@@ -137,6 +137,7 @@ pub fn analyze_reader<R: Read + Seek>(
         FileFormat::Tiff => not_yet("TIFF"),
         FileFormat::Heic => not_yet("HEIC"),
         FileFormat::Mp4 | FileFormat::Mov => super::mp4::analyze(src, len, format, options),
+        FileFormat::Mkv => super::mkv::analyze(src, len, options),
     };
     let mut analysis = result?;
     found::enrich(&mut analysis);
