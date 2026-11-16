@@ -136,7 +136,7 @@ pub fn analyze_reader<R: Read + Seek>(
         FileFormat::Bmp => bmp::analyze(src, len, options),
         FileFormat::Tiff => not_yet("TIFF"),
         FileFormat::Heic => not_yet("HEIC"),
-        FileFormat::Mp4 | FileFormat::Mov => not_yet("Video"),
+        FileFormat::Mp4 | FileFormat::Mov => super::mp4::analyze(src, len, format, options),
     };
     let mut analysis = result?;
     found::enrich(&mut analysis);
