@@ -15,4 +15,5 @@ pub mod executor;
 pub mod jpeg;
 pub mod model;
 pub mod orientation;
+pub mod png;
 pub mod safe_write;
