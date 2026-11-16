@@ -11,9 +11,12 @@
 // Temporary: removed in the last step when everything is wired up.
 #![allow(dead_code)]
 
+pub mod bmp;
 pub mod executor;
+pub mod gif;
 pub mod jpeg;
 pub mod model;
 pub mod orientation;
 pub mod png;
 pub mod safe_write;
+pub mod webp;
