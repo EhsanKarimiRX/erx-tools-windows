@@ -12,7 +12,9 @@
 #![allow(dead_code)]
 
 pub mod bmp;
+pub mod dispatch;
 pub mod executor;
+pub mod found;
 pub mod gif;
 pub mod jpeg;
 pub mod model;
