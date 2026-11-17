@@ -87,6 +87,12 @@ pub fn run() {
             tools::system_manager::quick_launch::commands::quick_launch_info,
             tools::system_manager::quick_launch::commands::quick_launch_open,
             tools::system_manager::system_info::commands::system_info_get,
+            tools::metadata_remover::commands::mr_pick_files,
+            tools::metadata_remover::commands::mr_pick_output_folder,
+            tools::metadata_remover::commands::mr_scan_files,
+            tools::metadata_remover::commands::mr_clean_files,
+            tools::metadata_remover::commands::mr_cancel,
+            tools::metadata_remover::commands::mr_reveal_files,
             // Update check: the app's only network access (R3), run solely
             // when the user clicks the update button on the home screen.
             tools::update_check::commands::check_for_updates,

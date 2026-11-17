@@ -12,6 +12,7 @@
 #![allow(dead_code)]
 
 pub mod bmp;
+pub mod commands;
 pub mod dispatch;
 pub mod executor;
 pub mod found;
