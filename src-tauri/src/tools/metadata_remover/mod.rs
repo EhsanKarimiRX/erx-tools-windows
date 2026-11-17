@@ -22,6 +22,7 @@ pub mod model;
 pub mod mp4;
 pub mod orientation;
 pub mod patch;
+pub mod pipeline;
 pub mod png;
 pub mod safe_write;
 pub mod webp;
