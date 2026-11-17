@@ -106,8 +106,11 @@ fn pixel_digest(path: &Path) -> Option<(u32, u32, Vec<u8>)> {
 /// the decoder cannot read, or one over the pixel limit); Err = the cleaned
 /// copy cannot be read back or its pixels differ.
 pub fn pixels_match(source: &Path, output: &Path, format: FileFormat) -> Result<bool, String> {
-    if format.is_video() || format == FileFormat::Heic {
+    if format.is_video() {
         return Ok(false);
+    }
+    if format == FileFormat::Heic {
+        return heic_pixels_match(source, output);
     }
     let Some(original) = pixel_digest(source) else {
         return Ok(false);
@@ -116,6 +119,34 @@ pub fn pixels_match(source: &Path, output: &Path, format: FileFormat) -> Result<
         return Err("the cleaned image cannot be read back".to_string());
     };
     if original != cleaned {
+        return Err("the pixels of the cleaned copy differ from the original".to_string());
+    }
+    Ok(true)
+}
+
+/// HEIC photos are decoded by Windows (WIC), through the Image Converter's
+/// decoder, and compared through a SHA-256 digest of the lossless PNG bytes of
+/// the decoded pixels. Ok(false) when Windows cannot decode the ORIGINAL (for
+/// example the HEIF codecs are missing): the check is skipped.
+fn heic_pixels_match(source: &Path, output: &Path) -> Result<bool, String> {
+    use crate::tools::image_convert::convert::convert_heic;
+    use crate::tools::image_convert::core::{ConvertOptions, OutputFormat, RgbColor};
+
+    let options = ConvertOptions {
+        format: OutputFormat::Png,
+        jpeg_quality: 85,
+        background: RgbColor(255, 255, 255),
+        output_folder: None,
+    };
+    let Ok(original) = convert_heic(source, &options) else {
+        return Ok(false);
+    };
+    let original_digest = Sha256::digest(&original);
+    drop(original);
+    let Ok(cleaned) = convert_heic(output, &options) else {
+        return Err("the cleaned HEIC photo cannot be read back".to_string());
+    };
+    if Sha256::digest(&cleaned) != original_digest {
         return Err("the pixels of the cleaned copy differ from the original".to_string());
     }
     Ok(true)
@@ -578,7 +609,7 @@ mod tests {
         assert_eq!(pixels_match(&text, &first, FileFormat::Png), Ok(false));
         assert!(pixels_match(&first, &text, FileFormat::Png).is_err());
         assert_eq!(pixels_match(&first, &second, FileFormat::Mp4), Ok(false));
-        assert_eq!(pixels_match(&first, &second, FileFormat::Heic), Ok(false));
+        assert_eq!(pixels_match(&text, &second, FileFormat::Heic), Ok(false));
         fs::remove_dir_all(&dir).unwrap();
     }
 

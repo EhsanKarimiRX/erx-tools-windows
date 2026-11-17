@@ -16,6 +16,7 @@ pub mod dispatch;
 pub mod executor;
 pub mod found;
 pub mod gif;
+pub mod heic;
 pub mod jpeg;
 pub mod mkv;
 pub mod model;
