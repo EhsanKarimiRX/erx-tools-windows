@@ -24,6 +24,8 @@ impl Patches {
         Patches::default()
     }
 
+    /// Only the unit tests need this; the handlers ask `into_plan` directly.
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }

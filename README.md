@@ -57,6 +57,18 @@ Encrypt files and whole folders with a passphrase of random words, and decrypt t
   - An encrypted file still shows that it is an ERX file, its approximate size, how many parts there are, whether it holds a file or a folder, and whether it was compressed. File names, file types and the folder structure are hidden.
   - It cannot protect you from malware or a keylogger on your PC, or from someone who gets your words.
 
+### Metadata Remover
+See what is hidden inside photos and videos (GPS location, camera and lens, dates, software, serial numbers, comments, thumbnails) and save a copy with that data removed. Your original is never changed or deleted; the new copy is written next to it (or into a folder you choose).
+- **Input:** JPEG, PNG, WebP, GIF, BMP, TIFF, HEIC/HEIF, MP4, MOV and MKV. The type is read from the content, never from the extension. A BMP (and a TIFF with no hidden tags) is reported as "This file has no metadata." and no copy is made.
+- **Not supported:** AVIF, audio files, Word documents, PDF, BigTIFF, TIFF files with more than one page, RAW/DNG files, and TIFF files with sub-pictures. Audio, documents and PDF are answered with "not a supported photo or video file".
+- **Nothing is re-encoded:** photos lose their metadata segments and chunks while their compressed picture data is copied unchanged; videos, HEIC and TIFF files are changed in place, so their size stays exactly the same. Examples: video metadata boxes become "free" boxes, Matroska Tags become "Void" elements, timed-metadata tracks (GPS, motion) are emptied together with their samples, and TIFF metadata entries are taken out of the directory and zeroed.
+- **Kept by default:** the photo rotation (phone photos stay upright) and the colour profile (colours stay the same). You can turn either off; then colours may look different. HEIC always keeps its rotation and its profile, and TIFF always keeps its rotation.
+- **Output names:** every new file gets "ERX" before the extension (photo.jpg → photoERX.jpg). If that name is taken it counts up (photoERX (1).jpg, …), so nothing is ever overwritten.
+- **Checked before saving:** the new copy is scanned again and, for photos, its pixels are compared with the original through a hash. If a check fails the copy is not kept and the file is reported as failed. HEIC photos are compared with the Windows HEIF/HEVC codecs (the same ones the Image Converter uses); when they are missing the comparison is skipped (the result then says only that the data was copied unchanged) and the photo is still cleaned. Either way, cleaning a HEIC photo does not need those codecs.
+- **Batches:** up to 200 files, two at a time, with live progress and a Cancel button that stops the running files (their temporary files are removed) and skips the rest.
+- **Limits, honestly:** only metadata fields are removed. It cannot remove what is visible in the picture or video, watermarks, the file name, the dates of the new file, traces inside the video stream itself (for example an encoder name), or other copies of the file. It is not a guarantee of anonymity.
+- What is removed in each format and how the safety checks work is described in [docs/METADATA_REMOVER.md](docs/METADATA_REMOVER.md).
+
 ### Encrypted Notes
 Planned for a later version. Currently a placeholder tile.
 

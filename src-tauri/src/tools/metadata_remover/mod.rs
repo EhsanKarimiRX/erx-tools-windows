@@ -6,10 +6,7 @@
 //! - `safe_write`: temporary names, no-overwrite move, output names.
 //!
 //! Every format handler reads a file with Read+Seek and returns an
-//! `Analysis`. Pure logic only; the Tauri command layer comes later.
-
-// Temporary: removed in the last step when everything is wired up.
-#![allow(dead_code)]
+//! `Analysis`. Pure logic only; `commands` is the Tauri command layer.
 
 pub mod bmp;
 pub mod commands;

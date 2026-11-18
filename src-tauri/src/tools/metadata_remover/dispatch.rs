@@ -96,10 +96,6 @@ fn limit_text(bytes: u64) -> String {
     }
 }
 
-fn not_yet(what: &str) -> Result<Analysis, String> {
-    Err(format!("{what} files are not supported yet"))
-}
-
 /// Analyzes the file behind `src` (`len` bytes): detects the type, checks
 /// the size limit, runs the handler and adds the readable details.
 pub fn analyze_reader<R: Read + Seek>(

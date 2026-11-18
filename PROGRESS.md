@@ -481,3 +481,21 @@ This section replaces "Current status" and "Next steps (v0.3.0)" above; those st
 - The owner checked after publishing: the release page shows all files, and a downloaded installer has the same SHA-256 as SHA256SUMS.txt. The installed v0.3.0 works (Vault, the two internet-check commands, About credits).
 - Tested only on Windows 11 x64. Windows 10, ARM64 (compiled only) and files larger than 8 GB are untested.
 - Next ideas: Encrypted Notes (placeholder tile now), code signing, CI, smaller debug builds.
+
+## Metadata Remover (v0.4.0, not released yet)
+
+The tool is built and works: the Rust backend (content detection, one handler per format,
+the plan executor, the file pipeline with its checks, the Tauri commands) and the React
+screen are committed (MR1 to MR13). The owner tested the Mediatest samples and some
+unsupported files by hand: detection, cleaning, the originals staying untouched, cancel,
+the output folder and opening the cleaned files all worked as expected.
+
+- What the tool does, format by format, is written down in docs/METADATA_REMOVER.md and
+  summarized in the README.
+- Not done yet: the version bump to 0.4.0, the release notes and the installers, and the
+  release itself.
+- Untested: Windows 10, ARM64, and the WebM, M4V, AVIF and audio samples.
+- Open discrepancy (owner decision needed): the decisions list WebM and M4V as not
+  supported, but detection sends every Matroska/EBML file (WebM included) to the MKV
+  handler and every other ISO base media brand (M4V included) to the MP4 handler, so those
+  files are cleaned in practice. The UI format hint names MKV only.
