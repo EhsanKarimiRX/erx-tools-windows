@@ -39,7 +39,13 @@ sees in the "found" list is exactly what the plan removes.
 
 ## 2. Detection: content, never the extension
 
-The first 64 bytes decide the format (a file name or extension is never used):
+The first 64 bytes decide the format (a file name or extension is never used).
+An ISO base media file is the one exception: once the `ftyp` signature is seen,
+the complete `ftyp` box is read (at most 64 KiB, about 16,000 brands) and every
+brand of it is checked, the major brand and all compatible brands. An `ftyp` box
+that is invalid, cut short, or larger than the 64 KiB bound is refused ("damaged
+or incomplete video file" or "unusual video structure") instead of being
+guessed, so no file reaches the MP4 handler unchecked.
 
 | Signature | Detected as |
 |---|---|
@@ -61,7 +67,7 @@ Brands in an ISO base media `ftyp` box:
 | `heic`, `heix`, `hevc`, `hevx`, `heim`, `heis`, `mif1`, `msf1` | HEIC |
 | `avif`, `avis` | AVIF: refused ("AVIF files are not supported") |
 | `M4A `, `M4B `, `M4P ` | Audio: refused ("Audio files are not supported") |
-| `M4V ` (as the major brand or as a compatible brand) | M4V: refused ("M4V files are not supported") |
+| `M4V `, `M4VH`, `M4VP` (the major brand or any compatible brand, anywhere in the complete `ftyp` list) | M4V: refused ("M4V files are not supported") |
 | any other brand | MP4 |
 
 Anything else is refused with "not a supported photo or video file". An empty
@@ -290,7 +296,9 @@ failed; the original is untouched.
 | Unknown content, audio, document, PDF | "not a supported photo or video file" |
 | AVIF / AVIS | "AVIF files are not supported" |
 | Audio in an MP4 container (M4A, M4B, M4P) | "Audio files are not supported" |
-| M4V (an `M4V ` brand in the `ftyp` box, major or compatible) | "M4V files are not supported" |
+| M4V (`M4V `, `M4VH`, `M4VP` as the major brand or any compatible brand of the complete `ftyp` list) | "M4V files are not supported" |
+| Invalid or cut-short `ftyp` box (smaller than 16 bytes, or more bytes claimed than the file holds) | "damaged or incomplete video file" |
+| `ftyp` box larger than the 64 KiB bound | "unusual video structure" |
 | BigTIFF | "BigTIFF files are not supported" |
 | Photo over 256 MB, video over 16 GB | "file is larger than the ... limit" |
 | More than 200 files in one list | "At most 200 files can be added at once." |

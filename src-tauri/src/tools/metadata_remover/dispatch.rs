@@ -27,32 +27,77 @@ pub enum Detected {
     Unknown,
 }
 
-/// True when the `ftyp` box declares the M4V brand, either as the major brand
-/// or as one of the compatible brands. The box size is respected, so bytes of
-/// the next box are never read as brands.
-fn declares_m4v(head: &[u8]) -> bool {
-    let size = match head
+/// Largest `ftyp` box that detection reads and checks (64 KiB, about 16,000
+/// brands). A bigger box is refused as an unusual structure instead of being
+/// guessed, so a file is never passed to the MP4 handler unchecked.
+const MAX_FTYP_BYTES: u64 = 64 * 1024;
+
+/// The M4V brands that Apple tools write: iTunes movies and their HDR and
+/// preview variants.
+const M4V_BRANDS: [&[u8; 4]; 3] = [b"M4V ", b"M4VH", b"M4VP"];
+
+fn is_m4v_brand(brand: &[u8]) -> bool {
+    M4V_BRANDS.iter().any(|known| brand == known.as_slice())
+}
+
+/// True when the `ftyp` box declares an M4V brand, either as the major brand
+/// or as one of the compatible brands. Only bytes inside the box count, so
+/// bytes of the next box are never read as brands.
+fn declares_m4v(ftyp: &[u8]) -> bool {
+    let size = match ftyp
         .get(0..4)
         .and_then(|part| <[u8; 4]>::try_from(part).ok())
     {
         Some(bytes) => u32::from_be_bytes(bytes) as usize,
         None => return false,
     };
-    let end = size.min(head.len());
-    let brand_at = |at: usize| head.get(at..at + 4);
+    let end = size.min(ftyp.len());
+    let brand_at = |at: usize| ftyp.get(at..at + 4);
     // 8 = the box header followed by the major brand; 16 = just after the
     // 4-byte minor version, where the compatible brands start.
-    if brand_at(8) == Some(&b"M4V "[..]) {
+    if brand_at(8).is_some_and(is_m4v_brand) {
         return true;
     }
     let mut at = 16usize;
     while at + 4 <= end {
-        if brand_at(at) == Some(&b"M4V "[..]) {
+        if brand_at(at).is_some_and(is_m4v_brand) {
             return true;
         }
         at += 4;
     }
     false
+}
+
+/// Detection that reads the complete `ftyp` box before deciding, so an M4V
+/// brand anywhere in the brand list is refused. Every other format is decided
+/// from the first bytes only. An invalid, truncated or oversized `ftyp` is
+/// refused instead of being guessed.
+fn detect_checked<R: Read + Seek>(src: &mut R, head: &[u8], len: u64) -> Result<Detected, String> {
+    if head.get(4..8) != Some(&b"ftyp"[..]) {
+        return Ok(detect(head));
+    }
+    let damaged = || "damaged or incomplete video file".to_string();
+    // An ftyp box holds at least the 8-byte header, the major brand and the
+    // minor version.
+    if head.len() < 16 {
+        return Err(damaged());
+    }
+    let size = u64::from(u32::from_be_bytes([head[0], head[1], head[2], head[3]]));
+    if size < 16 || size > len {
+        return Err(damaged());
+    }
+    if size > MAX_FTYP_BYTES {
+        return Err("unusual video structure".to_string());
+    }
+    // The buffer is capped by MAX_FTYP_BYTES above, never by the untrusted size.
+    let mut ftyp = vec![0u8; size as usize];
+    src.seek(SeekFrom::Start(0))
+        .map_err(|_| "cannot read the file".to_string())?;
+    src.read_exact(&mut ftyp).map_err(|_| damaged())?;
+    if declares_m4v(&ftyp) {
+        return Ok(Detected::Unsupported("M4V"));
+    }
+    Ok(detect_brand(&ftyp))
 }
 
 fn detect_brand(head: &[u8]) -> Detected {
@@ -143,7 +188,7 @@ pub fn analyze_reader<R: Read + Seek>(
     let mut head = Vec::new();
     let mut limited = src.by_ref().take(HEAD_BYTES);
     limited.read_to_end(&mut head).map_err(|_| cannot_read())?;
-    let format = match detect(&head) {
+    let format = match detect_checked(src, &head, len)? {
         Detected::Known(format) => format,
         Detected::Matroska => FileFormat::Mkv,
         Detected::Unsupported(name) => return Err(format!("{name} files are not supported")),
@@ -212,6 +257,20 @@ mod tests {
             out.extend_from_slice(*brand);
         }
         out
+    }
+
+    /// The M4V brand identifiers the detection must refuse.
+    const M4V_IDS: [&[u8; 4]; 3] = [b"M4V ", b"M4VH", b"M4VP"];
+
+    /// Detection as `analyze_reader` runs it: the first 64 bytes plus a reader
+    /// that can read the rest of the file.
+    fn checked(data: &[u8]) -> Result<Detected, String> {
+        let head_len = data.len().min(64);
+        detect_checked(
+            &mut Cursor::new(data.to_vec()),
+            &data[..head_len],
+            data.len() as u64,
+        )
     }
 
     /// An EBML element with a one-byte size field (every test payload is small).
@@ -304,16 +363,47 @@ mod tests {
     }
 
     #[test]
-    fn an_m4v_brand_is_refused_by_content() {
-        // The major brand says M4V.
-        assert_eq!(detect(&ftyp(b"M4V ")), Detected::Unsupported("M4V"));
-        // An ordinary MP4 major brand that lists M4V among its compatible brands.
-        assert_eq!(
-            detect(&ftyp_with(b"mp42", &[b"mp42", b"M4V ", b"isom"])),
-            Detected::Unsupported("M4V")
-        );
-        // The dispatcher answers with a clear message; the file name does not matter.
-        let data = ftyp(b"M4V ");
+    fn every_m4v_brand_is_refused_as_a_major_brand() {
+        for brand in M4V_IDS {
+            let data = ftyp(brand);
+            assert_eq!(detect(&data), Detected::Unsupported("M4V"), "{brand:?}");
+            assert_eq!(checked(&data).unwrap(), Detected::Unsupported("M4V"));
+            let error = analyze_reader(
+                &mut Cursor::new(data.clone()),
+                data.len() as u64,
+                &CleanOptions::default(),
+            )
+            .unwrap_err();
+            assert_eq!(error, "M4V files are not supported", "{brand:?}");
+        }
+    }
+
+    #[test]
+    fn every_m4v_brand_is_refused_as_a_compatible_brand() {
+        for brand in M4V_IDS {
+            let data = ftyp_with(b"mp42", &[b"mp42", brand, b"isom"]);
+            assert_eq!(detect(&data), Detected::Unsupported("M4V"), "{brand:?}");
+            assert_eq!(checked(&data).unwrap(), Detected::Unsupported("M4V"));
+            let error = analyze_reader(
+                &mut Cursor::new(data.clone()),
+                data.len() as u64,
+                &CleanOptions::default(),
+            )
+            .unwrap_err();
+            assert_eq!(error, "M4V files are not supported", "{brand:?}");
+        }
+    }
+
+    #[test]
+    fn an_m4v_brand_after_the_first_64_bytes_is_still_refused() {
+        let mut brands: Vec<&[u8; 4]> = vec![b"isom"; 20];
+        // Offset 16 + 15 * 4 = 76, past the 64 bytes the head holds.
+        brands[15] = b"M4V ";
+        let data = ftyp_with(b"mp42", &brands);
+        assert!(data.len() > 64);
+        // The first bytes alone cannot see it; the complete scan does.
+        assert_eq!(detect(&data[..64]), Detected::Known(FileFormat::Mp4));
+        assert_eq!(checked(&data).unwrap(), Detected::Unsupported("M4V"));
         let error = analyze_reader(
             &mut Cursor::new(data.clone()),
             data.len() as u64,
@@ -321,6 +411,73 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error, "M4V files are not supported");
+    }
+
+    #[test]
+    fn a_long_brand_list_without_m4v_is_still_an_ordinary_mp4() {
+        // A 4 KB ftyp box: well inside the 64 KiB bound.
+        let brands: Vec<&[u8; 4]> = vec![b"isom"; 1000];
+        let data = ftyp_with(b"mp42", &brands);
+        assert_eq!(checked(&data).unwrap(), Detected::Known(FileFormat::Mp4));
+        // Detection passes and the MP4 handler runs (and asks for a moov box).
+        let error = analyze_reader(
+            &mut Cursor::new(data.clone()),
+            data.len() as u64,
+            &CleanOptions::default(),
+        )
+        .unwrap_err();
+        assert_eq!(error, "no video information found in the file");
+    }
+
+    #[test]
+    fn an_invalid_truncated_or_oversized_ftyp_is_refused() {
+        // A box too small to hold the major brand.
+        let mut too_small = ftyp(b"mp42");
+        too_small[0..4].copy_from_slice(&12u32.to_be_bytes());
+        assert_eq!(
+            checked(&too_small).unwrap_err(),
+            "damaged or incomplete video file"
+        );
+
+        // A box that claims more bytes than the file holds.
+        let mut truncated = ftyp(b"mp42");
+        truncated[0..4].copy_from_slice(&200u32.to_be_bytes());
+        assert_eq!(
+            checked(&truncated).unwrap_err(),
+            "damaged or incomplete video file"
+        );
+
+        // A box over the safety bound is refused before anything is read; the
+        // stated length is large too, so only the bound can refuse it.
+        let mut oversized = ftyp(b"mp42");
+        oversized[0..4].copy_from_slice(&70_000u32.to_be_bytes());
+        let head_len = oversized.len().min(64);
+        let error = detect_checked(
+            &mut Cursor::new(oversized.clone()),
+            &oversized[..head_len],
+            70_000,
+        )
+        .unwrap_err();
+        assert_eq!(error, "unusual video structure");
+
+        // A file that ends before the major brand.
+        let mut short = vec![0u8, 0, 0, 24];
+        short.extend_from_slice(b"ftyp");
+        assert_eq!(
+            checked(&short).unwrap_err(),
+            "damaged or incomplete video file"
+        );
+
+        // None of these fell through to the MP4 handler.
+        for data in [too_small, truncated, short] {
+            let error = analyze_reader(
+                &mut Cursor::new(data.clone()),
+                data.len() as u64,
+                &CleanOptions::default(),
+            )
+            .unwrap_err();
+            assert_ne!(error, "no video information found in the file", "{error}");
+        }
     }
 
     #[test]

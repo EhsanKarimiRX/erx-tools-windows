@@ -498,4 +498,7 @@ the output folder and opening the cleaned files all worked as expected.
   covered by unit tests only.
 - Resolved (owner decision, 2026-11-18): WebM is supported through the MKV/Matroska
   handler (its result is shown as MKV) and is named in the input-format hint. M4V is not
-  supported: an M4V brand in the file's ftyp box refuses it by content, never by its name.
+  supported: the complete ftyp box is read (bounded to 64 KiB) and any M4V, M4VH or M4VP
+  brand, as the major brand or as a compatible brand, refuses the file by content, never by
+  its name. An invalid, cut-short or oversized ftyp box is refused instead of being treated
+  as MP4.
