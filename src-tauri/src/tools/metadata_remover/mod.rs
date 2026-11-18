@@ -27,4 +27,5 @@ pub mod patch;
 pub mod pipeline;
 pub mod png;
 pub mod safe_write;
+pub mod tiff;
 pub mod webp;

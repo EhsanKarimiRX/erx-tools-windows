@@ -134,7 +134,7 @@ pub fn analyze_reader<R: Read + Seek>(
         FileFormat::Webp => webp::analyze(src, len, options),
         FileFormat::Gif => gif::analyze(src, len, options),
         FileFormat::Bmp => bmp::analyze(src, len, options),
-        FileFormat::Tiff => not_yet("TIFF"),
+        FileFormat::Tiff => super::tiff::analyze(src, len, options),
         FileFormat::Heic => super::heic::analyze(src, len, options),
         FileFormat::Mp4 | FileFormat::Mov => super::mp4::analyze(src, len, format, options),
         FileFormat::Mkv => super::mkv::analyze(src, len, options),
