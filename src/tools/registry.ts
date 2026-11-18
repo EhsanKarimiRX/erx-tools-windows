@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  Eraser,
   Folder,
   Globe,
   Image as ImageIcon,
@@ -90,6 +91,14 @@ export const tools: readonly ToolDefinition[] = [
     description: "Encrypt large files with a quantum-resistant design",
     icon: ShieldCheck,
     load: () => import("./vault"),
+    status: "ready",
+  },
+  {
+    id: "metadata-remover",
+    name: "Metadata Remover",
+    description: "Remove Metadata from your files",
+    icon: Eraser,
+    load: () => import("./metadata-remover"),
     status: "ready",
   },
 ];
