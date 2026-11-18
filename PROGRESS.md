@@ -494,8 +494,8 @@ the output folder and opening the cleaned files all worked as expected.
   summarized in the README.
 - Not done yet: the version bump to 0.4.0, the release notes and the installers, and the
   release itself.
-- Untested: Windows 10, ARM64, and the WebM, M4V, AVIF and audio samples.
-- Open discrepancy (owner decision needed): the decisions list WebM and M4V as not
-  supported, but detection sends every Matroska/EBML file (WebM included) to the MKV
-  handler and every other ISO base media brand (M4V included) to the MP4 handler, so those
-  files are cleaned in practice. The UI format hint names MKV only.
+- Untested with real files: Windows 10, ARM64, WebM, AVIF and audio. The M4V refusal is
+  covered by unit tests only.
+- Resolved (owner decision, 2026-11-18): WebM is supported through the MKV/Matroska
+  handler (its result is shown as MKV) and is named in the input-format hint. M4V is not
+  supported: an M4V brand in the file's ftyp box refuses it by content, never by its name.

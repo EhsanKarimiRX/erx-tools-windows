@@ -50,7 +50,7 @@ The first 64 bytes decide the format (a file name or extension is never used):
 | `II 2A 00` / `MM 00 2A` | TIFF (classic) |
 | `II 2B 00` / `MM 00 2B` | BigTIFF: refused ("BigTIFF files are not supported") |
 | `BM` | BMP |
-| `1A 45 DF A3` (EBML) | MKV / Matroska (section 5.9) |
+| `1A 45 DF A3` (EBML) | MKV / Matroska, including WebM (section 4.9) |
 | `ftyp` at offset 4, brand at offset 8 | see the brand table below |
 
 Brands in an ISO base media `ftyp` box:
@@ -61,6 +61,7 @@ Brands in an ISO base media `ftyp` box:
 | `heic`, `heix`, `hevc`, `hevx`, `heim`, `heis`, `mif1`, `msf1` | HEIC |
 | `avif`, `avis` | AVIF: refused ("AVIF files are not supported") |
 | `M4A `, `M4B `, `M4P ` | Audio: refused ("Audio files are not supported") |
+| `M4V ` (as the major brand or as a compatible brand) | M4V: refused ("M4V files are not supported") |
 | any other brand | MP4 |
 
 Anything else is refused with "not a supported photo or video file". An empty
@@ -186,7 +187,7 @@ Refused: a file without `moov` ("no video information found in the file"),
 impossible box sizes ("damaged or incomplete video file"), and timed-metadata
 samples that do not lie inside an `mdat` box ("unusual video structure").
 
-### 4.9 MKV (Matroska)
+### 4.9 MKV (Matroska, including WebM)
 
 Removed in place with `Void` elements of the same total size (every player
 skips them): the `Tags` element (statistics, encoder and other extra
@@ -204,9 +205,11 @@ file"), a file without a Segment, and an element of unknown size inside the
 Segment (an unfinished recording, "unusual video structure"). A Segment of
 unknown size itself is accepted.
 
-Note: detection is by the EBML signature, not by the DocType, so a WebM file is
-handled by this same MKV code path. WebM is not in the advertised format list
-and was never tested with a sample.
+Note: WebM is supported through this same handler. Detection uses the EBML
+signature and the DocType is not used to refuse a file, so a WebM file is
+cleaned here and the result is labelled MKV (the tool names the handler, not the
+extension); the input-format hint names WebM. WebM has not been tested with a
+real sample.
 
 ## 5. Options
 
@@ -287,6 +290,7 @@ failed; the original is untouched.
 | Unknown content, audio, document, PDF | "not a supported photo or video file" |
 | AVIF / AVIS | "AVIF files are not supported" |
 | Audio in an MP4 container (M4A, M4B, M4P) | "Audio files are not supported" |
+| M4V (an `M4V ` brand in the `ftyp` box, major or compatible) | "M4V files are not supported" |
 | BigTIFF | "BigTIFF files are not supported" |
 | Photo over 256 MB, video over 16 GB | "file is larger than the ... limit" |
 | More than 200 files in one list | "At most 200 files can be added at once." |
@@ -333,4 +337,7 @@ The tool is not a guarantee of anonymity.
 - The owner tested the samples and some unsupported files by hand: detection,
   cleaning, the original staying untouched, cancel, the output folder and
   opening the cleaned files all worked as expected.
-- WebM, M4V, AVIF, audio, Windows 10 and ARM64 were not tested with files.
+- WebM, AVIF and audio, Windows 10 and ARM64 were not tested with files. WebM is
+  supported (it reaches the Matroska handler, section 4.9) but has no sample yet.
+  No M4V sample was tested either: the refusal by content is covered by unit tests
+  that build the `ftyp` brand lists by hand.

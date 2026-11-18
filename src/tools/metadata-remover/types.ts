@@ -1,8 +1,9 @@
 /** Maximum number of files in one list (the same limit is enforced in Rust). */
 export const MAX_FILES = 200;
 
-/** Short list of supported formats, for hints. */
-export const SUPPORTED_FORMATS = "JPEG, PNG, WebP, GIF, BMP, TIFF, HEIC, MP4, MOV, MKV";
+/** Short list of supported formats, for hints. WebM is cleaned by the Matroska
+ * handler and shown as MKV. */
+export const SUPPORTED_FORMATS = "JPEG, PNG, WebP, GIF, BMP, TIFF, HEIC, MP4, MOV, MKV, WebM";
 
 /** Mirrors the Rust `Finding` struct. */
 export interface Finding {
