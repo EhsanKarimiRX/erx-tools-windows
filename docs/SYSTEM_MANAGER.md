@@ -1,14 +1,14 @@
 # System Manager
 
-One tool, one scrolling page with five sections, in this fixed order:
-**Awake → Desktop Icons → Organize → Quick Launch → Command Tips**.
+One tool, one scrolling page with three sections, in this fixed order:
+**Awake → Quick Launch → Command Tips**.
 Fully offline, no admin rights needed, English UI. Every section is honest:
 no silent failures, no fake progress, plain-English reasons for anything
 that did not happen.
 
 ## Device card (top of the page)
 
-A read-only card above the five sections. It shows the processor (cores and threads), the graphics card, RAM (type, total and modules), the first internal drive, the Windows version, and battery health (or uptime on a PC without a battery). It is read again every time System Manager opens and with the small refresh button; nothing updates by itself.
+A read-only card above the three sections. It shows the processor (cores and threads), the graphics card, RAM (type, total and modules), the first internal drive, the Windows version, and battery health (or uptime on a PC without a battery). It is read again every time System Manager opens and with the small refresh button; nothing updates by itself.
 
 - When there is more than one graphics card, drive or RAM module, the cell shows the first one plus "+N more" and a **More** button opens the full list.
 - The discrete graphics card comes first; a PC without one shows the processor's graphics.
@@ -46,81 +46,28 @@ Keeps the PC awake during long, expensive computer runs.
   open (the state file keeps it, and the next launch reports a timer that
   finished while the app was closed). No helper processes are used.
 
-## Desktop Icons
-
-Show/hide switches for the five classic desktop icons (This PC, Recycle
-Bin, Control Panel, Network, User's Files) via the one HKCU registry key
-Windows itself uses — the same settings as Windows Settings →
-Personalization → Themes → Desktop icon settings.
-
-- A switch shows the state **read back from the registry** after a change;
-  a failed change reverts the switch with a red message.
-- A missing registry value means the *Windows default* per icon (only the
-  Recycle Bin shows by default) — the common bug this handles correctly.
-- **Refresh behavior:** the section sends one association-changed
-  broadcast plus a best-effort refresh command to the desktop view window.
-  On the owner's Windows 11 build a repaint may still need a manual **F5**
-  on the desktop; the UI says so. Changes apply to your Windows account
-  only.
-
-## Organize
-
-Tidy loose files into category folders. Two tabs: **Desktop** and
-**Folder**.
-
-- **Desktop tab** — organizes only the loose files of your Desktop folder
-  into exactly three folders: **Apps** (programs and shortcuts),
-  **Documents** (Word, PDF, Excel and similar) and **More** (everything
-  else). Windows' virtual icons (This PC, Recycle Bin, …) are not files
-  and are never touched.
-- **Folder tab** — any folder you choose (or the **Use Downloads folder**
-  quick button), with a **Sort by** selector:
-  - **Format** — Downloads keeps its 7 categories (Documents, Images,
-    Videos, Music, Archives, Installers, More); any other folder uses the
-    5 content categories and leaves executables/runtime files and unknown
-    types in place.
-  - **Date** — folders named by **year** ("2023") or **year and month**
-    ("2023-05"), flat. The date can come from the photo's own camera data
-    (EXIF `DateTimeOriginal`, falling back to `DateTimeDigitized` — the
-    last-edit time is never used), from the Windows created date, or from
-    the modified date. Files whose date cannot be determined (including
-    every non-photo in "Photo date taken" mode) go into a folder named
-    exactly **`Date not found`**.
-  - **Size** — fixed buckets with binary units: Under 1 MB, 1-10 MB,
-    10-100 MB, 100 MB-1 GB, Over 1 GB.
-- **Safety (all tabs):** top level only; real folders are never touched;
-  hidden/system files (desktop.ini), Office `~$` lock files, links and
-  reparse points, partial downloads (`.crdownload`, `.part`, …) and
-  cloud-only OneDrive placeholders are skipped with a reason — placeholders
-  are never opened, so nothing is downloaded. **Nothing is ever deleted or
-  overwritten** ("report (2).pdf" names; a Windows move API that cannot
-  replace). Every file is re-checked at run time (size + modified time).
-- **Program files stay put in Date and Size modes** outside Downloads:
-  exe, dll, sys, ini, msi, msix, appx, bat, cmd, ps1, vbs, com, scr, drv,
-  cpl, ocx, lnk, url are left in place (moving program files by date or
-  size could break a program if the wrong folder was picked). In the
-  Downloads folder all non-skipped files may move.
-- **Your Desktop folder cannot be chosen in the Folder tab** — use the
-  Desktop tab for it.
-- **Undo:** every move is journaled; the most recent run per target
-  (desktop / downloads / custom) can be undone — reverse order, only EMPTY
-  folders the tool created are removed, and files the user moved or
-  deleted are reported "not found".
-- **OneDrive honesty:** if the folder lives in OneDrive (including
-  "OneDrive - Company" layouts) the preview says so; cloud-only files are
-  skipped; OneDrive settings are never changed. Icons from the shared
-  **Public Desktop** folder are left alone (Desktop tab).
-
 ## Quick Launch
 
-One-click buttons: Control Panel, Defragment and Optimize Drives (shows
-its own UAC), Command Prompt ± "Run as administrator", PowerShell ±
-"Run as administrator", Device Manager, Services, and Microsoft PC
-Manager.
+Ten square one-click buttons. The six tool buttons sit in one row and open
+a Windows tool normally: Control Panel, Defragment and Optimize Drives,
+Device Manager, Services, Desktop Icon Settings and Microsoft PC Manager.
+Below a thin divider the four shell buttons, at the same size, are
+centered under that row: **PowerShell**,
+**PowerShell Run as administrator**, **Command Prompt** and **Command
+Prompt Run as administrator**. Only the two **Run as administrator**
+buttons use the purple gradient; they start the program elevated, so
+Windows shows its permission (UAC) prompt first. Every other button is
+neutral and starts its tool normally.
 
 - The frontend sends only a fixed button id; the launch targets are
   hard-coded with full System32 paths, so a tampered PATH cannot hijack
   them.
+- **Desktop Icon Settings** opens Windows' own page
+  (`rundll32.exe shell32.dll,Control_RunDLL desk.cpl,,0`) — the same
+  window as Settings → Personalization → Themes → Desktop icon settings,
+  where the five classic icons (This PC, Recycle Bin, Control Panel,
+  Network, User's Files) are shown or hidden. ERX Tools only opens it; it
+  reads and writes no icon setting itself.
 - PowerShell 7 is preferred when installed; otherwise Windows PowerShell —
   a caption under the button always says which one will start.
 - A dismissed UAC prompt shows a neutral "Cancelled.", not an error.
@@ -161,9 +108,7 @@ Two badge decisions came from live verification on the development machine
 
 - Tested on Windows 11 Pro (build 26300, x64); ARM64 build is checked but
   Windows 10 is untested.
-- Awake's power changes, the Desktop Icons round trip and the PC Manager
-  launch were verified live on the development machine; Organize's safety
-  rules are covered by scratch-folder tests, and the real folders are only
-  ever organized by the user, by hand.
+- Awake's power changes and the PC Manager launch were verified live on
+  the development machine.
 - Wording review: every user-visible string is listed in
   docs/SYSTEM_MANAGER_UI_TEXT.md for the owner to edit in one place.

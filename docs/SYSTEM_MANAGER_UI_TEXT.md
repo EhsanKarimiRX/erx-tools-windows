@@ -13,7 +13,7 @@ for strings produced by Rust — the file that owns them.
 | Element | Text |
 |---|---|
 | Home tile name / page title | System Manager |
-| Tile description (tooltip) | Awake, desktop icons, organizer and quick launchers. |
+| Tile description (tooltip) | Keep the PC awake and open common Windows tools. |
 
 ## Awake (AwakeSection.tsx)
 
@@ -67,106 +67,24 @@ for strings produced by Rust — the file that owns them.
 | Options: not on | Awake is not on, so there are no options to change. |
 | Read/write failure (example shape) | Awake could not change sleep after (plugged in) (Windows error code 5, access denied). |
 
-## Desktop Icons (DesktopIconsSection.tsx)
-
-| Element | Text |
-|---|---|
-| Card title | Desktop Icons |
-| Card subtitle | Show or hide the standard desktop icons. |
-| Info note 1 (top, above the button) | Changes apply to your Windows account only. If the desktop does not update by itself, click an empty spot on the desktop and press F5. |
-| Button (moved above the switches in Prompt 13; subtle blue outline) | Open Windows desktop icon settings |
-| Button error | Couldn't open the Windows settings window: {message} |
-| Warning note (yellow, directly under the button) | When you hide an icon, Windows may move your other desktop icons into the free spot. Windows does the same in its own settings window. |
-| Loading text | Checking the desktop icons… |
-| Row names (from Rust, desktop_icons/core.rs) | This PC · Recycle Bin · Control Panel · Network · User's Files (your user folder) |
-| Row error | Couldn't change this icon: {message} |
-| Gray note (directly under the switches; replaces the old combined note) | ERX Tools never moves or saves your icon positions. If your desktop layout changes, it is caused by Windows itself, not by ERX Tools. |
-| Gray note (last) | This changes the same settings as Windows Settings → Personalization → Themes → Desktop icon settings. |
-| Read-back mismatch (Rust) | The setting was written but reads back as shown/hidden. Please try again. |
-| Written but unreadable (Rust) | The setting was written but could not be read back. |
-| Settings-open failure (Rust) | Couldn't open the Windows desktop icon settings. ({OS error}) |
-
-## Organize (OrganizeSection.tsx + organize/*.rs) — RESTRUCTURED in Prompt 5h
-
-| Element | Text | Status |
-|---|---|---|
-| Card title | Organize | unchanged |
-| Card subtitle | Tidy loose files into folders. Nothing is deleted. | unchanged |
-| Tab segments (CHANGED from three targets) | Desktop · Folder | CHANGED |
-| Desktop tab description (NEW) | Moves the loose files on your Desktop into three folders: Apps (programs and shortcuts), Documents (Word, PDF, Excel and similar) and More (everything else). Windows icons such as This PC and Recycle Bin are not touched. | NEW |
-| Folder: no folder chosen | No folder chosen yet. | unchanged |
-| Folder: picker button | Choose folder… | unchanged |
-| Folder: quick button (NEW) | Use Downloads folder | NEW |
-| Sort-by label (NEW) | Sort by | NEW |
-| Sort-by segments (NEW) | Format · Date · Size | NEW |
-| Mode sentence: Format (NEW) | Groups files into folders such as Documents, Images, Videos, Music and Archives. | NEW |
-| Mode sentence: Date (NEW) | Groups files into folders by year (or by year and month). Files without a date go into a folder named “Date not found”. | NEW |
-| Mode sentence: Size (NEW) | Groups files into folders by size: Under 1 MB, 1-10 MB, 10-100 MB, 100 MB-1 GB and Over 1 GB. | NEW |
-| Date option label (NEW) | Which date? | NEW |
-| Date option values (NEW) | Photo date taken · Date created · Date modified | NEW |
-| Photo-taken note (NEW) | Read from the photo itself (camera data). Files that are not photos, or photos without this data, go to “Date not found”. | NEW |
-| Created/modified note (NEW) | These dates come from Windows and can change when files are copied or edited. | NEW |
-| Granularity label (NEW) | Folders by | NEW |
-| Granularity values (NEW) | Year · Year and month | NEW |
-| Subfolder note (NEW, always visible in Folder tab) | Only files directly inside this folder are organized. Existing sub-folders are left untouched. | NEW |
-| Protected-types note (NEW, Folder tab, Date/Size, non-Downloads) | Program files (such as .exe and .dll) and shortcuts are left in place in this folder. | NEW |
-| Scan button | Scan | unchanged |
-| Scan progress (NEW) | Scanning… {n} files checked | NEW |
-| Preview title (CHANGED: folder name) | Ready to organize: {Desktop / <folder name>} | CHANGED |
-| Preview: nothing to do | There is nothing to move — every loose file here is skipped or left in place. | unchanged |
-| Preview: what will happen (CHANGED) | ERX Tools will move {n} loose file(s) into {m} folder(s) — Format: `:`; Date: `named by year:` / `named by year and month:`; Size: `by size:` | CHANGED |
-| Category row | {name} — {n} file(s) | unchanged |
-| File list overflow | and {n} more… | unchanged |
-| Safety note (CHANGED example name) | Nothing is deleted or overwritten. Folders are never touched. If a name already exists, the file is renamed like "report (2).pdf". (Date mode: "photo (2).jpg".) | CHANGED |
-| Skipped summary row | {n} file(s) will be skipped (see why) | unchanged |
-| Left-in-place note (CHANGED wording) | {n} file(s) stay(s) where it is/they are (programs and unknown types are not moved here). | CHANGED |
-| OneDrive note (now any chosen folder) | This folder is stored in OneDrive. ERX Tools can organize it and OneDrive will sync the changes. Online-only files are skipped. ERX Tools never changes any OneDrive settings. | unchanged scope |
-| Public Desktop note (Desktop tab only) | Icons from the shared Public Desktop folder are not part of your Desktop folder and are left alone. | unchanged |
-| Undo promise | You can undo this afterwards. | unchanged |
-| Run buttons | Organize now · Cancel | unchanged |
-| Progress | Organizing… {done} of {total} files | unchanged |
-| Report title | Done: {n} file(s) moved, {m} file(s) skipped. | unchanged |
-| Report note | Nothing was deleted. You can undo this run below. | unchanged |
-| Undo buttons (CHANGED condition) | Undo last organize · Undo last organize in {folder name} | unchanged wording |
-| Undo note | Only the most recent run for this target can be undone. | unchanged |
-| Undo result | Undo finished: {summary} (+ any notes/failures appended) | unchanged |
-| Folder tab: Desktop refused (NEW, Rust) | This is your Desktop. Use the Desktop tab for it. | NEW |
-| Folder tab: Downloads quick path (Rust, no UI text) | resolves via the known-folder API | NEW |
-
-### Organize — skip/failure reasons (Rust, shown after file names) — unchanged
-| Reason | Text |
-|---|---|
-| Hidden or system attribute / desktop.ini | hidden or system file |
-| Office lock file | temporary Office lock file |
-| Symlink or reparse point | a link or reparse point |
-| Partial download | still downloading |
-| OneDrive cloud-only | online-only (OneDrive) |
-| Gone between preview and run | no longer there |
-| Size/time mismatch | changed since preview |
-| Category name taken by a file | name conflict |
-| Locked or access denied | in use or protected |
-| All 999 names taken | no free name found |
-| Folder creation failed | could not create the folder: {error} |
-| Move failed otherwise | failed (Windows error code {n}) |
-| Undo: destination gone | not found (in the undo summary "{n} not found") |
-| Undo summary shape | {n} file(s) restored, {n} not found, {n} failed, {n} folder(s) kept (not empty) |
-
 ## Quick Launch (QuickLaunchSection.tsx + quick_launch/*.rs)
 
 | Element | Text |
 |---|---|
 | Card title | Quick Launch |
 | Card subtitle | Open common Windows tools with one click. |
-| Buttons | Control Panel · Defragment and Optimize Drives · Command Prompt · PowerShell · Device Manager · Services · Microsoft PC Manager |
+| Buttons, top group (in this order) | Control Panel · Defragment and Optimize Drives · Device Manager · Services · Desktop Icon Settings · Microsoft PC Manager |
+| Divider | thin horizontal line between the two groups |
+| Buttons, below the divider (in this order) | PowerShell · PowerShell / Run as administrator · Command Prompt · Command Prompt / Run as administrator |
+| Administrator buttons (only these, purple gradient) | Run as administrator |
 | PC Manager when missing | Microsoft PC Manager (not installed) |
-| Secondary button (cmd, PowerShell) | Run as administrator |
 | PowerShell caption | Will start: {PowerShell 7 / Windows PowerShell} |
 | Success status | {label} opened. |
 | UAC dismissed | Cancelled. |
 | PC Manager explanation (click when missing) | Microsoft PC Manager is a Microsoft app that is not included with Windows. You can get it from the Microsoft Store. |
 | Store button | Open Microsoft Store page |
 | Store failed | Couldn't open the Microsoft Store. You can search for 'Microsoft PC Manager' there yourself. It may also not be available in your region or on managed PCs. |
-| Info note | Opening these tools does not need administrator rights. Some tools ask for permission themselves when they start, for example Defragment and Optimize Drives. |
+| Info note | The buttons above the line open a tool normally and need no administrator rights. The purple Run as administrator buttons ask Windows for permission (UAC) first. Some tools ask for permission themselves when they start, for example Defragment and Optimize Drives. |
 | Launch failure (Rust) | Windows could not start it (error code {n}). |
 | Missing in System32 (Rust) | '{name}' was not found in System32. |
 | PC Manager not installed (Rust guard) | Microsoft PC Manager is not installed. |

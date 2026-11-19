@@ -11,11 +11,25 @@
 /// product IDs from memory).
 pub const PC_MANAGER_STORE_URI: &str = "ms-windows-store://search/?query=Microsoft%20PC%20Manager";
 
+/// The fixed rundll32 arguments that open Windows' own "Desktop Icon
+/// Settings" page: `rundll32.exe shell32.dll,Control_RunDLL desk.cpl,,0`
+/// (the same window as Settings → Personalization → Themes → Desktop icon
+/// settings). Passed as one command-line string; no user input, ever.
+pub const DESKTOP_ICON_SETTINGS_ARGS: &str = "shell32.dll,Control_RunDLL desk.cpl,,0";
+
 /// Where a button opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TargetKind {
     /// A file inside the Windows System32 directory (exe or .msc).
     System32File(&'static str),
+    /// A file inside System32 started with FIXED arguments — the desktop
+    /// icon settings page (rundll32 shell32.dll,Control_RunDLL desk.cpl,,0),
+    /// the same window as Windows Settings → Personalization → Themes →
+    /// Desktop icon settings. Never user input.
+    System32FileWithArgs {
+        file: &'static str,
+        args: &'static str,
+    },
     /// PowerShell: prefer PowerShell 7, fall back to Windows PowerShell.
     PowerShell,
     /// explorer.exe "shell:AppsFolder\<family>!<app id>".
@@ -79,6 +93,15 @@ pub fn launch_spec(id: &str) -> Option<LaunchSpec> {
             "Services",
             false,
             TargetKind::System32File("services.msc"),
+        ),
+        "desktop_icon_settings" => (
+            "desktop_icon_settings",
+            "Desktop Icon Settings",
+            false,
+            TargetKind::System32FileWithArgs {
+                file: "rundll32.exe",
+                args: DESKTOP_ICON_SETTINGS_ARGS,
+            },
         ),
         "pc_manager" => (
             "pc_manager",
@@ -245,6 +268,7 @@ mod tests {
             "powershell_admin",
             "device_manager",
             "services",
+            "desktop_icon_settings",
             "pc_manager",
             "pc_manager_store",
         ];
@@ -272,6 +296,7 @@ mod tests {
             "powershell",
             "device_manager",
             "services",
+            "desktop_icon_settings",
             "pc_manager",
         ] {
             assert!(!launch_spec(id).unwrap().admin, "{id} is not admin");
@@ -295,6 +320,23 @@ mod tests {
         assert_eq!(
             launch_spec("services").unwrap().kind,
             TargetKind::System32File("services.msc")
+        );
+    }
+
+    #[test]
+    fn desktop_icon_settings_target_is_the_fixed_rundll32_call() {
+        // Same exe + arguments the Desktop Icons section used: the Windows
+        // "Desktop Icon Settings" page, nothing else.
+        assert_eq!(
+            launch_spec("desktop_icon_settings").unwrap().kind,
+            TargetKind::System32FileWithArgs {
+                file: "rundll32.exe",
+                args: "shell32.dll,Control_RunDLL desk.cpl,,0",
+            }
+        );
+        assert_eq!(
+            DESKTOP_ICON_SETTINGS_ARGS,
+            "shell32.dll,Control_RunDLL desk.cpl,,0"
         );
     }
 

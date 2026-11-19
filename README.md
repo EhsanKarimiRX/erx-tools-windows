@@ -9,7 +9,7 @@ A small, offline toolbox for Windows. Every tool opens from a simple square tile
 - **Offline by design.** No telemetry and no remote content. The only network request is the update check, and only when you click it (see Privacy and security).
 - **No administrator rights needed.** The app does not ask for admin to run. (Some Windows tools you launch from it may ask for permission themselves.)
 - **Honest results.** Batch work ends with a clear report of what succeeded, failed or was skipped, and why. No fake progress bars.
-- **Careful with your files.** Originals are never modified. Output files never overwrite existing files. The organizer only moves files, explains what it will do before it does it, and has Undo.
+- **Careful with your files.** Originals are never modified. Output files never overwrite existing files.
 - **Small and focused.** Each tool lives in its own folder and is loaded only when you open it.
 
 ## Tools
@@ -36,9 +36,7 @@ Recolor Windows folder icons in any color, with optional stripe or checker patte
 ### System Manager
 Everyday Windows utilities in one panel. At the top, a read-only **device card** shows your processor, graphics card, RAM, drives, Windows version and battery health (or uptime on a PC without a battery). It is read again every time System Manager opens, changes nothing and sends nothing anywhere; whatever Windows does not report is shown as "Not reported". Below it:
 - **Awake** — keeps the PC from sleeping during long runs. It temporarily sets the Windows sleep, hibernate and screen-off timeouts to *Never* and puts your original values back when you turn it off. Your original values are saved to disk first, so they can be restored even after a crash. Options: let the screen turn off normally, and an optional auto-off timer. Awake only blocks *automatic* sleep; clicking Sleep or closing a laptop lid still follows Windows.
-- **Desktop Icons** — show or hide This PC, Recycle Bin, Control Panel, Network and your user folder on the desktop.
-- **Organize** — tidy loose files into folders. The *Desktop* tab sorts the Desktop into Apps, Documents and More. The *Folder* tab sorts any folder (or Downloads) by format, by date (photo date taken, created or modified; by year or by month; files without a date go to "Date not found") or by size. It shows a plain-language preview first, never deletes or overwrites anything, leaves existing sub-folders alone, and can undo the last run.
-- **Quick Launch** — one-click buttons for Control Panel, Defragment and Optimize Drives, Command Prompt, PowerShell (PowerShell 7 if installed), Device Manager, Services and Microsoft PC Manager (it opens the app if installed, otherwise offers its Microsoft Store page).
+- **Quick Launch** — square one-click buttons: the six tools sit in one row. They open Control Panel, Defragment and Optimize Drives, Device Manager, Services, Desktop Icon Settings (the Windows page where you show or hide This PC, Recycle Bin and similar desktop icons) and Microsoft PC Manager (it opens the app if installed, otherwise offers its Microsoft Store page). Below a thin divider, PowerShell (PowerShell 7 if installed) and Command Prompt are available normally, and each also as a purple **Run as administrator** button that asks Windows for permission first.
 - **Command Tips** — a list of handy Windows commands you can copy and run yourself. ERX Tools never runs them for you. It includes "List installed apps" and "Save installed apps to a file", which cover the classic desktop programs and the Microsoft Store apps of your Windows account (portable apps that were never installed are not listed). Long commands start collapsed and expand with a More button. It also has two commands that turn Windows' internet-connection check off and on (they need PowerShell as administrator).
 
 ### Quantum Resistance Vault

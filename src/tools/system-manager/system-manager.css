@@ -276,257 +276,100 @@
   border-color: var(--border-strong);
 }
 
-/* ----- Desktop Icons section ----- */
-
-.sm-icon-rows {
-  display: flex;
-  flex-direction: column;
-}
-
-.sm-icon-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-}
-
-.sm-icon-row:last-child {
-  border-bottom: none;
-}
-
-.sm-icon-row-name {
-  flex: 1;
-  font-size: 14px;
-}
-
 .sm-icon-row-error {
   margin: 0;
   color: var(--error);
   font-size: 13px;
 }
 
-/* The "Open Windows desktop icon settings" button opens a Windows window
-   OUTSIDE the app — a different kind of action than the switches — so it
-   gets a subtle accent-blue outline instead of the plain border. Reuses
-   .sm-ql-button for size/font/padding/disabled; only the colors change.
-   color-mix keeps it calm in both themes (no hard-coded colors). */
-.sm-ql-button.sm-icon-settings-button {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-.sm-ql-button.sm-icon-settings-button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-}
-
-/* ----- Organize section ----- */
-
-.sm-org-segments {
-  display: flex;
-  gap: 4px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px;
-  align-self: flex-start;
-}
-
-.sm-org-segment {
-  padding: 5px 14px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.sm-org-segment:hover:not(:disabled) {
-  background: var(--surface-hover);
-}
-
-.sm-org-segment-active {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.sm-org-segment:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.sm-org-custom {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.sm-org-custom-path {
-  flex: 1;
-  min-width: 200px;
-  font-size: 13px;
-  color: var(--text-muted);
-  word-break: break-all;
-}
-
-.sm-org-sortby {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.sm-org-sortby-label {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.sm-org-mode-options {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-hover);
-}
-
-.sm-org-scan {
-  align-self: flex-start;
-}
-
-.sm-org-preview,
-.sm-org-report {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-hover);
-}
-
-.sm-org-preview-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.sm-org-preview-text {
-  margin: 0;
-  font-size: 13px;
-}
-
-.sm-org-categories {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 13px;
-}
-
-.sm-org-category {
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.sm-org-filelist {
-  margin: 4px 0 0;
-  padding-left: 18px;
-  font-size: 12px;
-  color: var(--text-muted);
-  word-break: break-all;
-}
-
-.sm-org-skipped summary {
-  color: var(--text-muted);
-}
-
-.sm-org-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.sm-org-progress {
-  margin: 0;
-  font-size: 14px;
-}
-
-.sm-org-undo {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
-}
-
 /* ----- Quick Launch section ----- */
 
-.sm-ql-rows {
+/* Ten square buttons: the six tool buttons sit in one row, then a thin
+   divider, then the four PowerShell / Command Prompt buttons at the same
+   size, centered under the six. Only the two "Run as administrator"
+   buttons carry the purple gradient; everything else stays neutral.
+   minmax(0, 1fr) lets the tiles shrink (labels wrap) instead of
+   overflowing when the window is narrower than normal. */
+.sm-ql-grid {
+  --sm-ql-gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--sm-ql-gap);
+}
+
+/* Exactly four tile widths (as in the row above) wide, so the four shell
+   buttons keep the same square size; auto margins center that group. */
+.sm-ql-grid-shell {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: calc(4 * (100% - 5 * var(--sm-ql-gap)) / 6 + 3 * var(--sm-ql-gap));
+  margin-inline: auto;
+}
+
+.sm-ql-tile {
+  aspect-ratio: 1 / 1;
   display: flex;
   flex-direction: column;
-}
-
-.sm-ql-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.sm-ql-row:last-child {
-  border-bottom: none;
-}
-
-.sm-ql-row-main {
-  display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.sm-ql-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 6px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--text);
-}
-
-.sm-ql-button:hover:not(:disabled) {
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
-}
-
-.sm-ql-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.sm-ql-admin {
-  padding: 5px 10px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 12px;
-  color: var(--text-muted);
+  line-height: 1.25;
+  text-align: center;
+  color: var(--text);
+  /* Long labels ("Defragment and Optimize Drives") wrap inside the
+     square instead of pushing it out of shape. */
+  overflow-wrap: break-word;
 }
 
-.sm-ql-admin:hover:not(:disabled) {
+.sm-ql-tile:hover:not(:disabled) {
   background: var(--surface-hover);
   border-color: var(--border-strong);
-  color: var(--text);
 }
 
-.sm-ql-admin:disabled {
+.sm-ql-tile:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.sm-ql-tile-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The two explicit administrator launches: purple gradient, white text.
+   Deeper tones keep the 12px white label at >= 4.5:1 on every part of the
+   gradient in both themes. */
+.sm-ql-tile-admin {
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  border-color: #5b21b6;
+  color: #ffffff;
+}
+
+.sm-ql-tile-admin:hover:not(:disabled) {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  border-color: #6d28d9;
+  color: #ffffff;
+}
+
+.sm-ql-tile-note {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ede9fe;
+}
+
+/* Thin line between the tool group and the shell group; slightly more
+   space around it than between the buttons. */
+.sm-ql-divider {
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
 }
 
 .sm-ql-caption {

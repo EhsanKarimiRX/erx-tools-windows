@@ -59,67 +59,6 @@ export const TIMER_CHOICES: ReadonlyArray<{ label: string; hours: number }> = [
   { label: "After 4 hours", hours: 4 },
 ];
 
-/** One Desktop Icons row, as read back from the registry by the backend
- * (desktop_icons/commands.rs). `visible` is always the read-back state. */
-export interface DesktopIconState {
-  id: "this_pc" | "recycle_bin" | "control_panel" | "network" | "user_files";
-  name: string;
-  visible: boolean;
-}
-
-// ----- Organize (mirror of organize/commands.rs DTOs) -----
-
-/** The two tabs (Prompt 5h). */
-export type OrganizeTab = "desktop" | "folder";
-/** The backend target kind (manifest granularity). */
-export type OrganizeTargetId = "desktop" | "downloads" | "custom";
-export type SortMode = "format" | "date" | "size";
-export type DateSourceId = "photo_taken" | "created" | "modified";
-export type GranularityId = "year" | "year_month";
-
-export interface OrganizeModeInput {
-  mode: SortMode;
-  dateSource?: DateSourceId;
-  granularity?: GranularityId;
-}
-
-export interface OrganizePlannedFile {
-  name: string;
-  size: number;
-  modifiedUnix: number;
-  /** LOCAL (year, month) for Date mode; null otherwise or undetermined. */
-  dateYm: [number, number] | null;
-  /** The destination folder the scan decided. */
-  category: string;
-}
-
-export interface OrganizeCategory {
-  name: string;
-  files: OrganizePlannedFile[];
-}
-
-export interface OrganizeSkippedFile {
-  name: string;
-  reason: string;
-}
-
-/** The read-only scan result. Nothing has moved yet. */
-export interface ScanPlan {
-  target: OrganizeTargetId;
-  root: string;
-  onOnedrive: boolean;
-  mode: SortMode;
-  categories: OrganizeCategory[];
-  skipped: OrganizeSkippedFile[];
-  /** Files deliberately left where they are (Custom / protected types). */
-  leftInPlace: number;
-}
-
-export interface RunReport {
-  moved: number;
-  skipped: OrganizeSkippedFile[];
-}
-
 // ----- Quick Launch (mirror of quick_launch/commands.rs DTOs) -----
 
 export interface PcManagerInfo {

@@ -6,7 +6,7 @@ interface SectionCardProps {
   children: ReactNode;
 }
 
-/** One titled card on the System Manager page (Awake, Desktop Icons, …). */
+/** One titled card on the System Manager page (Awake, Quick Launch, …). */
 export default function SectionCard({ title, subtitle, children }: SectionCardProps) {
   return (
     <section className="sm-card">

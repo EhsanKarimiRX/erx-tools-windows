@@ -132,6 +132,13 @@ pub fn launch(
             }
             shell_execute(&file.to_string_lossy(), None, verb)
         }
+        TargetKind::System32FileWithArgs { file: name, args } => {
+            let file = system_dir()?.join(name);
+            if !file.exists() {
+                return Err(format!("'{name}' was not found in System32."));
+            }
+            shell_execute(&file.to_string_lossy(), Some(args), verb)
+        }
         TargetKind::PowerShell => shell_execute(powershell.path(), None, verb),
         TargetKind::PcManager => {
             let (family, app_id) =

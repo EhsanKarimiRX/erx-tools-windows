@@ -80,7 +80,7 @@ export const tools: readonly ToolDefinition[] = [
   {
     id: "system-manager",
     name: "System Manager",
-    description: "Awake, desktop icons, organizer and quick launchers.",
+    description: "Keep the PC awake and open common Windows tools.",
     icon: MonitorCog,
     load: () => import("./system-manager"),
     status: "ready",
