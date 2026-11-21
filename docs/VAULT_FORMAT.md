@@ -82,7 +82,7 @@ The part header is not a security feature. It only lets the app give a friendly 
 
 ## 8. Safe writing
 
-- The original file or folder is never changed or deleted. An existing file is never overwritten; a number is added to the name instead.
+- The original file or folder is never changed or deleted. When encrypting, an existing output is replaced only when the user explicitly ticks the replace option; otherwise the app does not encrypt. When decrypting, an existing file is not touched: a number is added to the name instead (for example `photo.jpg` becomes `photo (1).jpg`).
 - The output is first written under a temporary name (`<final name>.<random token>.erxtmp`).
 - After writing, the app reads the new file back and decrypts it into nothing to check it (verify-after-writing). Only then are the temporary files renamed to their final names. If the check fails, the new file is removed.
 - Cancel removes the temporary files. Temporary files left by a crash or End task are removed when the next encryption or decryption starts in the same output folder, if they are at least one hour old.
