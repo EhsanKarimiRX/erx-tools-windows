@@ -6,8 +6,8 @@ use super::engine::{EncryptSettings, encrypt_stream};
 use super::error::VaultError;
 use super::format::{HEADER_LEN, Header};
 use super::parts::{
-    PART_HEADER_LEN, PART_MAGIC, PartPaths, PartSize, SplitReader, SplitWriter, part_path,
-    random_token, temp_path,
+    PART_HEADER_LEN, PART_MAGIC, PartPaths, PartSize, SplitReader, SplitWriter,
+    is_old_style_part_name, part_path, random_token, temp_path,
 };
 use super::wordlist;
 
@@ -89,6 +89,17 @@ fn part_size_presets_are_binary_and_below_fat32() {
     assert_eq!(PartSize::Gib2.limit_bytes(), Some(2 * 1024 * 1024 * 1024));
     let four_gib = 4u64 * 1024 * 1024 * 1024;
     assert!(PartSize::Gib2.limit_bytes().unwrap() < four_gib);
+}
+
+#[test]
+fn old_style_part_names_are_recognized() {
+    assert!(is_old_style_part_name(Path::new("Thefile.erx.001")));
+    assert!(is_old_style_part_name(Path::new("Thefile.erx.002")));
+    assert!(is_old_style_part_name(Path::new("X.ERX.001")));
+    assert!(!is_old_style_part_name(Path::new("photo.jpg.001")));
+    assert!(!is_old_style_part_name(Path::new("archive.001")));
+    assert!(!is_old_style_part_name(Path::new("x.001.erx")));
+    assert!(!is_old_style_part_name(Path::new("x.erx")));
 }
 
 #[test]

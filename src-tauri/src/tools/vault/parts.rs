@@ -378,6 +378,22 @@ pub(crate) fn detect_layout(path: &Path) -> (PathBuf, PartLayout) {
     (base, PartLayout::Numbered)
 }
 
+/// True when the name has the shape older ERX Tools gave split parts:
+/// `name.erx.001` (the last extension is three digits and the stem itself
+/// ends in `.erx`, ASCII case-insensitively).
+pub(crate) fn is_old_style_part_name(path: &Path) -> bool {
+    let Some(extension) = path.extension().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    if extension.len() != 3 || !extension.bytes().all(|byte| byte.is_ascii_digit()) {
+        return false;
+    }
+    path.file_stem()
+        .map(Path::new)
+        .and_then(Path::extension)
+        .is_some_and(|stem_extension| stem_extension.eq_ignore_ascii_case("erx"))
+}
+
 /// Sum of the payload sizes (part headers excluded) of the parts that
 /// really belong to the set: same UUID and their expected number.
 fn measure_total(base: &Path, layout: PartLayout, uuid: [u8; UUID_LEN]) -> u64 {
@@ -408,13 +424,17 @@ fn measure_total(base: &Path, layout: PartLayout, uuid: [u8; UUID_LEN]) -> u64 {
     }
 }
 
-/// True when both paths point at the same file. Used to tell a numbered
-/// name that really is part 1 of a set from an unsplit file that only looks
-/// numbered (`scan.002.erx`).
+/// True when both paths name the same file. The folder part is compared as
+/// it is; the file name is compared ASCII case-insensitively, because
+/// Windows file names are case-insensitive (`X.001.ERX` is the same file as
+/// `x.001.erx`).
 fn same_path(first: &Path, second: &Path) -> bool {
-    match (fs::canonicalize(first), fs::canonicalize(second)) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => first == second,
+    if first.parent() != second.parent() {
+        return first == second;
+    }
+    match (first.file_name(), second.file_name()) {
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => false,
     }
 }
 
@@ -431,6 +451,9 @@ pub struct SplitReader {
 impl SplitReader {
     /// Opens the FIRST part (`name.erx` or `name.001.erx`).
     pub fn open(first: &Path) -> Result<Self, VaultError> {
+        if is_old_style_part_name(first) {
+            return Err(VaultError::OldStylePartName);
+        }
         let (base, layout) = detect_layout(first);
         let mut file = File::open(first).map_err(|_| VaultError::CannotOpenFile)?;
         let Some((uuid, index)) = read_part_header(&mut file) else {

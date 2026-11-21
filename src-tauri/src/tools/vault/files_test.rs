@@ -276,6 +276,23 @@ fn split_encryption_writes_only_new_style_part_names() {
 }
 
 #[test]
+fn an_uppercase_first_part_name_still_opens_the_whole_set() {
+    let dir = TestDir::new();
+    let data = noise(50_000, 26);
+    let (_source, _base, summary) = encrypt(&dir, "X", &data, Some(4096));
+    assert!(summary.parts.len() >= 3);
+    assert_eq!(summary.parts[0], dir.path().join("X.001.erx"));
+
+    // Windows file names are case-insensitive; the reader must agree.
+    let uppercase = dir.path().join("X.001.ERX");
+    fs::rename(&summary.parts[0], &uppercase).unwrap();
+
+    let out = dir.path().join("restored.bin");
+    decrypt(&uppercase, &out, &passphrase()).unwrap();
+    assert_eq!(fs::read(&out).unwrap(), data);
+}
+
+#[test]
 fn selecting_the_second_numbered_part_is_refused_by_the_header() {
     let dir = TestDir::new();
     let (_source, _base, summary) = encrypt(&dir, "doc.txt", &noise(50_000, 21), Some(4096));
@@ -612,10 +629,10 @@ fn selecting_an_old_style_part_is_rejected_without_output() {
     }
 
     let out = dir.path().join("restored.txt");
-    match decrypt(&old_names[0], &out, &passphrase()) {
-        Ok(_) => panic!("an old-style part must not decrypt"),
-        Err(error) => eprintln!("old-style selection error: {error:?}"),
-    }
+    assert_eq!(
+        decrypt(&old_names[0], &out, &passphrase()).unwrap_err(),
+        VaultError::OldStylePartName
+    );
     assert!(!out.exists());
 }
 

@@ -195,7 +195,7 @@ export default function DecryptPanel({ active, onBusyChange }: DecryptPanelProps
         {!hasFile ? (
           <DropZone
             label="Drag the .erx file here"
-            hint="For a split file choose the first part (the one ending in .001)"
+            hint="For a split file choose the first part (the one numbered 001, for example name.001.erx)"
             browseLabel="Choose file"
             onBrowse={() => void browse()}
             onFiles={onDrop}

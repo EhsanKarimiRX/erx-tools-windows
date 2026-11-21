@@ -35,8 +35,14 @@ pub enum VaultError {
     OutputIsSource,
     #[error("The file could not be opened. Check that it exists and is not in use.")]
     CannotOpenFile,
-    #[error("This is not the first part. Select the file ending in .001.")]
+    #[error(
+        "This is not the first part. Select the first part, the file numbered 001 (for example name.001.erx)."
+    )]
     NotFirstPart,
+    #[error(
+        "This file is part of a split set made by an older ERX Tools, which named the parts like name.erx.001. Rename each part to the new style (name.erx.001 becomes name.001.erx, name.erx.002 becomes name.002.erx, and so on) and then select name.001.erx."
+    )]
+    OldStylePartName,
     #[error("Part {index} is missing.")]
     MissingPart { index: u32 },
     #[error("Part {index} belongs to a different file or is in the wrong place.")]

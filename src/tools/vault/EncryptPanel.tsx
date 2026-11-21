@@ -340,7 +340,7 @@ export default function EncryptPanel({ active, onBusyChange }: EncryptPanelProps
                   ))}
                 </select>
                 <p className="vt-note">
-                  Parts are named name.erx.001, .002 and so on. A drive formatted as
+                  Parts are named name.001.erx, name.002.erx and so on. A drive formatted as
                   FAT32 cannot hold a single file of 4 GB or more.
                 </p>
                 {shownPlan.suggestSplit && partSize === "off" && (
