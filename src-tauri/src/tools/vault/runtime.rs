@@ -24,7 +24,10 @@ use super::error::VaultError;
 use super::files;
 use super::folder;
 use super::kdf::{KEY_LEN, KdfParams, MAX_T_COST};
-use super::parts::{MAX_PARTS, PartSize, SplitReader, TEMP_EXTENSION, part_path};
+use super::parts::{
+    MAX_PARTS, PartLayout, PartSize, SplitReader, TEMP_EXTENSION, detect_layout, part_path,
+    read_part_header,
+};
 use super::space;
 use super::verify;
 
@@ -232,24 +235,35 @@ fn file_name_of(path: &Path) -> String {
 }
 
 /// How many parts exist for a first part (1 for an unsplit file).
+///
+/// Numbered layout: the selected file is the first part of its own set (it
+/// passed the header check), so counting starts at 1; the following parts
+/// only count while their header has the same UUID and their number is
+/// their position. A file with another UUID is never counted.
 pub fn count_parts(first: &Path) -> u32 {
-    let is_split = first
-        .extension()
-        .and_then(|value| value.to_str())
-        .is_some_and(|digits| {
-            digits.len() == 3 && digits.bytes().all(|byte| byte.is_ascii_digit())
-        });
-    if !is_split {
+    let (base, layout) = detect_layout(first);
+    if layout == PartLayout::Single {
         return 1;
     }
-    let base = first.with_extension("");
-    let mut count = 0;
-    for index in 1..=MAX_PARTS {
-        if part_path(&base, true, index).exists() {
-            count = index;
-        } else {
+    let Ok(mut file) = fs::File::open(first) else {
+        return 1;
+    };
+    let Some((uuid, _)) = read_part_header(&mut file) else {
+        return 1;
+    };
+    let mut count = 1;
+    for index in 2..=MAX_PARTS {
+        let path = part_path(&base, true, index);
+        let Ok(mut part) = fs::File::open(&path) else {
+            break;
+        };
+        let Some((part_uuid, part_index)) = read_part_header(&mut part) else {
+            break;
+        };
+        if part_uuid != uuid || part_index != index {
             break;
         }
+        count = index;
     }
     count
 }
@@ -295,7 +309,7 @@ pub fn plan_encrypt(
         is_folder: false,
         item_count: 1,
         size_bytes,
-        conflicts: files::find_conflicts(&base_path),
+        conflicts: files::find_conflicts(&base_path, part_size.limit_bytes().is_some()),
         compress_by_default: engine::should_compress(source),
         suggest_split: size_bytes > SUGGEST_SPLIT_ABOVE,
         free_bytes: space::free_bytes(&out_dir),

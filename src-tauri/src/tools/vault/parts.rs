@@ -14,11 +14,12 @@
 //! protection is the engine: any missing, swapped or changed part breaks
 //! the STREAM authentication of the logical stream.
 //!
-//! Part file names: split off -> `name.erx`; split on -> `name.erx.001`,
-//! `.002`, ... (even when only one part results). While writing, every
-//! part has a temporary name (`<final name>.<token>.erxtmp`); the caller
-//! renames them once everything is written.
+//! Part file names: split off -> `name.erx`; split on -> `name.001.erx`,
+//! `name.002.erx`, ... (even when only one part results). While writing,
+//! every part has a temporary name (`<final name>.<token>.erxtmp`); the
+//! caller renames them once everything is written.
 
+use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -71,13 +72,37 @@ fn io_error(error: VaultError) -> io::Error {
 }
 
 /// Path of part `index`. Without splitting this is the base path itself.
+///
+/// With splitting the number goes before the `.erx` extension:
+/// `Thefile.erx` -> `Thefile.001.erx`; `doc.bin.erx` ->
+/// `doc.bin.001.erx`. A base without an `.erx` extension gets the number
+/// and extension appended to its whole name.
 pub fn part_path(base: &Path, split: bool, index: u32) -> PathBuf {
     if !split {
         return base.to_path_buf();
     }
-    let mut name = base.as_os_str().to_os_string();
-    name.push(format!(".{index:03}"));
-    PathBuf::from(name)
+    let suffix = format!(".{index:03}.erx");
+    let Some(file_name) = base.file_name() else {
+        let mut name = base.as_os_str().to_os_string();
+        name.push(suffix);
+        return PathBuf::from(name);
+    };
+    let is_erx = base
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("erx"));
+    let mut name = if is_erx {
+        match base.file_stem() {
+            Some(stem) => stem.to_os_string(),
+            None => file_name.to_os_string(),
+        }
+    } else {
+        file_name.to_os_string()
+    };
+    name.push(suffix);
+    match base.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.join(name),
+        _ => PathBuf::from(name),
+    }
 }
 
 /// Temporary name used while a file is being written.
@@ -113,7 +138,7 @@ fn parse_part_header(bytes: &[u8]) -> Option<([u8; UUID_LEN], u32)> {
     Some((uuid, index))
 }
 
-fn read_part_header(file: &mut File) -> Option<([u8; UUID_LEN], u32)> {
+pub(crate) fn read_part_header(file: &mut File) -> Option<([u8; UUID_LEN], u32)> {
     let mut buffer = [0u8; PART_HEADER_LEN];
     file.read_exact(&mut buffer).ok()?;
     parse_part_header(&buffer)
@@ -307,34 +332,90 @@ impl Drop for SplitWriter {
     }
 }
 
-/// Splits a chosen file name into (base path, is a split set). A name
-/// ending in a three-digit extension is a split set and must be `.001`.
-fn split_name(path: &Path) -> Result<(PathBuf, bool), VaultError> {
-    let extension = path.extension().and_then(|value| value.to_str());
-    match extension {
-        Some(digits) if digits.len() == 3 && digits.bytes().all(|byte| byte.is_ascii_digit()) => {
-            if digits != "001" {
-                return Err(VaultError::NotFirstPart);
+/// How the file the user selected is named.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PartLayout {
+    /// One file that holds the whole stream (`name.erx`).
+    Single,
+    /// One part of a numbered set (`name.001.erx` ... `name.999.erx`).
+    Numbered,
+}
+
+/// Detects the layout from the NAME of the selected file and returns the
+/// base path of the set (`name.erx`).
+///
+/// A name is numbered when its last extension is `erx` and its stem ends
+/// with a dot followed by exactly three digits, with something non-empty
+/// before that dot (`Thefile.001.erx`). Everything else is a single file.
+/// Only the part header decides later whether a numbered file really is
+/// part of a set; the digits in the name never do.
+pub(crate) fn detect_layout(path: &Path) -> (PathBuf, PartLayout) {
+    let single = || (path.to_path_buf(), PartLayout::Single);
+    if !path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("erx"))
+    {
+        return single();
+    }
+    let Some(stem) = path.file_stem() else {
+        return single();
+    };
+    let Some(stem) = stem.to_str() else {
+        return single();
+    };
+    let Some((prefix, digits)) = stem.rsplit_once('.') else {
+        return single();
+    };
+    if prefix.is_empty() || digits.len() != 3 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return single();
+    }
+    let mut name = OsString::from(prefix);
+    name.push(".erx");
+    let base = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.join(name),
+        _ => PathBuf::from(name),
+    };
+    (base, PartLayout::Numbered)
+}
+
+/// Sum of the payload sizes (part headers excluded) of the parts that
+/// really belong to the set: same UUID and their expected number.
+fn measure_total(base: &Path, layout: PartLayout, uuid: [u8; UUID_LEN]) -> u64 {
+    match layout {
+        PartLayout::Single => fs::metadata(base)
+            .map(|metadata| metadata.len().saturating_sub(PART_HEADER_LEN as u64))
+            .unwrap_or(0),
+        PartLayout::Numbered => {
+            let mut total = 0u64;
+            for index in 1..=MAX_PARTS {
+                let path = part_path(base, true, index);
+                let Ok(mut file) = File::open(&path) else {
+                    break;
+                };
+                let Some((part_uuid, part_index)) = read_part_header(&mut file) else {
+                    break;
+                };
+                if part_uuid != uuid || part_index != index {
+                    break;
+                }
+                if let Ok(metadata) = file.metadata() {
+                    total =
+                        total.saturating_add(metadata.len().saturating_sub(PART_HEADER_LEN as u64));
+                }
             }
-            Ok((path.with_extension(""), true))
+            total
         }
-        _ => Ok((path.to_path_buf(), false)),
     }
 }
 
-/// Sum of the payload sizes (part headers excluded) of all parts found.
-fn measure_total(base: &Path, split: bool) -> u64 {
-    let last = if split { MAX_PARTS } else { 1 };
-    let mut total = 0u64;
-    for index in 1..=last {
-        match fs::metadata(part_path(base, split, index)) {
-            Ok(metadata) => {
-                total = total.saturating_add(metadata.len().saturating_sub(PART_HEADER_LEN as u64));
-            }
-            Err(_) => break,
-        }
+/// True when both paths point at the same file. Used to tell a numbered
+/// name that really is part 1 of a set from an unsplit file that only looks
+/// numbered (`scan.002.erx`).
+fn same_path(first: &Path, second: &Path) -> bool {
+    match (fs::canonicalize(first), fs::canonicalize(second)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => first == second,
     }
-    total
 }
 
 /// Reads a set of part files as one continuous stream.
@@ -348,9 +429,9 @@ pub struct SplitReader {
 }
 
 impl SplitReader {
-    /// Opens the FIRST part (`name.erx` or `name.erx.001`).
+    /// Opens the FIRST part (`name.erx` or `name.001.erx`).
     pub fn open(first: &Path) -> Result<Self, VaultError> {
-        let (base, split) = split_name(first)?;
+        let (base, layout) = detect_layout(first);
         let mut file = File::open(first).map_err(|_| VaultError::CannotOpenFile)?;
         let Some((uuid, index)) = read_part_header(&mut file) else {
             return Err(VaultError::NotAVaultFile);
@@ -358,7 +439,15 @@ impl SplitReader {
         if index != 1 {
             return Err(VaultError::NotFirstPart);
         }
-        let logical_total = measure_total(&base, split);
+        // A numbered name is only a split set when the selected file is the
+        // real first part of that base. An unsplit file can have the same
+        // shape (`scan.002.erx` next to `scan.001.erx`): read it alone.
+        let split = layout == PartLayout::Numbered && same_path(&part_path(&base, true, 1), first);
+        let logical_total = if split {
+            measure_total(&base, PartLayout::Numbered, uuid)
+        } else {
+            measure_total(first, PartLayout::Single, uuid)
+        };
         Ok(Self {
             base,
             split,
@@ -376,11 +465,22 @@ impl SplitReader {
     }
 
     fn later_part_exists(&self, after: u32) -> bool {
-        (after + 1..=after + MISSING_PROBE)
-            .any(|index| index <= MAX_PARTS && part_path(&self.base, true, index).exists())
+        let last = after.saturating_add(MISSING_PROBE).min(MAX_PARTS);
+        (after.saturating_add(1)..=last).any(|index| {
+            let path = part_path(&self.base, true, index);
+            let Ok(mut file) = File::open(&path) else {
+                return false;
+            };
+            matches!(read_part_header(&mut file), Some((uuid, _)) if uuid == self.uuid)
+        })
     }
 
     /// Opens the next part. `Ok(false)` means the logical stream ended.
+    ///
+    /// A file at the next name that is not a vault part, or that belongs to
+    /// another set (different UUID), is treated as if it did not exist: a
+    /// neighbour with a matching name must not break this set, and its data
+    /// is never read.
     fn open_next(&mut self) -> io::Result<bool> {
         let next = self.index.saturating_add(1);
         if next > MAX_PARTS {
@@ -390,22 +490,34 @@ impl SplitReader {
         let mut file = match File::open(&path) {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                if self.later_part_exists(next) {
-                    return Err(io_error(VaultError::MissingPart { index: next }));
-                }
-                return Ok(false);
+                return self.end_or_missing(next);
             }
             Err(_) => return Err(io_error(VaultError::CannotOpenFile)),
         };
         let Some((uuid, index)) = read_part_header(&mut file) else {
-            return Err(io_error(VaultError::WrongPart { index: next }));
+            // A file that is not a vault part at all is not part of this
+            // set: a stray file with a matching name must not break it.
+            return self.end_or_missing(next);
         };
-        if uuid != self.uuid || index != next {
+        if uuid != self.uuid {
+            // A file of another set that happens to have the next name.
+            return self.end_or_missing(next);
+        }
+        if index != next {
             return Err(io_error(VaultError::WrongPart { index: next }));
         }
         self.current = Some(file);
         self.index = next;
         Ok(true)
+    }
+
+    /// The next name is not usable. A later part of THIS set means the
+    /// current number is really missing; otherwise the stream ended.
+    fn end_or_missing(&self, next: u32) -> io::Result<bool> {
+        if self.later_part_exists(next) {
+            return Err(io_error(VaultError::MissingPart { index: next }));
+        }
+        Ok(false)
     }
 }
 

@@ -221,7 +221,7 @@ fn a_split_folder_round_trips() {
     make_tree(&source);
     let parts = encrypt_tree(&source, dir.path(), Some(100_000), false);
     assert!(parts.len() >= 3);
-    assert_eq!(parts[0], dir.path().join("Photos.erx.001"));
+    assert_eq!(parts[0], dir.path().join("Photos.001.erx"));
     let restored = restore_tree(&parts[0], out.path()).unwrap();
     assert_eq!(restored, out.path().join("Photos"));
     assert_eq!(snapshot(&restored), snapshot(&source));

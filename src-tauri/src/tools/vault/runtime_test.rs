@@ -176,7 +176,7 @@ fn throttle_lets_one_event_through_per_interval() {
 #[test]
 fn temp_names_are_recognized_strictly() {
     assert!(is_temp_name("doc.bin.erx.0123abcd.erxtmp"));
-    assert!(is_temp_name("doc.bin.erx.001.ffffffff.erxtmp"));
+    assert!(is_temp_name("doc.bin.001.erx.ffffffff.erxtmp"));
     assert!(is_temp_name("restored.txt.DEADBEEF.erxtmp"));
     assert!(!is_temp_name("doc.bin.erx"));
     assert!(!is_temp_name("x.erxtmp"));
@@ -187,7 +187,7 @@ fn temp_names_are_recognized_strictly() {
 
     // Names made by the writer itself must be recognized.
     let token = random_token().unwrap();
-    let path = temp_path(Path::new("doc.bin.erx.001"), &token);
+    let path = temp_path(Path::new("doc.bin.001.erx"), &token);
     let name = path.file_name().unwrap().to_string_lossy().into_owned();
     assert!(is_temp_name(&name));
 }
@@ -233,8 +233,13 @@ fn encrypt_plan_reports_conflicts_and_advice() {
     assert!(plan.required_bytes > 1000);
 
     fs::write(dir.path().join("doc.erx"), b"old").unwrap();
-    let plan = plan_encrypt(&source, None, PartSize::Gib1).unwrap();
+    let plan = plan_encrypt(&source, None, PartSize::Off).unwrap();
     assert_eq!(plan.conflicts, vec![dir.path().join("doc.erx")]);
+
+    // A split plan only reports the numbered parts it would replace.
+    fs::write(dir.path().join("doc.001.erx"), b"old").unwrap();
+    let plan = plan_encrypt(&source, None, PartSize::Gib1).unwrap();
+    assert_eq!(plan.conflicts, vec![dir.path().join("doc.001.erx")]);
 
     // Another output folder has no conflict and is used for the name.
     let other = TestDir::new();
@@ -288,7 +293,7 @@ fn decrypt_plan_counts_parts_and_detects_existing_output() {
     assert_eq!(summary.parts.len(), 13);
 
     let plan = plan_decrypt(&summary.parts[0], None).unwrap();
-    assert_eq!(plan.file_name, "doc.bin.erx.001");
+    assert_eq!(plan.file_name, "doc.bin.001.erx");
     assert_eq!(plan.part_count, 13);
     assert_eq!(plan.total_bytes, summary.output_bytes - 13 * 28);
     assert_eq!(plan.output_path, dir.path().join("doc.bin"));
@@ -306,6 +311,62 @@ fn decrypt_plan_counts_parts_and_detects_existing_output() {
         plan_decrypt(&summary.parts[1], None).unwrap_err(),
         VaultError::NotFirstPart
     );
+}
+
+#[test]
+fn count_parts_follows_the_numbered_layout_and_the_headers() {
+    let dir = TestDir::new();
+
+    // A new-style split set.
+    let source = dir.path().join("doc.bin");
+    fs::write(&source, noise(50_000, 31)).unwrap();
+    let base = default_output_path(&source, dir.path()).unwrap();
+    let summary = encrypt_file(
+        &source,
+        &base,
+        Some(4096),
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert_eq!(summary.parts.len(), 13);
+    assert_eq!(count_parts(&summary.parts[0]), 13);
+
+    // A single unsplit file.
+    let single_source = dir.path().join("solo.bin");
+    fs::write(&single_source, noise(1_000, 32)).unwrap();
+    let single_base = default_output_path(&single_source, dir.path()).unwrap();
+    let single = encrypt_file(
+        &single_source,
+        &single_base,
+        None,
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert_eq!(count_parts(&single.parts[0]), 1);
+
+    // An unsplit file named like part 1 ignores a stray numbered file
+    // whose part header belongs to another set.
+    let named_source = dir.path().join("x.001");
+    fs::write(&named_source, noise(1_000, 33)).unwrap();
+    let named_base = default_output_path(&named_source, dir.path()).unwrap();
+    let named = encrypt_file(
+        &named_source,
+        &named_base,
+        None,
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    fs::copy(&summary.parts[1], dir.path().join("x.002.erx")).unwrap();
+    assert_eq!(count_parts(&named.parts[0]), 1);
 }
 
 #[test]

@@ -5,10 +5,11 @@ use super::engine::EncryptSettings;
 use super::error::VaultError;
 use super::files::{
     DecryptFileSummary, EncryptFileSummary, decrypt_file, default_output_path,
-    default_restore_path, encrypt_file, find_conflicts,
+    default_restore_path, encrypt_file, find_conflicts, hidden_output_path,
 };
 use super::parts::part_path;
 use super::parts_test::TestDir;
+use super::runtime::count_parts;
 use super::space::{free_bytes, required_for_encrypt};
 use super::wordlist;
 
@@ -53,6 +54,18 @@ fn names(dir: &Path) -> Vec<String> {
 
 fn no_temp_files(dir: &Path) -> bool {
     names(dir).iter().all(|name| !name.ends_with(".erxtmp"))
+}
+
+/// Old-style part names (`base.erx.001`) used only to prove that the part
+/// headers, not the names, hold a set together.
+fn old_style_parts(base: &Path, count: usize) -> Vec<PathBuf> {
+    (1..=count)
+        .map(|index| {
+            let mut name = base.as_os_str().to_os_string();
+            name.push(format!(".{index:03}"));
+            PathBuf::from(name)
+        })
+        .collect()
 }
 
 /// Writes `data` to `<dir>/<name>` and encrypts it (uncompressed).
@@ -110,6 +123,7 @@ fn split_layout_is_exact_and_round_trips() {
     // 4096-byte parts carry 4068 payload bytes -> 12 full parts + 2,408.
     let (_source, base, summary) = encrypt(&dir, "doc.txt", &data, Some(4096));
     assert_eq!(summary.parts.len(), 13);
+    assert_eq!(summary.parts[0], dir.path().join("doc.txt.001.erx"));
     assert_eq!(summary.output_bytes, 51_588);
     for (index, part) in summary.parts.iter().enumerate() {
         let number = u32::try_from(index + 1).unwrap();
@@ -208,13 +222,14 @@ fn swapped_parts_and_parts_of_another_file_are_rejected() {
     let (_s2, _b2, second) = encrypt(&dir, "b.bin", &noise(50_000, 7), Some(4096));
     let out = dir.path().join("restored.bin");
 
-    // Part 2 from the other file.
+    // Part 2 from the other file: it belongs to another set, so part 2 of
+    // THIS set is reported as missing and the foreign data is never read.
     let backup = dir.path().join("backup.tmp");
     fs::copy(&first.parts[1], &backup).unwrap();
     fs::copy(&second.parts[1], &first.parts[1]).unwrap();
     assert_eq!(
         decrypt(&first.parts[0], &out, &passphrase()).unwrap_err(),
-        VaultError::WrongPart { index: 2 }
+        VaultError::MissingPart { index: 2 }
     );
 
     // Restore, then swap parts 2 and 3.
@@ -240,6 +255,368 @@ fn selecting_a_later_part_is_refused() {
         decrypt(&summary.parts[1], &out, &passphrase()).unwrap_err(),
         VaultError::NotFirstPart
     );
+}
+
+#[test]
+fn split_encryption_writes_only_new_style_part_names() {
+    let dir = TestDir::new();
+    let data = noise(50_000, 20);
+    let (_source, _base, summary) = encrypt(&dir, "doc.txt", &data, Some(4096));
+    assert!(summary.parts.len() > 1);
+    assert!(dir.path().join("doc.txt.001.erx").is_file());
+    assert!(!dir.path().join("doc.txt.erx.001").exists());
+    assert!(
+        names(dir.path())
+            .iter()
+            .all(|name| !name.starts_with("doc.txt.erx."))
+    );
+    let out = dir.path().join("restored.txt");
+    decrypt(&summary.parts[0], &out, &passphrase()).unwrap();
+    assert_eq!(fs::read(&out).unwrap(), data);
+}
+
+#[test]
+fn selecting_the_second_numbered_part_is_refused_by_the_header() {
+    let dir = TestDir::new();
+    let (_source, _base, summary) = encrypt(&dir, "doc.txt", &noise(50_000, 21), Some(4096));
+    assert_eq!(summary.parts[1], dir.path().join("doc.txt.002.erx"));
+    let out = dir.path().join("restored.txt");
+    assert_eq!(
+        decrypt(&summary.parts[1], &out, &passphrase()).unwrap_err(),
+        VaultError::NotFirstPart
+    );
+    assert!(!out.exists());
+}
+
+#[test]
+fn an_unsplit_file_named_like_part_one_ignores_a_stray_next_part() {
+    let dir = TestDir::new();
+    let data = noise(20_000, 22);
+    let source = dir.path().join("x.001");
+    fs::write(&source, &data).unwrap();
+    // `default_output_path` keeps the whole source name.
+    let base = default_output_path(&source, dir.path()).unwrap();
+    assert_eq!(base, dir.path().join("x.001.erx"));
+    let summary = encrypt_file(
+        &source,
+        &base,
+        None,
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert_eq!(summary.parts, vec![base.clone()]);
+
+    // A stray file with a matching name but not a vault part.
+    fs::write(dir.path().join("x.002.erx"), b"not a vault part").unwrap();
+    let out = dir.path().join("restored.001");
+    decrypt(&base, &out, &passphrase()).unwrap();
+    assert_eq!(fs::read(&out).unwrap(), data);
+}
+
+#[test]
+fn a_new_style_set_with_a_missing_middle_part_reports_the_number() {
+    let dir = TestDir::new();
+    let (_source, _base, summary) = encrypt(&dir, "doc.txt", &noise(50_000, 23), Some(4096));
+    assert!(summary.parts.len() > 3);
+    fs::remove_file(&summary.parts[1]).unwrap();
+    let out = dir.path().join("restored.txt");
+    assert_eq!(
+        decrypt(&summary.parts[0], &out, &passphrase()).unwrap_err(),
+        VaultError::MissingPart { index: 2 }
+    );
+    assert!(!out.exists());
+}
+
+#[test]
+fn two_unsplit_files_with_neighbouring_numbers_both_decrypt() {
+    let dir = TestDir::new();
+    let first_data = noise(10_000, 40);
+    let second_data = noise(12_000, 41);
+
+    // `hidden_output_path` removes only the last extension, so these two
+    // independent files land as `scan.001.erx` and `scan.002.erx`.
+    let first_source = dir.path().join("scan.001.txt");
+    let second_source = dir.path().join("scan.002.txt");
+    fs::write(&first_source, &first_data).unwrap();
+    fs::write(&second_source, &second_data).unwrap();
+    let first_base = hidden_output_path(&first_source, dir.path()).unwrap();
+    let second_base = hidden_output_path(&second_source, dir.path()).unwrap();
+    assert_eq!(first_base, dir.path().join("scan.001.erx"));
+    assert_eq!(second_base, dir.path().join("scan.002.erx"));
+
+    for (source, base) in [(&first_source, &first_base), (&second_source, &second_base)] {
+        encrypt_file(
+            source,
+            base,
+            None,
+            &passphrase(),
+            &EncryptSettings::for_tests(false),
+            false,
+            &mut |_done: u64, _total: u64| true,
+        )
+        .unwrap();
+    }
+
+    let first_out = dir.path().join("restored-001.txt");
+    decrypt(&first_base, &first_out, &passphrase()).unwrap();
+    assert_eq!(fs::read(&first_out).unwrap(), first_data);
+
+    let second_out = dir.path().join("restored-002.txt");
+    decrypt(&second_base, &second_out, &passphrase()).unwrap();
+    assert_eq!(fs::read(&second_out).unwrap(), second_data);
+
+    assert_eq!(count_parts(&first_base), 1);
+    assert_eq!(count_parts(&second_base), 1);
+}
+
+#[test]
+fn complete_split_set_ignores_a_neighbouring_vault_file() {
+    let dir = TestDir::new();
+    let data = noise(50_000, 42);
+    let (_source, _base, summary) = encrypt(&dir, "x", &data, Some(40_000));
+    assert_eq!(summary.parts.len(), 2);
+    assert_eq!(summary.parts[0], dir.path().join("x.001.erx"));
+    assert_eq!(summary.parts[1], dir.path().join("x.002.erx"));
+
+    // An independent unsplit vault file with another UUID and a name that
+    // looks like the next part of this set.
+    let (_other_source, other_base, _other) = encrypt(&dir, "other", &noise(1_000, 43), None);
+    fs::rename(&other_base, dir.path().join("x.003.erx")).unwrap();
+
+    let out = dir.path().join("restored.bin");
+    decrypt(&summary.parts[0], &out, &passphrase()).unwrap();
+    assert_eq!(fs::read(&out).unwrap(), data);
+    assert_eq!(count_parts(&summary.parts[0]), 2);
+}
+
+#[test]
+fn complete_split_set_ignores_a_neighbouring_text_file() {
+    let dir = TestDir::new();
+    let data = noise(50_000, 44);
+    let (_source, _base, summary) = encrypt(&dir, "x", &data, Some(40_000));
+    assert_eq!(summary.parts.len(), 2);
+    fs::write(dir.path().join("x.003.erx"), b"just a text file").unwrap();
+
+    let out = dir.path().join("restored.bin");
+    decrypt(&summary.parts[0], &out, &passphrase()).unwrap();
+    assert_eq!(fs::read(&out).unwrap(), data);
+    assert_eq!(count_parts(&summary.parts[0]), 2);
+}
+
+#[test]
+fn a_missing_last_part_is_reported_as_an_error() {
+    let dir = TestDir::new();
+    let (_source, _base, summary) = encrypt(&dir, "x", &noise(2_500_000, 45), Some(1_000_000));
+    assert_eq!(summary.parts.len(), 3);
+    fs::remove_file(&summary.parts[2]).unwrap();
+
+    let out = dir.path().join("restored.bin");
+    let error = decrypt(&summary.parts[0], &out, &passphrase()).unwrap_err();
+    eprintln!("missing last part error: {error:?}");
+    assert!(!out.exists());
+    assert!(no_temp_files(dir.path()));
+}
+
+#[test]
+fn find_conflicts_lists_new_style_parts_only() {
+    let dir = TestDir::new();
+    let base = dir.path().join("photo.erx");
+    let first = dir.path().join("photo.001.erx");
+    let second = dir.path().join("photo.002.erx");
+    let old_style = dir.path().join("photo.erx.001");
+    fs::write(&first, b"x").unwrap();
+    fs::write(&second, b"x").unwrap();
+    fs::write(&old_style, b"x").unwrap();
+
+    let conflicts = find_conflicts(&base, true);
+    assert!(conflicts.contains(&first));
+    assert!(conflicts.contains(&second));
+    assert!(!conflicts.contains(&old_style));
+    assert!(!conflicts.contains(&base));
+
+    // An unsplit output only cares about the base file itself.
+    assert!(find_conflicts(&base, false).is_empty());
+    fs::write(&base, b"x").unwrap();
+    assert_eq!(find_conflicts(&base, false), vec![base.clone()]);
+    assert!(!find_conflicts(&base, true).contains(&base));
+}
+
+#[test]
+fn unsplit_encryption_is_not_blocked_by_neighbouring_numbered_files() {
+    let dir = TestDir::new();
+    let neighbours: Vec<PathBuf> = (1..=5)
+        .map(|index| dir.path().join(format!("scan.{index:03}.erx")))
+        .collect();
+    let contents: Vec<Vec<u8>> = (0..5).map(|index| vec![index as u8; 100]).collect();
+    for (path, bytes) in neighbours.iter().zip(&contents) {
+        fs::write(path, bytes).unwrap();
+    }
+
+    let source = dir.path().join("scan.pdf");
+    fs::write(&source, noise(5_000, 50)).unwrap();
+    let base = hidden_output_path(&source, dir.path()).unwrap();
+    assert_eq!(base, dir.path().join("scan.erx"));
+
+    encrypt_file(
+        &source,
+        &base,
+        None,
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert!(base.is_file());
+    for (path, bytes) in neighbours.iter().zip(&contents) {
+        assert_eq!(fs::read(path).unwrap(), *bytes);
+    }
+}
+
+#[test]
+fn split_encryption_reports_existing_part_names_as_conflicts() {
+    let dir = TestDir::new();
+    let source = dir.path().join("x.bin");
+    fs::write(&source, noise(5_000, 51)).unwrap();
+    let base = hidden_output_path(&source, dir.path()).unwrap();
+    assert_eq!(base, dir.path().join("x.erx"));
+    let existing = dir.path().join("x.001.erx");
+    fs::write(&existing, b"old part").unwrap();
+
+    let error = encrypt_file(
+        &source,
+        &base,
+        Some(4096),
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap_err();
+    assert_eq!(error, VaultError::OutputExists);
+    assert_eq!(fs::read(&existing).unwrap(), b"old part");
+
+    let summary = encrypt_file(
+        &source,
+        &base,
+        Some(4096),
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        true,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert!(summary.parts.len() >= 2);
+    assert_eq!(summary.parts[0], existing);
+    assert_ne!(fs::read(&existing).unwrap(), b"old part");
+}
+
+#[test]
+fn split_encryption_is_not_blocked_by_an_unsplit_base_file() {
+    let dir = TestDir::new();
+    let source = dir.path().join("x.bin");
+    fs::write(&source, noise(5_000, 52)).unwrap();
+    let base = hidden_output_path(&source, dir.path()).unwrap();
+    fs::write(&base, b"old base").unwrap();
+
+    let summary = encrypt_file(
+        &source,
+        &base,
+        Some(4096),
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        false,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert!(summary.parts.len() >= 2);
+    assert_eq!(fs::read(&base).unwrap(), b"old base");
+}
+
+#[test]
+fn overwrite_only_removes_the_listed_conflicts() {
+    let dir = TestDir::new();
+
+    // Split mode: the unsplit base file is not a conflict.
+    let source = dir.path().join("x.bin");
+    fs::write(&source, noise(5_000, 53)).unwrap();
+    let base = hidden_output_path(&source, dir.path()).unwrap();
+    fs::write(&base, b"keep me").unwrap();
+    encrypt_file(
+        &source,
+        &base,
+        Some(4096),
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        true,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert_eq!(fs::read(&base).unwrap(), b"keep me");
+
+    // Unsplit mode: numbered neighbours are not conflicts.
+    let other_source = dir.path().join("y.bin");
+    fs::write(&other_source, noise(5_000, 54)).unwrap();
+    let other_base = hidden_output_path(&other_source, dir.path()).unwrap();
+    let neighbours: Vec<PathBuf> = (1..=3)
+        .map(|index| dir.path().join(format!("y.{index:03}.erx")))
+        .collect();
+    for path in &neighbours {
+        fs::write(path, b"keep numbered").unwrap();
+    }
+    encrypt_file(
+        &other_source,
+        &other_base,
+        None,
+        &passphrase(),
+        &EncryptSettings::for_tests(false),
+        true,
+        &mut |_done: u64, _total: u64| true,
+    )
+    .unwrap();
+    assert!(other_base.is_file());
+    for path in &neighbours {
+        assert_eq!(fs::read(path).unwrap(), b"keep numbered");
+    }
+}
+
+#[test]
+fn hand_renamed_parts_still_form_one_set() {
+    let dir = TestDir::new();
+    let data = noise(50_000, 24);
+    let (_source, base, summary) = encrypt(&dir, "doc.txt", &data, Some(4096));
+    assert!(summary.parts.len() > 1);
+    let old_names = old_style_parts(&base, summary.parts.len());
+    for (new, old) in summary.parts.iter().zip(&old_names) {
+        fs::rename(new, old).unwrap();
+    }
+    for (new, old) in summary.parts.iter().zip(&old_names) {
+        fs::rename(old, new).unwrap();
+    }
+    let out = dir.path().join("restored.txt");
+    decrypt(&summary.parts[0], &out, &passphrase()).unwrap();
+    assert_eq!(fs::read(&out).unwrap(), data);
+}
+
+#[test]
+fn selecting_an_old_style_part_is_rejected_without_output() {
+    let dir = TestDir::new();
+    let (_source, base, summary) = encrypt(&dir, "doc.txt", &noise(50_000, 25), Some(4096));
+    assert!(summary.parts.len() > 1);
+    let old_names = old_style_parts(&base, summary.parts.len());
+    for (new, old) in summary.parts.iter().zip(&old_names) {
+        fs::rename(new, old).unwrap();
+    }
+
+    let out = dir.path().join("restored.txt");
+    match decrypt(&old_names[0], &out, &passphrase()) {
+        Ok(_) => panic!("an old-style part must not decrypt"),
+        Err(error) => eprintln!("old-style selection error: {error:?}"),
+    }
+    assert!(!out.exists());
 }
 
 #[test]
@@ -284,14 +661,14 @@ fn existing_output_is_only_replaced_with_permission() {
     let dir = TestDir::new();
     let data = noise(50_000, 9);
     let (source, base, _summary) = encrypt(&dir, "doc.txt", &data, Some(4096));
-    assert!(find_conflicts(&base).len() >= 13);
+    assert!(find_conflicts(&base, true).len() >= 13);
 
     // Without permission nothing changes.
     let before = names(dir.path());
     let error = encrypt_file(
         &source,
         &base,
-        None,
+        Some(4096),
         &passphrase(),
         &EncryptSettings::for_tests(false),
         false,
@@ -306,14 +683,16 @@ fn existing_output_is_only_replaced_with_permission() {
     let summary = encrypt_file(
         &source,
         &base,
-        None,
+        Some(4096),
         &passphrase(),
         &EncryptSettings::for_tests(false),
         true,
         &mut |_done: u64, _total: u64| true,
     )
     .unwrap();
-    assert_eq!(names(dir.path()), ["doc.txt", "doc.txt.erx"]);
+    let mut expected = vec!["doc.txt".to_owned()];
+    expected.extend((1..=summary.parts.len()).map(|index| format!("doc.txt.{index:03}.erx")));
+    assert_eq!(names(dir.path()), expected);
     let out = dir.path().join("restored.txt");
     decrypt(&summary.parts[0], &out, &passphrase()).unwrap();
     assert_eq!(fs::read(&out).unwrap(), data);
@@ -321,13 +700,17 @@ fn existing_output_is_only_replaced_with_permission() {
     // The same rule for decrypting.
     fs::write(&out, b"old content").unwrap();
     assert_eq!(
-        decrypt(&base, &out, &passphrase()).unwrap_err(),
+        decrypt(&summary.parts[0], &out, &passphrase()).unwrap_err(),
         VaultError::OutputExists
     );
     assert_eq!(fs::read(&out).unwrap(), b"old content");
-    decrypt_file(&base, &out, &passphrase(), true, &mut |_d: u64, _t: u64| {
-        true
-    })
+    decrypt_file(
+        &summary.parts[0],
+        &out,
+        &passphrase(),
+        true,
+        &mut |_d: u64, _t: u64| true,
+    )
     .unwrap();
     assert_eq!(fs::read(&out).unwrap(), data);
 }
@@ -468,12 +851,12 @@ fn default_names() {
         Some(out_dir.join("photo.jpg"))
     );
     assert_eq!(
-        default_restore_path(Path::new("photo.jpg.erx.001"), out_dir),
-        Some(out_dir.join("photo.jpg"))
+        default_restore_path(Path::new("photo.001.erx"), out_dir),
+        Some(out_dir.join("photo"))
     );
     assert_eq!(
-        default_restore_path(Path::new("archive.001"), out_dir),
-        Some(out_dir.join("archive"))
+        default_restore_path(Path::new("photo.jpg.001.erx"), out_dir),
+        Some(out_dir.join("photo.jpg"))
     );
     assert_eq!(
         default_restore_path(Path::new("UPPER.ERX"), out_dir),

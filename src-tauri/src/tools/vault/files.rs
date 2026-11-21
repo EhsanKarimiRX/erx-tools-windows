@@ -62,23 +62,23 @@ pub fn hidden_output_path(source: &Path, out_dir: &Path) -> Option<PathBuf> {
     Some(out_dir.join(name))
 }
 
-/// Suggested name of the restored file: the part number and the `.erx`
-/// ending are removed; if neither was there, `.restored` is added.
+/// Suggested name of the restored file: a trailing `.erx` and then one
+/// trailing three-digit part number are removed; if neither was there,
+/// `.restored` is added.
 pub fn default_restore_path(first_part: &Path, out_dir: &Path) -> Option<PathBuf> {
     let mut name = first_part.file_name()?.to_string_lossy().into_owned();
     let mut changed = false;
-    if let Some((stem, digits)) = name.rsplit_once('.')
-        && digits.len() == 3
-        && digits.bytes().all(|byte| byte.is_ascii_digit())
-    {
-        let stripped = stem.to_owned();
-        name = stripped;
-        changed = true;
-    }
     if name.len() > 4 && name.to_ascii_lowercase().ends_with(".erx") {
         for _ in 0..4 {
             name.pop();
         }
+        changed = true;
+    }
+    if let Some((stem, digits)) = name.rsplit_once('.')
+        && digits.len() == 3
+        && digits.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        name = stem.to_owned();
         changed = true;
     }
     if !changed {
@@ -88,12 +88,20 @@ pub fn default_restore_path(first_part: &Path, out_dir: &Path) -> Option<PathBuf
 }
 
 /// Every existing file that a new output with this base path would be in
-/// the way of: `name.erx` and `name.erx.001` ... `name.erx.999`.
-pub fn find_conflicts(base: &Path) -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    if base.exists() {
-        found.push(base.to_path_buf());
+/// the way of. Without splitting that is only `name.erx`; with splitting it
+/// is the existing part names `name.001.erx` ... `name.999.erx` (never the
+/// base itself). An unsplit output must not be blocked by unrelated files
+/// that merely look like numbered parts, and a split output must not be
+/// blocked by an unrelated `name.erx`.
+pub fn find_conflicts(base: &Path, split: bool) -> Vec<PathBuf> {
+    if !split {
+        return if base.exists() {
+            vec![base.to_path_buf()]
+        } else {
+            Vec::new()
+        };
     }
+    let mut found = Vec::new();
     for index in 1..=MAX_PARTS {
         let path = part_path(base, true, index);
         if path.exists() {
@@ -128,14 +136,19 @@ pub(super) fn rename_with_retry(from: &Path, to: &Path) -> io::Result<()> {
 
 /// Moves the finished temporary parts to their final names. Temporary
 /// files are removed on every failure.
-pub(super) fn commit(base: &Path, parts: &[PartPaths], overwrite: bool) -> Result<(), VaultError> {
+pub(super) fn commit(
+    base: &Path,
+    parts: &[PartPaths],
+    split: bool,
+    overwrite: bool,
+) -> Result<(), VaultError> {
     let cleanup = || {
         for part in parts {
             let _ = fs::remove_file(&part.temp);
         }
     };
     // Re-checked here: the folder may have changed while encrypting.
-    let conflicts = find_conflicts(base);
+    let conflicts = find_conflicts(base, split);
     if !conflicts.is_empty() {
         if !overwrite {
             cleanup();
@@ -162,7 +175,7 @@ pub(super) fn commit(base: &Path, parts: &[PartPaths], overwrite: bool) -> Resul
     Ok(())
 }
 
-/// Encrypts `source` into `base` (`name.erx`, or `name.erx.001`... when
+/// Encrypts `source` into `base` (`name.erx`, or `name.001.erx`... when
 /// `part_limit` is set). The original file name is stored inside the
 /// encryption.
 ///
@@ -194,7 +207,7 @@ pub fn encrypt_file(
     };
     space::check_space_for_encrypt(dir, total, part_limit)?;
 
-    let conflicts = find_conflicts(base);
+    let conflicts = find_conflicts(base, part_limit.is_some());
     if conflicts.iter().any(|path| same_file(path, source)) {
         return Err(VaultError::OutputIsSource);
     }
@@ -221,7 +234,7 @@ pub fn encrypt_file(
             .unwrap_or(0);
         output_bytes = output_bytes.saturating_add(size);
     }
-    commit(base, &parts, overwrite)?;
+    commit(base, &parts, part_limit.is_some(), overwrite)?;
 
     Ok(EncryptFileSummary {
         parts: parts.into_iter().map(|part| part.final_path).collect(),

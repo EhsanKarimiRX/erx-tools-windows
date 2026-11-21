@@ -92,6 +92,37 @@ fn part_size_presets_are_binary_and_below_fat32() {
 }
 
 #[test]
+fn part_path_puts_the_number_before_the_erx_extension() {
+    let dir = TestDir::new();
+    let base = dir.path().join("Thefile.erx");
+    assert_eq!(
+        part_path(&base, true, 1),
+        dir.path().join("Thefile.001.erx")
+    );
+    assert_eq!(
+        part_path(&base, true, 12),
+        dir.path().join("Thefile.012.erx")
+    );
+    assert_eq!(
+        part_path(&base, true, 999),
+        dir.path().join("Thefile.999.erx")
+    );
+    assert_eq!(part_path(&base, false, 7), base);
+
+    // A dotted base keeps everything before the `.erx`.
+    assert_eq!(
+        part_path(&dir.path().join("doc.bin.erx"), true, 1),
+        dir.path().join("doc.bin.001.erx")
+    );
+
+    // A base without `.erx` gets the number and extension appended.
+    assert_eq!(
+        part_path(&dir.path().join("plain"), true, 1),
+        dir.path().join("plain.001.erx")
+    );
+}
+
+#[test]
 fn writer_uses_temporary_names_until_the_caller_renames() {
     let dir = TestDir::new();
     let base = dir.path().join("x.erx");
@@ -254,8 +285,8 @@ fn reader_requires_the_first_part() {
         Some(VaultError::NotFirstPart)
     );
 
-    // A file named .001 whose header says it is part 2.
-    let liar = dir.path().join("y.erx.001");
+    // A numbered file whose header says it is part 2.
+    let liar = dir.path().join("y.001.erx");
     fs::write(&liar, part_bytes([3u8; 16], 2, &[1, 2, 3])).unwrap();
     assert_eq!(
         SplitReader::open(&liar).err(),
@@ -318,14 +349,18 @@ fn reader_rejects_a_part_of_another_file_or_in_the_wrong_place() {
     let first = write_set(&dir, "a.erx", Some(100), &fake_stream(3, 300));
     let other = write_set(&dir, "b.erx", Some(100), &fake_stream(8, 300));
 
-    // Part 2 of ANOTHER file in the middle.
+    // Part 2 of ANOTHER file in the middle: not part of this set, so the
+    // reader never reads it and reports this set's part 2 as missing.
     let backup = dir.path().join("backup.tmp");
     fs::copy(&first[1], &backup).unwrap();
     fs::copy(&other[1], &first[1]).unwrap();
     let mut reader = SplitReader::open(&first[0]).unwrap();
     let mut all = Vec::new();
     let error = reader.read_to_end(&mut all).unwrap_err();
-    assert_eq!(VaultError::from(error), VaultError::WrongPart { index: 2 });
+    assert_eq!(
+        VaultError::from(error),
+        VaultError::MissingPart { index: 2 }
+    );
 
     // Restore, then swap parts 2 and 3: right file, wrong place.
     fs::copy(&backup, &first[1]).unwrap();

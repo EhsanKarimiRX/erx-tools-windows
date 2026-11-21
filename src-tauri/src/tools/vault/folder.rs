@@ -164,7 +164,7 @@ pub fn plan_folder(
         item_count: scan.file_count,
         file_name: name,
         size_bytes: scan.stream_len,
-        conflicts: files::find_conflicts(&base_path),
+        conflicts: files::find_conflicts(&base_path, part_size.limit_bytes().is_some()),
         compress_by_default: true,
         suggest_split: scan.stream_len > SUGGEST_SPLIT_ABOVE,
         free_bytes: space::free_bytes(&out_dir),
@@ -195,7 +195,7 @@ pub fn encrypt_path(
     }
 }
 
-/// Encrypts a whole folder into `base` (`name.erx`, or `name.erx.001`...).
+/// Encrypts a whole folder into `base` (`name.erx`, or `name.001.erx`...).
 /// `progress(done, total)` counts archive bytes; returning false cancels.
 pub fn encrypt_folder(
     source: &Path,
@@ -213,7 +213,8 @@ pub fn encrypt_folder(
     let scan = archive::scan_folder(source)?;
     let total = scan.stream_len;
     space::check_space_for_encrypt(dir, total, part_limit)?;
-    if !overwrite && !files::find_conflicts(base).is_empty() {
+    let split = part_limit.is_some();
+    if !overwrite && !files::find_conflicts(base, split).is_empty() {
         return Err(VaultError::OutputExists);
     }
 
@@ -237,7 +238,7 @@ pub fn encrypt_folder(
             .unwrap_or(0);
         output_bytes = output_bytes.saturating_add(size);
     }
-    files::commit(base, &parts, overwrite)?;
+    files::commit(base, &parts, split, overwrite)?;
 
     Ok(EncryptFileSummary {
         parts: parts.into_iter().map(|part| part.final_path).collect(),
