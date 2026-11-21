@@ -44,7 +44,7 @@ Encrypt files and whole folders with a passphrase of random words, and decrypt t
 - **Passphrase:** the app creates 6 to 12 random words (10 by default) from the [EFF Large Wordlist](https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt). You can replace single words, and you confirm that you saved the words before encrypting. To decrypt, you type the words. There is no recovery: **if the words are lost, the files are lost.**
 - **Encryption:** the data is compressed with Zstandard when that helps, then encrypted with XChaCha20-Poly1305 using a 256-bit key. The key is made from your words with Argon2id (256 MiB of memory, tuned on your PC to take about 0.7 seconds), which makes guessing the words slow. Any change to an encrypted file is detected when you decrypt it. The file format and the threat model are described in [docs/VAULT_FORMAT.md](docs/VAULT_FORMAT.md).
 - **Quantum resistance:** the design uses only symmetric cryptography (no RSA or elliptic curves) and a long random passphrase, so it is designed to resist quantum computers. That is a design goal, not a promise: nobody can guarantee that encryption is unbreakable.
-- **Big files:** processed as a stream, so memory use stays small (about 18 MB in our test with an 8 GB folder). The format has no practical size limit, but we tested files only up to 8 GB; larger files are untested. The result can be split into parts of 500 MB, 1 GB or 2 GB. Progress is live and you can cancel at any time; a cancelled run leaves no files behind.
+- **Big files:** processed as a stream, so memory use stays small (about 18 MB in our test with an 8 GB folder). The format has no practical size limit, but we tested files only up to 8 GB; larger files are untested. The result can be split into parts of 500 MB, 1 GB or 2 GB; the parts are named `name.001.erx`, `name.002.erx` and so on, so keep their names as they are. Split sets made by v0.4.1 or older (named `name.erx.001`) are not opened by this version unless you rename each part by hand (`name.erx.001` becomes `name.001.erx`, `name.erx.002` becomes `name.002.erx`, and so on) and select `name.001.erx`. Progress is live and you can cancel at any time; a cancelled run leaves no files behind.
 - **Careful with your files:** the original is never changed or deleted, an existing file is never overwritten (a number is added to the name), and the new file is read back and checked after it is written. The original file name is stored inside the encryption; the output is named `name.erx` (the file type is hidden) and the real name comes back when you decrypt.
 - **Folders:** a whole folder becomes one encrypted file with its structure inside. Links and special items (devices) cannot be encrypted. A folder can hold at most 500,000 items and 64 nested levels.
 - **Limits, honestly:**
@@ -77,7 +77,7 @@ The round **i** button at the bottom-right of the home screen shows the app vers
 ## Requirements
 
 - Windows 10 or Windows 11 (x64 or ARM64).
-- Microsoft Edge WebView2 Runtime (included with Windows 11 and most up-to-date Windows 10 PCs). The standard installers download it during setup if it is missing; the "with-webview2" installers contain it.
+- Microsoft Edge WebView2 Runtime (included with Windows 11 and most up-to-date Windows 10 PCs). The installer downloads it during setup only if it is missing, so that PC needs an internet connection for the setup. A PC with no WebView2 and no internet must install Microsoft's WebView2 Runtime first.
 - For HEIC photos: Microsoft's HEIF Image Extensions and HEVC Video Extensions (see Image Converter).
 
 ## Tested on
@@ -97,11 +97,10 @@ Download the installer for your PC from the [latest release](https://github.com/
 | Your PC | File |
 |---|---|
 | Most PCs (Intel or AMD, "x64") | `ERX-Tools-<version>-x64-setup.exe` |
-| Most PCs, installing without internet | `ERX-Tools-<version>-x64-setup-with-webview2.exe` |
-| Windows on ARM | `ERX-Tools-<version>-arm64-setup.exe` |
-| Windows on ARM, installing without internet | `ERX-Tools-<version>-arm64-setup-with-webview2.exe` |
+| Windows on ARM (for example Snapdragon laptops) | `ERX-Tools-<version>-arm64-setup.exe` |
 
 - The installers are **not code-signed**, so Windows SmartScreen may warn you ("Windows protected your PC"): click **More info** → **Run anyway**.
+- The installers are small. Setup downloads Microsoft's WebView2 Runtime only if your PC does not already have it (Windows 11 and most up-to-date Windows 10 PCs do).
 - ERX Tools installs for your user account and does not need administrator rights.
 - If you use **Awake**, turn it off before uninstalling, otherwise your PC's sleep settings can stay on "Never".
 - Each release lists SHA-256 checksums so you can verify your download.
@@ -135,7 +134,7 @@ cargo clippy -- -D warnings   # Rust lints
 cargo test                    # Rust tests
 ```
 
-Building the installers (x64 and ARM64, two variants each) is described in [docs/RELEASING.md](docs/RELEASING.md).
+Building the two installers (x64 and ARM64) is described in [docs/RELEASING.md](docs/RELEASING.md).
 
 To add a tool, see [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md). Design decisions are recorded in [DECISIONS.md](DECISIONS.md).
 
@@ -151,15 +150,19 @@ To add a tool, see [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md). Design decisi
 
 ## How this project is built
 
-ERX Tools is a product of one owner, who is not a professional programmer, built together with AI. The owner decides what to build and how it should behave. An AI consultant helps design each feature and writes detailed step-by-step specifications, and an AI coding agent writes the code from them. The owner tests every feature by hand. Automated checks run on every step: TypeScript strict mode, `rustfmt`, `clippy` with warnings as errors, and more than 600 Rust tests.
+ERX Tools is a product of one owner, who is not a professional programmer, built together with AI. The owner decides what to build and how it should behave. An AI consultant helps design each feature and writes detailed step-by-step specifications, and an AI coding agent writes the code from them. The owner tests every feature by hand. Automated checks run on every step: TypeScript strict mode, `rustfmt`, `clippy` with warnings as errors, and more than 750 Rust tests. The AI tools changed between releases; the Credits table below says which ones were used for which versions.
 
 ## Credits
 
 | Who | Role |
 |---|---|
 | **EhsanKarimiRX** (project owner) | Idea, product design, every feature decision, requirements, hands-on testing and acceptance, and publishing. |
-| **Claude Sonnet 5.5** (Anthropic), in the Claude desktop app | Consultant and prompt writer: discussed each feature with the owner, designed the technical specifications and the step-by-step build prompts, and reviewed the agent's reports. |
-| **GLM 5.3 Flash** (all of v0.3.0 and, by the owner's estimate, about 90% of the code of the earlier releases), **GLM 5.3** (the early stage) and **DeepSeek Flash** (about 3 to 6% of the code of the earlier releases), in Z Code (the z.ai desktop app) | The coding agents: wrote and tested the code by following those prompts. |
+| **Claude Sonnet 5.5** (Anthropic), in the Claude desktop app | Consultant and prompt writer for the releases up to v0.3.0 and for v0.4.2: discussed each feature with the owner, designed the technical specifications and the step-by-step build prompts, and reviewed the agent's reports. |
+| **GPT 6 Luna**, in the ChatGPT agent | Consultant and prompt writer for v0.4.0 and v0.4.1: the same role as above. |
+| **GLM 5.3 Flash** (all of v0.3.0 and, by the owner's estimate, about 90% of the code of the earlier releases), **GLM 5.3** (the early stage) and **DeepSeek Flash** (about 3 to 6% of the code of the earlier releases), in Z Code (the z.ai desktop app) | The coding agents for the releases up to v0.3.0: wrote and tested the code by following those prompts. |
+| **DeepSeek Flash**, in Z Code (v0.4.0 and v0.4.1) and in OpenCode (v0.4.2) | The coding agent for these releases: wrote and tested the code by following the prompts. |
+
+So v0.4.0 and v0.4.1 were written with GPT 6 Luna as the consultant and DeepSeek Flash as the coding agent. v0.4.2 was written with Claude Sonnet 5.5 as the consultant and DeepSeek Flash as the coding agent.
 
 Built with [Tauri 2](https://tauri.app/), [React](https://react.dev/), TypeScript and Rust.
 
