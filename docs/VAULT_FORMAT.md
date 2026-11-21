@@ -1,6 +1,6 @@
 # ERX Vault file format (version 1) and threat model
 
-This document describes the `.erx` files made by the Quantum Resistance Vault of ERX Tools 0.3.0. The source code in `src-tauri/src/tools/vault/` is the final truth (`format.rs`, `kdf.rs`, `engine.rs`, `meta.rs`, `parts.rs`, `archive.rs`). All integers are little-endian unless noted. The format has not been audited by a security professional.
+This document describes the `.erx` files made by the Quantum Resistance Vault of ERX Tools 0.3.0 and later. The source code in `src-tauri/src/tools/vault/` is the final truth (`format.rs`, `kdf.rs`, `engine.rs`, `meta.rs`, `parts.rs`, `archive.rs`). All integers are little-endian unless noted. The format has not been audited by a security professional.
 
 ## 1. Overview
 
@@ -72,9 +72,13 @@ When a folder is restored, the stream is treated as untrusted: every part of eve
 
 ## 7. Split files
 
-When splitting is on, the encrypted stream is written to files named `name.erx.001`, `name.erx.002`, and so on (at most 999), with parts of 500 MiB, 1 GiB or 2 GiB (all below the 4 GiB limit of FAT32). Without splitting the single file is `name.erx`. Every part starts with a 28-byte part header: magic `ERXPART1`, the 16-byte file UUID, and the part number (4 bytes). The rest of the part is a slice of the stream; a chunk may span two parts.
+When splitting is on, the encrypted stream is written to files named `name.001.erx`, `name.002.erx`, and so on (at most 999), with parts of 500 MiB, 1 GiB or 2 GiB (all below the 4 GiB limit of FAT32). Without splitting the single file is `name.erx`. Every part starts with a 28-byte part header: magic `ERXPART1`, the 16-byte file UUID, and the part number (4 bytes). The rest of the part is a slice of the stream; a chunk may span two parts.
 
-The part header is not a security feature. It only lets the app give a friendly message for a wrong, missing or reordered part. The real protection is the authentication of the stream: a missing, swapped or changed part makes decryption fail.
+Older versions (up to 0.4.1) named the parts `name.erx.001`, `name.erx.002`. ERX Tools 0.4.2 and later neither write nor read that style. The format itself did not change, so an old set can be opened by renaming each part by hand (`name.erx.001` becomes `name.001.erx`, `name.erx.002` becomes `name.002.erx`, and so on) and selecting `name.001.erx`. If an old-style first part is selected, the app shows a message that explains this.
+
+**How the app finds the parts.** The user selects the first part. If the selected name ends in `.NNN.erx` (three digits), the app looks in the same folder for the next parts under `name.002.erx`, `name.003.erx` and so on. The digits in a name never decide anything alone, because a normal unsplit file can also be called `scan.001.erx` (made from `scan.001.jpg`). The part header decides: the selected file must have part number 1, and a later part counts only if its header has the same file UUID and the expected part number. A file with another UUID, or a file without a part header, is treated as if it did not exist, so a neighbouring file with a similar name does not disturb the set.
+
+The part header is not a security feature. It only lets the app give a friendly message for a wrong, missing or reordered part. The real protection is the authentication of the stream: a missing, swapped or changed part makes decryption fail. If the last part is missing, the app cannot know that more data was expected and reports a damaged file instead of a missing part.
 
 ## 8. Safe writing
 

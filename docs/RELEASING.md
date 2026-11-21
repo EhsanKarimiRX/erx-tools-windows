@@ -7,7 +7,7 @@ This is the checklist for every future release. It is written for the owner, who
 - **Visual Studio Build Tools**, including the **ARM64 component** ("MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools"). Start menu → Visual Studio Installer → Build Tools → Modify → Individual components → search "ARM64".
 - **Rust targets** installed: run `rustup target list --installed` — both `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc` must appear.
 - **Node.js** 18 or newer (`node --version`).
-- **Network access** for the first build: `tauri build` downloads the NSIS tools once, and each "with-webview2" build downloads Microsoft's WebView2 installer (100–200 MB each).
+- **Network access** for the first build: `tauri build` downloads the NSIS tools once.
 - **Free disk space**: about 10 GB for the release build. The debug build folder (`src-tauri\target\debug`) can grow to 30 GB or more during development; when you do not need it, delete it (it is rebuilt automatically): `cmd /c rmdir /s /q src-tauri\target\debug`.
 
 ## 2. Pick the version
@@ -37,19 +37,27 @@ Create `docs/releases/vX.Y.Z.md` (copy the most recent file in `docs/releases/` 
 - Do not run both apps at the same time.
 - The released file names (`ERX-Tools-<version>-<arch>-setup….exe`) are unchanged, and later versions replace v0.2.2 normally.
 
+## History: two installers since v0.4.2 (nothing to do for later versions)
+
+- Releases up to v0.4.1 had **four installers**: a standard and a `-with-webview2` file for x64 and for ARM64, built with the configs that were in `src-tauri/release-configs/`.
+- The base config already used `downloadBootstrapper`, so the standard installers were unchanged in behaviour.
+- Since v0.4.2 only the two standard installers are built, and `src-tauri/release-configs/` was removed.
+- The file names did not change (`ERX-Tools-<version>-<arch>-setup.exe`).
+- A PC that has no WebView2 and no internet connection must install Microsoft's WebView2 Runtime first.
+
 ## 5. Build the installers
 
 ```
 npm run release:build
 ```
 
-This builds **four installers + SHA256SUMS.txt** into `release-artifacts/vX.Y.Z/`. It takes a long time (expect 30–60 minutes; the first build on a machine is slower). Do not use the PC heavily meanwhile. The script fails fast on any problem; see Troubleshooting below.
+This builds **two installers (x64 and ARM64) + SHA256SUMS.txt** into `release-artifacts/vX.Y.Z/`. It takes a long time (the first build on a machine is slower). Do not use the PC heavily meanwhile. The script fails fast on any problem; see Troubleshooting below. The installers do not contain WebView2: the base config in `src-tauri/tauri.conf.json` uses `webviewInstallMode` = `downloadBootstrapper`, so setup downloads WebView2 only when the PC does not have it. The script refuses to build if that setting is changed, and refuses an installer bigger than 50 MB.
 
 ## 6. Verify before publishing
 
 - Recompute the checksums and compare with `SHA256SUMS.txt` (the release-verification scripts from Prompt 10e live in `target/`, which is not kept; re-create them or use PowerShell `Get-FileHash`).
-- Install the small x64 installer by hand and check: app starts, version text shows the new version, a tool opens, the update button behaves.
-- Check that each `with-webview2` file is at least 50 MB bigger than its standard sibling.
+- Install the x64 installer by hand and check: app starts, version text shows the new version, a tool opens, the update button behaves.
+- Check that each installer is small (about 4 MB; the script already fails above 50 MB). A much bigger file means WebView2 got embedded.
 - Build the executables' architecture into the plan if anything was changed: x64 app must be `0x8664`, ARM64 app must be `0xAA64` (a tiny Python PE-header check did this in Prompt 10e; ask the agent to redo it).
 
 ## 7. Commit and push
@@ -62,10 +70,10 @@ The agent commits everything tracked. **The owner runs `git push` personally** (
 2. Click **Choose a tag**, type `vX.Y.Z`, and click **Create new tag: vX.Y.Z on publish**. Leave the target branch as `main`.
 3. **Release title:** `ERX Tools vX.Y.Z` (or the version's real status wording).
 4. **Description:** open `docs/releases/vX.Y.Z.md` in Notepad, select all, copy, and paste it into the description box.
-5. Drag **6 files** from `release-artifacts/vX.Y.Z/` into the "Attach binaries by dropping them here" box: the four `ERX-Tools-X.Y.Z-…-setup….exe` files, `SHA256SUMS.txt`, and `THIRD_PARTY_LICENSES.md`. Wait until every file finishes uploading (the large ones take a while).
+5. Drag **4 files** from `release-artifacts/vX.Y.Z/` into the "Attach binaries by dropping them here" box: the two `ERX-Tools-X.Y.Z-x64-setup.exe` and `ERX-Tools-X.Y.Z-arm64-setup.exe` files, `SHA256SUMS.txt`, and `THIRD_PARTY_LICENSES.md`. Wait until every file finishes uploading (the large ones take a while).
 6. **Leave "Set as a pre-release" UNCHECKED** (the app's update button ignores pre-releases). Leave **"Set as the latest release"** checked.
 7. Click **Publish release** (not "Save draft").
-8. Check: open the release page in a private/incognito window; you should see the 6 files.
+8. Check: open the release page in a private/incognito window; you should see the 4 files you attached.
 
 ## 9. After publishing
 
@@ -75,9 +83,11 @@ The agent commits everything tracked. **The owner runs `git push` personally** (
 ## 10. Troubleshooting
 
 - **ARM64 build fails with a linker error containing `link: missing operand after '\377\376'` or similar:** Git Bash's GNU coreutils `link.exe` (from `/usr/bin/`) is being used instead of MSVC's linker, because rustc's automatic MSVC discovery cannot see the installed Visual Studio and falls back to `PATH`. The fix is already in `src-tauri/.cargo/config.toml`: the `[target.aarch64-pc-windows-msvc]` section pins the real ARM64 linker (`…\VC\Tools\MSVC\<version>\bin\Hostx64\arm64\link.exe`) and adds `/LIBPATH:` entries for the MSVC `lib\arm64` folder and the Windows SDK's `um\arm64` and `ucrt\arm64` folders. **These paths are specific to this PC's Visual Studio and Windows SDK versions — when Visual Studio, the MSVC toolset, or the Windows SDK is updated, update the pinned paths to the newly installed versions.** (The complete MSVC toolset must be used; some newer toolsets ship without ARM64 CRT libraries.)
-- **A build fails with `failed to bundle project: 'Peer disconnected'` while downloading (`go.microsoft.com/fwlink/...`):** this is a transient network error during the WebView2 offline-installer download. Just run `npm run release:build` again.
+- **A build fails with a network error while downloading build tools** (for example `Peer disconnected`): this is a transient network error. Just run `npm run release:build` again.
 - **Windows SmartScreen warning ("Windows protected your PC")** during install: expected — the installers are not code-signed. Click **More info** → **Run anyway**.
 - **The update check says there is no new release:** the release may be a draft or marked pre-release (both are ignored by the app), or the tag does not equal `v` + the app version.
+- **The script stops with "webviewInstallMode.type must be downloadBootstrapper":** someone changed `bundle.windows.webviewInstallMode` in `src-tauri/tauri.conf.json`. Set it back to `{ "type": "downloadBootstrapper", "silent": true }`.
+- **The script stops because an installer is bigger than 50 MB:** WebView2 was embedded in the installer. Check the webview setting above and the bundle config.
 
 ## 11. Regenerating the third-party license notices
 
@@ -99,4 +109,4 @@ The notices live in `THIRD_PARTY_LICENSES.md` in the repo root. To regenerate th
 
    This writes `THIRD_PARTY_LICENSES.md` (header + Rust crates section + JavaScript packages section) and copies it into `release-artifacts/v<version>/` when that folder exists.
 
-3. Currently the file is **attached to the GitHub release** as a sixth file (see step 8 above). To bundle it **inside the installers** in a future version: add it to `bundle.resources` in `src-tauri/tauri.conf.json` (the entry is `"../THIRD_PARTY_LICENSES.md"`, relative to `src-tauri`) and rebuild **all four** installers with `npm run release:build`.
+3. Currently the file is **attached to the GitHub release** as a fourth file (see step 8 above). To bundle it **inside the installers** in a future version: add it to `bundle.resources` in `src-tauri/tauri.conf.json` (the entry is `"../THIRD_PARTY_LICENSES.md"`, relative to `src-tauri`) and rebuild **both** installers with `npm run release:build`.
