@@ -35,4 +35,12 @@ pub enum NotesError {
     TooManyNotes,
     #[error("That note was not found.")]
     NoteNotFound,
+    #[error("The notes file could not be read or written.")]
+    Io,
+    #[error("No notes file was found.")]
+    NoNotesFile,
+    #[error("A notes file already exists.")]
+    AlreadyExists,
+    #[error("The saved notes did not pass the safety check, so they were not used.")]
+    VerifyFailed,
 }

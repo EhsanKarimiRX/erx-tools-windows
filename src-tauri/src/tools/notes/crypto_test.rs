@@ -538,3 +538,41 @@ fn c22_open_rejects_a_file_whose_length_is_not_a_whole_bucket() {
     assert_ne!(crafted.len() % PAD_BUCKET, 0);
     assert_eq!(open(&crafted, WORDS).unwrap_err(), NotesError::DamagedFile);
 }
+
+#[test]
+fn c23_open_body_reads_the_payload_without_the_words() {
+    let payload = b"open body payload";
+    let (file, keys) = create(WORDS, &test_settings(), payload).unwrap();
+    assert_eq!(keys.open_body(&file).unwrap().as_slice(), payload);
+
+    let (_other_file, other_keys) = create(WORDS, &test_settings(), payload).unwrap();
+    assert_eq!(
+        other_keys.open_body(&file).err(),
+        Some(NotesError::DamagedFile)
+    );
+
+    let mut body_changed = file.clone();
+    body_changed[HEADER_LEN + BODY_NONCE_LEN] ^= 1;
+    assert_eq!(
+        keys.open_body(&body_changed).err(),
+        Some(NotesError::DamagedFile)
+    );
+
+    let mut shorter = file.clone();
+    shorter.pop();
+    assert_eq!(
+        keys.open_body(&shorter).err(),
+        Some(NotesError::DamagedFile)
+    );
+
+    let mut longer = file.clone();
+    longer.push(0);
+    assert_eq!(keys.open_body(&longer).err(), Some(NotesError::DamagedFile));
+
+    let (opened_keys, _payload) = open(&file, WORDS).unwrap();
+    let resealed = opened_keys.reseal(b"after open").unwrap();
+    assert_eq!(
+        opened_keys.open_body(&resealed).unwrap().as_slice(),
+        b"after open"
+    );
+}

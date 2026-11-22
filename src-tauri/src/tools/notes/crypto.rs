@@ -106,6 +106,24 @@ impl NotesKeys {
         }
         Ok(file)
     }
+
+    /// Reads the payload back with the stored body key only. This is the fast
+    /// check after a save: no Argon2 work and no words are involved.
+    pub fn open_body(&self, file: &[u8]) -> Result<Zeroizing<Vec<u8>>, NotesError> {
+        if file.len() > MAX_FILE_BYTES {
+            return Err(NotesError::FileTooLarge);
+        }
+        if file.len() < HEADER_LEN + BODY_NONCE_LEN + AEAD_TAG_LEN + LEN_FIELD {
+            return Err(NotesError::DamagedFile);
+        }
+        if !file.len().is_multiple_of(PAD_BUCKET) {
+            return Err(NotesError::DamagedFile);
+        }
+        if file[..HEADER_LEN] != self.header_bytes[..] {
+            return Err(NotesError::DamagedFile);
+        }
+        open_body_with(&self.header_bytes, &self.body_key, file)
+    }
 }
 
 /// Fresh random values for one new file.
@@ -235,6 +253,31 @@ fn seal_body(
         .map_err(|_| NotesError::Internal)
 }
 
+/// Decrypts the body with a known header and body key, then removes padding.
+fn open_body_with(
+    header_bytes: &[u8; HEADER_LEN],
+    body_key: &[u8; KEY_LEN],
+    file: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, NotesError> {
+    let body_nonce: [u8; BODY_NONCE_LEN] = file[HEADER_LEN..HEADER_LEN + BODY_NONCE_LEN]
+        .try_into()
+        .map_err(|_| NotesError::DamagedFile)?;
+    let body_cipher = build_cipher(body_key);
+    let plaintext = Zeroizing::new(
+        body_cipher
+            .decrypt(
+                &XNonce::from(body_nonce),
+                Payload {
+                    msg: &file[HEADER_LEN + BODY_NONCE_LEN..],
+                    aad: header_bytes,
+                },
+            )
+            .map_err(|_| NotesError::DamagedFile)?,
+    );
+    let payload = unpad_plaintext(plaintext.as_slice())?;
+    Ok(Zeroizing::new(payload.to_vec()))
+}
+
 /// Creates a file from fixed randomness. Tests use this to pin the layout.
 pub(crate) fn create_with(
     normalized_words: &str,
@@ -347,29 +390,13 @@ pub fn open(
     );
 
     let body_key = hkdf_key(data_key.as_slice(), LABEL_BODY, &header.file_uuid)?;
-    let body_nonce: [u8; BODY_NONCE_LEN] = file[HEADER_LEN..HEADER_LEN + BODY_NONCE_LEN]
-        .try_into()
-        .map_err(|_| NotesError::DamagedFile)?;
-    let body_cipher = build_cipher(&body_key);
-    let plaintext = Zeroizing::new(
-        body_cipher
-            .decrypt(
-                &XNonce::from(body_nonce),
-                Payload {
-                    msg: &file[HEADER_LEN + BODY_NONCE_LEN..],
-                    aad: &header_bytes,
-                },
-            )
-            .map_err(|_| NotesError::DamagedFile)?,
-    );
-
-    let payload = unpad_plaintext(plaintext.as_slice())?;
+    let payload = open_body_with(&header_bytes, &body_key, file)?;
     Ok((
         NotesKeys {
             header_bytes,
             body_key,
         },
-        Zeroizing::new(payload.to_vec()),
+        payload,
     ))
 }
 

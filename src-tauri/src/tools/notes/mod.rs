@@ -8,6 +8,7 @@ pub mod error;
 pub mod format;
 pub mod model;
 pub mod search;
+pub mod store;
 
 #[cfg(test)]
 mod crypto_test;
@@ -17,3 +18,5 @@ mod format_test;
 mod model_test;
 #[cfg(test)]
 mod search_test;
+#[cfg(test)]
+mod store_test;
