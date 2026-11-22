@@ -1170,3 +1170,86 @@ The technical details of the file format are in docs/VAULT_FORMAT.md. This secti
 
 - **Split parts are named name.001.erx (v0.4.2):** The owner wanted every part to end in `.erx` instead of a number after the type. The old style `name.erx.001` is not written or read any more. Old sets can be renamed by hand because the part headers did not change; the release notes say so. The part header (same UUID, expected number), not the digits in the name, decides what belongs to a set, because an unsplit file can legitimately be called `scan.001.erx`; a neighbouring vault file with another UUID is ignored. The conflict check depends on the output mode: unsplit output checks only `name.erx`; split output checks only `name.001.erx` to `name.999.erx`; so unrelated files such as `scan.003.erx` do not block an unsplit encryption. Known limit: a missing LAST part is reported as a damaged file, as before.
 - **Only two installers (v0.4.2):** Releases have only the x64 and the ARM64 installer. The base config already used `downloadBootstrapper`, so the "with-webview2" files and `src-tauri/release-configs/` were removed. `scripts/build-release.mjs` refuses to build when `webviewInstallMode.type` is not `downloadBootstrapper` and refuses an installer bigger than 50 MB. Consequence: a PC with no WebView2 and no internet cannot install until Microsoft's WebView2 Runtime is installed first; the release notes and the README say so.
+
+## Archived decision logs (Prompts 5 and 6)
+
+These two logs were kept in `docs/` until v0.4.2 and were moved here unchanged (only the heading levels were lowered). They are history, and some of what they describe was changed later: the Organize feature and the built-in desktop icon controls of System Manager were removed in v0.4.1, and `docs/SYSTEM_MANAGER.md` describes the current behaviour.
+
+### Prompt 5 — System Manager: decisions log
+
+Owner decisions, with reasons. Do not reverse any of these without asking the owner.
+
+#### Structure
+- One tool tile "System Manager" with five sections in this UI order: Awake, Desktop Icons, Organize, Quick Launch, Command Tips.
+- Awake is first because the owner expects it to be the most used section.
+- Build order = UI order (5b Awake, 5c Desktop Icons, 5d Organize, 5e Quick Launch, 5f Command Tips). Each section is usable on its own.
+
+#### Awake — power-plan timeouts, NOT SetThreadExecutionState
+- Decision: while Awake is ON, the active power plan's Sleep, Hibernate and Display-off timeouts are set to Never (AC and battery). Turning Awake off restores the original values.
+- The earlier draft used SetThreadExecutionState (PowerToys Awake style). REJECTED by the owner.
+- Reason (owner): the owner uses Awake while a long, expensive computer run is in progress. Compare the worst cases:
+  - Execution-state approach: if ERX Tools crashes (for example under heavy CPU load), Windows immediately returns to normal rules, the PC may go to sleep and the run is lost. Expensive and unrecoverable.
+  - Power-plan approach: if ERX Tools crashes, the PC simply stays awake; at worst the screen stays on until one setting is changed back. Cheap and recoverable.
+  - Therefore the power-plan approach is the safer failure mode for the owner's real use.
+- Consequences and mitigations: original values are saved to a state file on disk BEFORE any change; the next launch detects an unfinished Awake and handles it; restore is per setting and never overwrites a manual change; a manual change in Windows Settings switches Awake off and notifies the user.
+- Default: the display is also set to Never (a run may be image-related and need the screen on). Option "Let the screen turn off normally" lets the display follow the normal timeout.
+- The simple toggle is all the user sees; Options live in a collapsible drawer. Default timer = none (stays on until turned off). Optional timer 1/2/4 hours, which only runs while the app is open.
+- Closing the app while Awake is on shows 3 choices: restore and close / keep Awake on and close / cancel. A yellow note under the toggle tells the user they may close the app and Awake stays on.
+- Honest limits shown in the UI: Awake blocks only automatic sleep/screen-off; manual Sleep still sleeps; the laptop lid follows the Windows lid setting.
+- No helper processes.
+
+#### Desktop Icons
+- Five icons: This PC, Recycle Bin, Control Panel, Network, User's Files.
+- The owner's need: Windows buries this setting; he wants easy access. Technical detail (absent value = Windows default per icon) is handled by the agent.
+
+#### Updates / winget
+- NO winget update buttons in the app. The owner prefers PowerShell for this.
+- Instead, the "Command Tips" section shows copyable commands (including `winget upgrade`).
+- This also removes winget table parsing and keeps the app fully offline.
+
+#### Organize
+- One engine, three targets: Desktop, Downloads, Custom folder.
+- Owner priorities: nothing is ever deleted; a very simple preview explains what will happen BEFORE applying; honesty about OneDrive.
+- Preview before applying: accepted. Undo for the last run per target: accepted.
+- Desktop uses 3 categories (Apps / Documents / More); Downloads uses 7; Custom folder uses content types only and leaves executables, runtime files and unknown types in place.
+- Real folders are never touched. Cloud-only OneDrive files are skipped. ERX Tools never changes OneDrive settings; if the Desktop is in OneDrive, the panel says so.
+- Undo may remove only EMPTY category folders created by the tool itself.
+
+#### Quick Launch
+- Buttons inside the panel (no desktop shortcuts): Control Panel, Defragment and Optimize Drives, Command Prompt, PowerShell, Device Manager, Services, Microsoft PC Manager.
+- Disk Cleanup NOT included (PC Manager's cleanup is better). Task Manager NOT included (already easy to reach).
+- Admin variants only for Command Prompt and PowerShell.
+- PowerShell: prefer PowerShell 7 if installed, else Windows PowerShell.
+- PC Manager is not preinstalled: if installed, open it; if not, explain honestly and offer the Microsoft Store page. No winget install.
+
+#### Command Tips
+- Static, copy-only list at the very bottom. ERX Tools never runs these commands.
+
+#### Global
+- Windows 10 and 11. No permanent admin. No silent failures. Honest reports. English UI. Final wording reviewed by the owner at 5g. The owner pushes to git; the agent never does.
+
+#### Organize restructure (Prompt 5h, owner decision 2026-11-07)
+- Organize now has two tabs: Desktop and Folder.
+- Desktop tab: unchanged behavior — loose files only, three folders: Apps (programs and shortcuts), Documents (Word, PDF, Excel and similar), More (the rest). Windows virtual icons are ignored.
+- Folder tab: the user picks any folder (or the Downloads quick button) and chooses "Sort by": Format, Date or Size (the owner preferred one selector over separate sub-groups).
+- Date mode exists mainly for sorting family photo folders by the year they were taken. Date sources: photo date taken (EXIF), date created, date modified. Folders by year (default) or year and month. Files with no usable date go into a folder named "Date not found".
+- Size mode uses fixed buckets: Under 1 MB, 1-10 MB, 10-100 MB, 100 MB-1 GB, Over 1 GB (binary units).
+- Only the top level of the chosen folder is organized; sub-folders are never entered or changed (unchanged safety rule).
+- In folders other than Downloads, program/runtime files and shortcuts stay in place in Date and Size modes.
+- Photo date taken uses the pure-Rust crate kamadak-exif (offline). Cloud-only OneDrive files are never opened for reading.
+- The Desktop folder cannot be chosen in the Folder tab (use the Desktop tab).
+- Nothing else about safety changed: no deletes, no overwrites, preview first, undo for the last run per target.
+
+### Prompt 6 — HEIC input: decisions
+
+1. **Approach: decode HEIC/HEIF through Windows' own WIC codec** (the user's installed Microsoft HEIF + HEVC extensions). We ship NO decoder. Reason: no LGPL/AGPL obligations, no HEVC patent exposure for us, zero size impact, fully offline.
+2. **Rejected:** bundling libheif/libde265; the pure-Rust `heic` crate (AGPL); Media Foundation. Do not use them.
+3. **Scope:** HEIC/HEIF **input only**. Outputs stay JPEG, PNG, WebP, BMP, TIFF. Only the **first (primary) image** of a file is converted (same convention as animated GIF/WebP today). Depth maps, gain maps, Live Photo video: ignored.
+4. **No color management in v1.** Output pixels are treated as sRGB; ICC is dropped as for all other formats. iPhone photos are usually Display P3, so colors may look slightly less vivid. This is stated honestly in the UI (6d). Do NOT implement ICC/color transforms in this prompt.
+5. **10-bit HEIC is reduced to 8-bit** (the pipeline is RGB8/RGBA8). Accepted for v1.
+6. **COM binding crate:** `windows-sys` normally provides only raw function declarations and opaque COM pointers, with NO callable interface methods. The investigation assumed only a feature flag was needed — that is probably wrong. Pre-approved by the owner: add the official **`windows`** crate with `default-features = false` and ONLY the features required for WIC/COM (expected: `Win32_Graphics_Imaging`, `Win32_System_Com`, `Win32_Foundation`; add others only if the compiler demands them). **Hand-writing COM vtables is forbidden** (too error-prone). Step 6a-2 verifies this first.
+7. **Missing codecs are an expected situation, not a bug.** The app must say so honestly (wording in 6b-6 and 6d).
+
+## Removed planning documents (v0.4.2)
+
+The prompt specifications and progress logs of Prompts 5 to 11 (`docs/PROMPT_*_SPEC.md` and `docs/PROMPT_*_PROGRESS.md`) and `docs/SYSTEM_MANAGER_UI_TEXT.md` were working material for the AI coding agent. They were deleted after release v0.4.2 and can still be read in the git history, for example with `git show 1fce0df:docs/PROMPT_5_SPEC.md`.

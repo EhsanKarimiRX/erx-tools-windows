@@ -17,7 +17,7 @@ Command Tips on 2026-11-12. Next: the four v0.2.3 installers, then the
 GitHub release.
 
 ## PROMPT 11 STATUS (Favicons tool - implemented, manually tested)
-- Spec: docs/PROMPT_11_SPEC.md. Progress log: docs/PROMPT_11_PROGRESS.md.
+- Spec and progress log: removed from docs/ after v0.4.2; see the git history (for example `git show 1fce0df:docs/PROMPT_11_SPEC.md`).
 - Backend: src-tauri/src/tools/favicons/ (source, render, ico, package, commands). 5 commands registered in lib.rs (favicons_pick_source, favicons_inspect_source, favicons_preview, favicons_save, favicons_reveal_folder).
 - Frontend: src/tools/favicons/ (components + favicons.css), registered in src/tools/registry.ts.
 - Padding: two options, "Favicon padding" (ico, 16, 32) and "Home screen icon padding" (Apple touch icon, Android 192/512); the maskable icon keeps a fixed margin.

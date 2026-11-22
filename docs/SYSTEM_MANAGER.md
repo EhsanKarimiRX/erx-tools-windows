@@ -110,5 +110,3 @@ Two badge decisions came from live verification on the development machine
   Windows 10 is untested.
 - Awake's power changes and the PC Manager launch were verified live on
   the development machine.
-- Wording review: every user-visible string is listed in
-  docs/SYSTEM_MANAGER_UI_TEXT.md for the owner to edit in one place.
