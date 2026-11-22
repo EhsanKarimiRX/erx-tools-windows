@@ -1252,4 +1252,4 @@ Owner decisions, with reasons. Do not reverse any of these without asking the ow
 
 ## Removed planning documents (v0.4.2)
 
-The prompt specifications and progress logs of Prompts 5 to 11 (`docs/PROMPT_*_SPEC.md` and `docs/PROMPT_*_PROGRESS.md`) and `docs/SYSTEM_MANAGER_UI_TEXT.md` were working material for the AI coding agent. They were deleted after release v0.4.2 and can still be read in the git history, for example with `git show 1fce0df:docs/PROMPT_5_SPEC.md`.
+The prompt specifications and progress logs of Prompts 5 to 11 (`docs/PROMPT_*_SPEC.md` and `docs/PROMPT_*_PROGRESS.md`) and `docs/SYSTEM_MANAGER_UI_TEXT.md` were working material for the AI coding agent. The old root file `PROGRESS.md` (a status log that stopped at v0.3.0) was removed too, because the release notes in `docs/releases/`, this file and the README now cover what it did. They were deleted after release v0.4.2 and can still be read in the git history, for example with `git show 1fce0df:docs/PROMPT_5_SPEC.md` and `git show 2e57ad1:PROGRESS.md`.
