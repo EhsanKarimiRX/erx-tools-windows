@@ -23,4 +23,16 @@ pub enum NotesError {
     RandomUnavailable,
     #[error("Internal error in Secure Notes.")]
     Internal,
+    #[error("The notes data is not valid.")]
+    DataInvalid,
+    #[error("These notes were saved by a newer version of ERX Tools.")]
+    DataTooNew,
+    #[error("This note is too large.")]
+    NoteTooLarge,
+    #[error("The title is too long.")]
+    TitleTooLong,
+    #[error("There are too many notes.")]
+    TooManyNotes,
+    #[error("That note was not found.")]
+    NoteNotFound,
 }
