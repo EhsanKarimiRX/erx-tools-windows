@@ -19,6 +19,7 @@
   --update-available: #2563eb;
   --update-uptodate: #16a34a;
   --update-failed: #dc2626;
+  --font-notes: "Vazirmatn", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
