@@ -1,8 +1,8 @@
 # ERX Secure Notes container format (version 1)
 
-Work in progress for ERX Tools 0.5.0. This document describes the encrypted container only (header and encrypted body). The notes data inside it, the place of the file and how it is written to disk are added when they exist.
+Work in progress for ERX Tools 0.5.0. This document describes the encrypted container (header and encrypted body) and the notes data (the payload) inside it. The place of the file and how it is written to disk are added when they exist.
 
-The source code in `src-tauri/src/tools/notes/` is the final truth (`format.rs`, `crypto.rs`, `error.rs`). All integers are little-endian. The format has not been audited by a security professional.
+The source code in `src-tauri/src/tools/notes/` is the final truth (`format.rs`, `crypto.rs`, `model.rs`, `search.rs`, `error.rs`). All integers are little-endian unless a section says otherwise. The format has not been audited by a security professional.
 
 ## 1. Overview
 
@@ -54,7 +54,39 @@ Parsing is strict. The checks run in this order: length, magic, version, flags, 
 
 Changing the words is not a separate operation. The caller creates a new file with the new words, which makes a new UUID, salt, data key and body key. An old file and the old words cannot open the new file.
 
-## 6. Errors
+## 6. Notes data (the payload)
+
+The payload is UTF-8 JSON. With default settings and one note it looks exactly like this (one line, no spaces added):
+
+```json
+{"version":1,"settings":{"preview":"titles","autoLockMinutes":10},"notes":[{"id":"0123456789abcdef0123456789abcdef","title":"t","body":"b","format":"text","created":1700000000,"modified":1700000001}]}
+```
+
+| Field | Type | Rule |
+|---|---|---|
+| `version` | number | Payload version, currently `1`. |
+| `settings.preview` | string | `"titles"` or `"first-line"`. |
+| `settings.autoLockMinutes` | number | Whole minutes, `1` to `240`; default `10`. |
+| `notes[].id` | string | Exactly 32 lower-case hex characters (`0-9`, `a-f`), unique within the file. |
+| `notes[].title` | string | At most 1024 bytes of UTF-8. |
+| `notes[].body` | string | At most 4 MiB (4,194,304 bytes) of UTF-8. |
+| `notes[].format` | string | Must be `"text"`. |
+| `notes[].created` | number | Unix seconds, not negative. |
+| `notes[].modified` | number | Unix seconds, not negative. |
+
+The limits are 10,000 notes and 64 MiB (67,108,864 bytes) for the whole payload. A payload outside these limits is refused.
+
+A file with a newer payload version is refused with the message that a newer ERX Tools is needed. Unknown fields are refused too, so a new field always comes with a new version number. Older files stay readable.
+
+An empty title gets the creation date as its default title: this is done by the app, not by the file format.
+
+Note text is stored exactly as typed: the half-space and Persian digits are not changed.
+
+Search looks only at titles, never at bodies. The letters Arabic yeh and Arabic kaf match Persian yeh and Persian kaf, and case is ignored; Persian digits and Latin digits are not treated as equal.
+
+While the notes are open, the text is kept in the memory of the app. The app wipes the strings when a note is removed or the notes are locked, but this is best effort: copies made by the JSON parser or by Windows (page file, hibernation) are not controlled.
+
+## 7. Errors
 
 | Condition | Error | Message |
 |---|---|---|
@@ -71,7 +103,7 @@ Changing the words is not a separate operation. The caller creates a new file wi
 
 A wrong passphrase and a changed header that passes the structural checks give the same error: `WrongPassphraseOrHeader`.
 
-## 7. Limits
+## 8. Limits
 
 | Item | Value |
 |---|---|
@@ -86,7 +118,7 @@ A wrong passphrase and a changed header that passes the structural checks give t
 
 Every file length is a multiple of 262,144 bytes.
 
-## 8. What an attacker with only the file can see
+## 9. What an attacker with only the file can see
 
 - That it is an ERX notes file, and the format version.
 - The Argon2 settings, the salt and the file UUID.
@@ -94,7 +126,7 @@ Every file length is a multiple of 262,144 bytes.
 - The file size in steps of 256 KiB, so the real payload size is only known roughly.
 - The file date that the file system shows.
 
-## 9. What the container does not protect against
+## 10. What the container does not protect against
 
 - Malware, a keylogger or screen capture on the PC, and anyone who sees or gets the words.
 - Memory written to disk by Windows (page file, hibernation) while the file is open.
@@ -103,11 +135,11 @@ Every file length is a multiple of 262,144 bytes.
 
 Strength depends on the words. The passphrase code accepts 5 to 12 words. With the 7776-word list a word is about 12.9 bits, so 5 words are about 64.6 bits and 8 words are about 103.4 bits.
 
-## 10. Versioning
+## 11. Versioning
 
 The version field is 1. A different version or any flag bit is refused with `UnsupportedVersion`. The 31 reserved header bytes must be zero; anything else is `DamagedFile`.
 
-## 11. Tests
+## 12. Tests
 
 The tests in `format_test.rs` and `crypto_test.rs` check:
 
