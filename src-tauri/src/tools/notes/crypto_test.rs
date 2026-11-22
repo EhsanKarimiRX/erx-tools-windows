@@ -332,3 +332,209 @@ fn a_wrong_words_attempt_does_not_break_later_use() {
         b"after the attempt"
     );
 }
+
+const MUTATION_WORDS: &str = "alpha bravo charlie delta echo";
+const MUTATION_PAYLOAD: &[u8] = b"mutation check payload";
+
+fn mutation_randomness(uuid: [u8; UUID_LEN], salt: [u8; SALT_LEN]) -> Randomness {
+    Randomness {
+        uuid,
+        salt,
+        wrap_nonce: [0x33; NONCE_LEN],
+        data_key: Zeroizing::new([0x44; 32]),
+        body_nonce: [0x55; BODY_NONCE_LEN],
+    }
+}
+
+fn create_mutation_file(
+    words: &str,
+    settings: &CreateSettings,
+    uuid: [u8; UUID_LEN],
+    salt: [u8; SALT_LEN],
+) -> Vec<u8> {
+    let random = mutation_randomness(uuid, salt);
+    create_with(words, settings, MUTATION_PAYLOAD, random)
+        .unwrap()
+        .0
+}
+
+/// The 32 encrypted data-key bytes without the 16-byte authentication tag.
+fn wrap_part(file: &[u8]) -> &[u8] {
+    &file[OFFSET_WRAPPED_KEY..OFFSET_WRAPPED_KEY + 32]
+}
+
+#[test]
+fn c16_a_different_salt_changes_the_wrap_part() {
+    let base = create_mutation_file(
+        MUTATION_WORDS,
+        &test_settings(),
+        [0x11; UUID_LEN],
+        [0x22; SALT_LEN],
+    );
+    let other = create_mutation_file(
+        MUTATION_WORDS,
+        &test_settings(),
+        [0x11; UUID_LEN],
+        [0x23; SALT_LEN],
+    );
+    assert_ne!(wrap_part(&base), wrap_part(&other));
+}
+
+#[test]
+fn c17_kdf_parameters_change_the_wrap_part() {
+    let uuid = [0x11; UUID_LEN];
+    let salt = [0x22; SALT_LEN];
+    let base = create_mutation_file(MUTATION_WORDS, &test_settings(), uuid, salt);
+
+    let two_passes = create_mutation_file(
+        MUTATION_WORDS,
+        &CreateSettings::with_kdf_for_tests(KdfParams {
+            m_cost_kib: 8192,
+            t_cost: 2,
+            p_cost: 1,
+        }),
+        uuid,
+        salt,
+    );
+    let more_memory = create_mutation_file(
+        MUTATION_WORDS,
+        &CreateSettings::with_kdf_for_tests(KdfParams {
+            m_cost_kib: 9216,
+            t_cost: 1,
+            p_cost: 1,
+        }),
+        uuid,
+        salt,
+    );
+    let two_lanes = create_mutation_file(
+        MUTATION_WORDS,
+        &CreateSettings::with_kdf_for_tests(KdfParams {
+            m_cost_kib: 8192,
+            t_cost: 1,
+            p_cost: 2,
+        }),
+        uuid,
+        salt,
+    );
+
+    let base_part = wrap_part(&base);
+    assert_ne!(base_part, wrap_part(&two_passes));
+    assert_ne!(base_part, wrap_part(&more_memory));
+    assert_ne!(base_part, wrap_part(&two_lanes));
+    assert_ne!(wrap_part(&two_passes), wrap_part(&more_memory));
+    assert_ne!(wrap_part(&two_passes), wrap_part(&two_lanes));
+    assert_ne!(wrap_part(&more_memory), wrap_part(&two_lanes));
+}
+
+#[test]
+fn c18_a_different_uuid_changes_the_wrap_part() {
+    let base = create_mutation_file(
+        MUTATION_WORDS,
+        &test_settings(),
+        [0x11; UUID_LEN],
+        [0x22; SALT_LEN],
+    );
+    let other = create_mutation_file(
+        MUTATION_WORDS,
+        &test_settings(),
+        [0x12; UUID_LEN],
+        [0x22; SALT_LEN],
+    );
+    assert_ne!(wrap_part(&base), wrap_part(&other));
+}
+
+#[test]
+fn c19_different_words_change_the_wrap_part() {
+    let base = create_mutation_file(
+        MUTATION_WORDS,
+        &test_settings(),
+        [0x11; UUID_LEN],
+        [0x22; SALT_LEN],
+    );
+    let other = create_mutation_file(
+        "alpha bravo charlie delta foxtrot",
+        &test_settings(),
+        [0x11; UUID_LEN],
+        [0x22; SALT_LEN],
+    );
+    assert_ne!(wrap_part(&base), wrap_part(&other));
+}
+
+#[test]
+fn c20_real_create_uses_fresh_randomness() {
+    let (first, _keys) = create(MUTATION_WORDS, &test_settings(), MUTATION_PAYLOAD).unwrap();
+    let (second, _keys) = create(MUTATION_WORDS, &test_settings(), MUTATION_PAYLOAD).unwrap();
+
+    let ranges = [
+        (OFFSET_UUID, OFFSET_UUID + UUID_LEN),
+        (OFFSET_SALT, OFFSET_SALT + SALT_LEN),
+        (OFFSET_WRAP_NONCE, OFFSET_WRAP_NONCE + NONCE_LEN),
+        (HEADER_LEN, HEADER_LEN + BODY_NONCE_LEN),
+    ];
+    for (start, end) in ranges {
+        assert_ne!(
+            &first[start..end],
+            &second[start..end],
+            "range {start}..{end} is not fresh"
+        );
+        assert!(
+            first[start..end].iter().any(|byte| *byte != 0),
+            "range {start}..{end} is all zeros in the first file"
+        );
+        assert!(
+            second[start..end].iter().any(|byte| *byte != 0),
+            "range {start}..{end} is all zeros in the second file"
+        );
+    }
+}
+
+#[test]
+fn c21_identical_inputs_produce_identical_files() {
+    let first = create_mutation_file(
+        MUTATION_WORDS,
+        &test_settings(),
+        [0x11; UUID_LEN],
+        [0x22; SALT_LEN],
+    );
+    let second = create_mutation_file(
+        MUTATION_WORDS,
+        &test_settings(),
+        [0x11; UUID_LEN],
+        [0x22; SALT_LEN],
+    );
+    assert_eq!(first, second);
+}
+
+#[test]
+fn c22_open_rejects_a_file_whose_length_is_not_a_whole_bucket() {
+    use chacha20poly1305::aead::{Aead, Payload};
+    use chacha20poly1305::{KeyInit, XChaCha20Poly1305, XNonce};
+
+    let (_file, keys) = create(WORDS, &test_settings(), b"bucket payload").unwrap();
+    let header_bytes = keys.header().unwrap().to_bytes();
+    let body_nonce = [0x66u8; BODY_NONCE_LEN];
+    let payload = b"not a whole bucket";
+
+    let mut plaintext = vec![0u8; LEN_FIELD + payload.len()];
+    plaintext[..LEN_FIELD].copy_from_slice(&(payload.len() as u64).to_le_bytes());
+    plaintext[LEN_FIELD..].copy_from_slice(payload);
+
+    let cipher = XChaCha20Poly1305::new_from_slice(&keys.body_key_for_tests()).unwrap();
+    let ciphertext = cipher
+        .encrypt(
+            &XNonce::from(body_nonce),
+            Payload {
+                msg: &plaintext,
+                aad: &header_bytes,
+            },
+        )
+        .unwrap();
+
+    let mut crafted = Vec::new();
+    crafted.extend_from_slice(&header_bytes);
+    crafted.extend_from_slice(&body_nonce);
+    crafted.extend_from_slice(&ciphertext);
+
+    assert_ne!(crafted.len() % PAD_BUCKET, 0);
+    assert_eq!(open(&crafted, WORDS).unwrap_err(), NotesError::DamagedFile);
+}

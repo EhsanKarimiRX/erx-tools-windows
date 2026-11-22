@@ -56,6 +56,13 @@ impl CreateSettings {
             kdf: KdfParams::for_tests(),
         }
     }
+
+    /// Builds settings with an explicit KDF, skipping the 64 MiB minimum so
+    /// tests can use small values.
+    #[cfg(test)]
+    pub fn with_kdf_for_tests(kdf: KdfParams) -> Self {
+        Self { kdf }
+    }
 }
 
 /// The header of a created or opened file and its body key. Wiped on drop.
