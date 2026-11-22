@@ -1,5 +1,5 @@
 //! Pure image helpers for Favicons: trim, square canvas, padding,
-//! alpha-correct resize, flatten, maskable icon. Spec: docs/PROMPT_11_SPEC.md section 5.
+//! alpha-correct resize, flatten, maskable icon. Spec: docs/PROMPT_11_SPEC.md (removed in v0.4.2, see commit 1fce0df) section 5.
 
 use image::RgbaImage;
 

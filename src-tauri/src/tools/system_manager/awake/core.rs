@@ -10,7 +10,7 @@
 //! With the power-plan approach a crash simply leaves the PC awake; at worst
 //! the screen stays on until one setting is changed back — cheap and safe.
 //! Therefore: never replace this with SetThreadExecutionState, and no helper
-//! processes (see docs/PROMPT_5_DECISIONS.md).
+//! processes (see DECISIONS.md, section "Archived decision logs").
 
 use serde::{Deserialize, Serialize};
 

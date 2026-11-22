@@ -1,5 +1,5 @@
 //! Live Awake verification on the real machine (run on purpose ONLY, with
-//! the G9 snapshot protocol: docs/PROMPT_5_PROGRESS.md "Owner snapshots").
+//! the G9 snapshot protocol: docs/PROMPT_5_PROGRESS.md (removed in v0.4.2, see commit 1fce0df) "Owner snapshots").
 //!
 //! Run:  cargo test -- --ignored
 //!

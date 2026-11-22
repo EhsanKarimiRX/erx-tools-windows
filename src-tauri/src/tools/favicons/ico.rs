@@ -1,5 +1,5 @@
 //! Multi-size .ico writer for Favicons: every frame stored as PNG
-//! inside one container. Spec: docs/PROMPT_11_SPEC.md sections 5 + 10.
+//! inside one container. Spec: docs/PROMPT_11_SPEC.md (removed in v0.4.2, see commit 1fce0df) sections 5 + 10.
 
 use image::ExtendedColorType;
 use image::RgbaImage;

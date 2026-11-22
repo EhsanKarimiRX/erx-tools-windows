@@ -1,6 +1,6 @@
 //! The Awake engine: how enable, disable, options and reconcile actually
 //! behave, written against the `PowerBackend` trait so every rule of the
-//! state machine (R1–R6 of docs/PROMPT_5_SPEC.md) is unit-testable with the
+//! state machine (R1–R6 of docs/PROMPT_5_SPEC.md (removed in v0.4.2, see commit 1fce0df)) is unit-testable with the
 //! in-memory fake and a temp state directory. The Tauri command layer in
 //! `commands.rs` only wires this to the app.
 

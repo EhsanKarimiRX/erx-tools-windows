@@ -3,7 +3,7 @@
 //! with verb "open" (or "runas" for the two admin buttons), the Store URI
 //! opened directly, and PC Manager detection through the package registry
 //! (no process spawning) plus its AppxManifest.xml. All layouts on this
-//! machine were verified live — see docs/PROMPT_5_PROGRESS.md.
+//! machine were verified live — see docs/PROMPT_5_PROGRESS.md (removed in v0.4.2, see commit 1fce0df).
 
 use std::path::{Path, PathBuf};
 

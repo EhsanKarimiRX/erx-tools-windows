@@ -1,6 +1,6 @@
 //! Favicon package builder for Favicons: output file list, web manifest,
 //! HTML snippet, folder-name handling and writing. Pure logic, no Tauri.
-//! Spec: docs/PROMPT_11_SPEC.md sections 3, 4, 6.
+//! Spec: docs/PROMPT_11_SPEC.md (removed in v0.4.2, see commit 1fce0df) sections 3, 4, 6.
 
 use image::ExtendedColorType;
 use image::ImageEncoder;

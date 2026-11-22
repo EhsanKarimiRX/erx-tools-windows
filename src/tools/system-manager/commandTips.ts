@@ -6,7 +6,7 @@
  * installed-apps commands (2026-11-12) WERE run on that machine: the list
  * version directly, the save-to-file version with a temporary output path
  * instead of the real Desktop. The two badge decisions that reality
- * overruled are recorded in docs/PROMPT_5_PROGRESS.md: flushdns NEEDS
+ * overruled are recorded in docs/PROMPT_5_PROGRESS.md (removed in v0.4.2, see commit 1fce0df): flushdns NEEDS
  * elevation on this build, and %USERPROFILE% only expands in Command
  * Prompt. `winget upgrade --all` was removed on purpose: it can silently
  * update tools such as Python and break projects that depend on the old

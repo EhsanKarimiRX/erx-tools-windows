@@ -208,7 +208,7 @@ pub enum PcManagerState {
 /// A full package name has the shape
 /// `Name_Version_Arch_ResourceId_PublisherId` (ResourceId may be empty, so
 /// the split can contain an empty part); the family name is
-/// `Name_PublisherId`. Verified live — see docs/PROMPT_5_PROGRESS.md.
+/// `Name_PublisherId`. Verified live — see docs/PROMPT_5_PROGRESS.md (removed in v0.4.2, see commit 1fce0df).
 pub fn pc_manager_state(installed_packages: &[String]) -> PcManagerState {
     for full_name in installed_packages {
         let parts: Vec<&str> = full_name.split('_').collect();

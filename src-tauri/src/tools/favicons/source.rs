@@ -1,6 +1,6 @@
 //! Source loading for Favicons: content-based format detection, raster
 //! decoding with EXIF orientation, SVG parsing/rendering and warnings.
-//! Spec: docs/PROMPT_11_SPEC.md sections 5 + 10.
+//! Spec: docs/PROMPT_11_SPEC.md (removed in v0.4.2, see commit 1fce0df) sections 5 + 10.
 
 use std::io::Cursor;
 

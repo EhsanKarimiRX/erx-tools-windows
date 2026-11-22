@@ -1,6 +1,6 @@
 //! Awake section: keeps the PC awake by temporarily setting the active
 //! power plan's sleep/hibernate/display timeouts to Never (owner decision —
-//! safer failure mode than the execution-state API; see docs/PROMPT_5_DECISIONS.md).
+//! safer failure mode than the execution-state API; see DECISIONS.md, section "Archived decision logs").
 //!
 //! Layering, mirroring the other tools: `core` is pure logic, `state_file`
 //! is disk I/O only, `power` is the Windows API behind a trait (with an
