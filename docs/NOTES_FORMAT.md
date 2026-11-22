@@ -1,6 +1,6 @@
 # ERX Secure Notes container format (version 1)
 
-Work in progress for ERX Tools 0.5.0. This document describes the encrypted container (header and encrypted body) and the notes data (the payload) inside it. The place of the file and how it is written to disk are added when they exist.
+Work in progress for ERX Tools 0.5.0. This document describes the encrypted container (header and encrypted body), the notes data (the payload) inside it, and how the file is saved to disk. The folder is chosen by the app.
 
 The source code in `src-tauri/src/tools/notes/` is the final truth (`format.rs`, `crypto.rs`, `model.rs`, `search.rs`, `error.rs`). All integers are little-endian unless a section says otherwise. The format has not been audited by a security professional.
 
@@ -52,7 +52,44 @@ Parsing is strict. The checks run in this order: length, magic, version, flags, 
 
 ## 5. Changing the words
 
-Changing the words is not a separate operation. The caller creates a new file with the new words, which makes a new UUID, salt, data key and body key. An old file and the old words cannot open the new file.
+Changing the words is not a separate operation. The caller creates a new file with the new words, which makes a new UUID, salt, data key and body key. An old file and the old words cannot open the new file. The file store wraps this as a passphrase change; see "Files and saving".
+
+## Files and saving
+
+The file store uses two names in one folder:
+
+- `secure-notes.erxnotes` is the current notes file.
+- `secure-notes.erxnotes.bak` is the backup.
+
+A temporary file is named `secure-notes.erxnotes.<8 lower-case hex characters>.erxtmp` and is written in the same folder. The folder itself is chosen by the app; the store only receives it.
+
+A save does these steps:
+
+1. Write the new file to a new temporary name.
+2. Flush and sync the temporary file to disk.
+3. Read it back and compare it byte for byte with what was written.
+4. Decrypt the body with the stored body key and compare the payload. This is a fast check: it uses no words and no Argon2.
+5. Move the old main file to the backup name, replacing the old backup, and then move the temporary file to the main name.
+
+For the first file (`create_new`) there is no old main file, so the backup is not touched. A rename or a remove that fails because Windows briefly keeps a file busy is retried up to five times, 100 ms apart.
+
+For a normal save the backup is the previous version of the file: it has the same words and the same keys as the main file had, and it opens with the same words. When a passphrase change succeeds, the backup is a copy of the new file instead.
+
+Loading tries the main file first. The backup is used when the main file is missing or damaged. A file made by a newer version is never replaced by the backup: `UnsupportedVersion` and `DataTooNew` are returned at once. Wrong words and a damaged header give the same error, so both files are tried. Loading never writes.
+
+After a load from the backup the next save does not copy the damaged main file over the good backup. The main file is replaced and the backup is left alone; after one successful save the main file is good again.
+
+A crash between the two moves leaves the backup as the last good version, so only the last edit can be lost. If the old main file was already moved and the new file was not moved in yet, the main file is missing and loading uses the backup. A temporary file left by a crash is removed at a later save once it is at least one hour old; only files with the temporary name pattern are touched.
+
+A passphrase change writes a new file with the new words and new keys: a new UUID, salt, data key and body key. The new file is moved to the main name, and the backup is replaced by a copy of the same new file, so both files open with the new words. If writing the new backup fails, the store removes the old backup. If that fails too, the save reports `old_backup_gone = false`, because the old backup would still open with the old words.
+
+What this does not do:
+
+- A deleted note stays in the backup until the next save.
+- Deleting a file does not wipe the disk blocks.
+- `sync_all` depends on the disk and its driver.
+- The file date and the file size (in 256 KiB steps) stay visible.
+- A crash can lose the last edit.
 
 ## 6. Notes data (the payload)
 
