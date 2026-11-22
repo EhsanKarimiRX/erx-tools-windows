@@ -27,6 +27,30 @@ pub const WEAK_BELOW_WORDS: usize = 8;
 /// How many times one word slot may be replaced.
 pub const MAX_REPLACEMENTS_PER_WORD: u8 = 3;
 
+/// Inclusive word-count limits for one kind of passphrase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WordLimits {
+    pub min: usize,
+    pub max: usize,
+}
+
+/// The Vault keeps its original 6 to 12 words.
+pub const VAULT_WORD_LIMITS: WordLimits = WordLimits {
+    min: MIN_WORDS,
+    max: MAX_WORDS,
+};
+
+/// Fewest words a Secure Note passphrase may have.
+// Used by the Secure Notes tool once it is wired up.
+#[allow(dead_code)]
+pub const NOTES_MIN_WORDS: usize = 5;
+/// Secure Notes allow 5 to 12 words.
+#[allow(dead_code)]
+pub const NOTES_WORD_LIMITS: WordLimits = WordLimits {
+    min: NOTES_MIN_WORDS,
+    max: MAX_WORDS,
+};
+
 /// Safety cap for the "pick an unseen word" retry loop.
 const MAX_PICK_ATTEMPTS: usize = 1000;
 /// Words are joined with exactly one of these in the normalized form.
@@ -36,8 +60,8 @@ const WORD_SEPARATOR: char = ' ';
 /// are plain English and never contain the words themselves.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PassphraseError {
-    #[error("The passphrase must have between 6 and 12 words.")]
-    WordCountOutOfRange,
+    #[error("The passphrase must have between {min} and {max} words.")]
+    WordCountOutOfRange { min: usize, max: usize },
     #[error("Windows could not provide secure random numbers.")]
     RandomUnavailable,
     #[error("There is no passphrase yet. Generate one first.")]
@@ -126,15 +150,22 @@ pub fn normalize_passphrase(input: &str) -> Zeroizing<String> {
 }
 
 /// Checks words typed by the user (already passed through
-/// `normalize_passphrase`): the count must be 6..=12 and every word must be
-/// in the list. The error names only the word's POSITION, never the word.
-pub fn validate_typed_words(normalized: &str) -> Result<(), PassphraseError> {
+/// `normalize_passphrase`) against `limits`: the count must be in range and
+/// every word must be in the list. The error names only the word's POSITION,
+/// never the word.
+pub fn validate_typed_words_with(
+    normalized: &str,
+    limits: WordLimits,
+) -> Result<(), PassphraseError> {
     let count = normalized
         .split(WORD_SEPARATOR)
         .filter(|word| !word.is_empty())
         .count();
-    if !(MIN_WORDS..=MAX_WORDS).contains(&count) {
-        return Err(PassphraseError::WordCountOutOfRange);
+    if !(limits.min..=limits.max).contains(&count) {
+        return Err(PassphraseError::WordCountOutOfRange {
+            min: limits.min,
+            max: limits.max,
+        });
     }
     for (position, word) in normalized.split(WORD_SEPARATOR).enumerate() {
         if !wordlist::contains(word) {
@@ -144,6 +175,11 @@ pub fn validate_typed_words(normalized: &str) -> Result<(), PassphraseError> {
         }
     }
     Ok(())
+}
+
+/// Checks words typed by the user with the Vault's 6 to 12 word limits.
+pub fn validate_typed_words(normalized: &str) -> Result<(), PassphraseError> {
+    validate_typed_words_with(normalized, VAULT_WORD_LIMITS)
 }
 
 /// How strong a passphrase of `word_count` words is.
@@ -168,8 +204,9 @@ pub fn strength(word_count: usize) -> PassphraseStrength {
 }
 
 /// The state of one passphrase-generation session. Lives in Rust state.
-#[derive(Default)]
 pub struct PassphraseSession {
+    /// Word-count limits of this session's kind.
+    limits: WordLimits,
     /// Word-list indices of the current passphrase, in slot order.
     slots: Vec<usize>,
     /// How many times each slot has been replaced (same length as `slots`).
@@ -180,18 +217,39 @@ pub struct PassphraseSession {
     confirmed: bool,
 }
 
+impl Default for PassphraseSession {
+    fn default() -> Self {
+        Self::new(VAULT_WORD_LIMITS)
+    }
+}
+
 impl PassphraseSession {
-    /// An empty session (no passphrase yet).
-    #[cfg(test)]
-    pub fn new() -> Self {
-        Self::default()
+    /// An empty session (no passphrase yet) with the given word limits.
+    pub fn new(limits: WordLimits) -> Self {
+        Self {
+            limits,
+            slots: Vec::new(),
+            replacements: Vec::new(),
+            seen: Vec::new(),
+            confirmed: false,
+        }
+    }
+
+    /// The word limits of this session.
+    // Used by the Secure Notes tool once it is wired up.
+    #[allow(dead_code)]
+    pub fn limits(&self) -> WordLimits {
+        self.limits
     }
 
     /// Starts a new session with `count` fresh, different words. Discards
     /// any previous passphrase and resets all counters and the confirmation.
     pub fn generate(&mut self, count: usize) -> Result<Vec<String>, PassphraseError> {
-        if !(MIN_WORDS..=MAX_WORDS).contains(&count) {
-            return Err(PassphraseError::WordCountOutOfRange);
+        if !(self.limits.min..=self.limits.max).contains(&count) {
+            return Err(PassphraseError::WordCountOutOfRange {
+                min: self.limits.min,
+                max: self.limits.max,
+            });
         }
         let list = checked_words()?;
         self.clear();
@@ -299,6 +357,16 @@ impl PassphraseSession {
             joined.push_str(word);
         }
         Ok(normalize_passphrase(&joined))
+    }
+
+    /// Checks that `typed` matches the confirmed passphrase after
+    /// normalization. The session's word limits are kept unchanged.
+    // Used by the Secure Notes tool once it is wired up.
+    #[allow(dead_code)]
+    pub fn typed_matches(&self, typed: &str) -> Result<bool, PassphraseError> {
+        let expected = self.normalized_for_kdf()?;
+        let typed = normalize_passphrase(typed);
+        Ok(typed.as_str() == expected.as_str())
     }
 
     /// Wipes the passphrase and resets the session.
