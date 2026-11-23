@@ -10,6 +10,7 @@ pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod format;
+pub mod hardening;
 pub mod instance;
 pub mod model;
 pub mod search;
@@ -25,6 +26,8 @@ mod commands_test;
 mod crypto_test;
 #[cfg(test)]
 mod format_test;
+#[cfg(test)]
+mod hardening_test;
 #[cfg(test)]
 mod instance_test;
 #[cfg(test)]

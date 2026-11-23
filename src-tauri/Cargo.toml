@@ -53,6 +53,8 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Sh
 # `windows` crate is required. It is the same 0.62.x version Tauri already
 # pulls in, so this only merges extra features — no new crate in the tree.
 windows = { version = "0.62", default-features = false, features = ["Win32_Graphics_Imaging", "Win32_System_Com", "Win32_Foundation", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_Graphics_Dxgi"] }
+# Secure Notes: the hardened WebView2 window turns browser settings off through the WebView2 COM interfaces. Same version as Tauri uses (already in the lockfile); pinned with = so a Tauri update that changes it fails loudly.
+webview2-com = "=0.39.1"
 kamadak-exif = "0.6.2"
 # Quantum Resistance Vault: passphrase key derivation (Argon2id).
 argon2 = "0.6.0"
