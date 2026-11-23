@@ -43,4 +43,14 @@ pub enum NotesError {
     AlreadyExists,
     #[error("The saved notes did not pass the safety check, so they were not used.")]
     VerifyFailed,
+    #[error("The notes are locked.")]
+    NotUnlocked,
+    #[error("The notes are already unlocked.")]
+    AlreadyUnlocked,
+    #[error("Confirm that you saved the words first.")]
+    WordsNotConfirmed,
+    #[error("Type the words again to confirm that you saved them.")]
+    WordsNotRetyped,
+    #[error("{0}")]
+    Words(String),
 }

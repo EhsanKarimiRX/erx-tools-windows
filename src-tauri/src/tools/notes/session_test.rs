@@ -1,0 +1,664 @@
+//! Session tests: words flows, lock states, note operations, autosave, idle
+//! lock and the final save. Every test uses its own temporary folder.
+
+use std::fs;
+use std::sync::Arc;
+use std::time::Duration;
+
+use super::clock::{Clock, DateParts, TestClock};
+use super::crypto::CreateSettings;
+use super::error::NotesError;
+use super::model::PreviewMode;
+use super::session::{
+    AUTOSAVE_DELAY, AUTOSAVE_RETRY, LockReport, NoteView, NotesSession, NotesStatus,
+    PREVIEW_MAX_CHARS, SaveState,
+};
+use super::store::{BACKUP_FILE_NAME, MAIN_FILE_NAME, NotesStore};
+use super::test_support::{TempDir, real_store, scripted_store};
+use crate::tools::vault::passphrase::{NOTES_WORD_LIMITS, PassphraseSession};
+
+/// Persian "می‌خواهم" with a Persian yeh.
+const PERSIAN_TITLE: &str = "\u{0645}\u{06CC}\u{200C}\u{062E}\u{0648}\u{0627}\u{0647}\u{0645}";
+/// The same word with an Arabic yeh.
+const ARABIC_QUERY: &str = "\u{0645}\u{064A}\u{200C}\u{062E}\u{0648}\u{0627}\u{0647}\u{0645}";
+
+fn settings() -> CreateSettings {
+    CreateSettings::for_tests()
+}
+
+fn test_clock() -> Arc<TestClock> {
+    TestClock::new(
+        1_700_000_000,
+        Some(DateParts {
+            year: 2023,
+            month: 11,
+            day: 14,
+            hour: 22,
+            minute: 13,
+        }),
+    )
+}
+
+fn fresh_session(clock: Arc<TestClock>) -> (TempDir, NotesSession) {
+    let guard = TempDir::new();
+    let session = NotesSession::new(real_store(&guard.path), Box::new(clock));
+    (guard, session)
+}
+
+fn create_unlocked_with(store: NotesStore, clock: Arc<TestClock>) -> (NotesSession, String) {
+    let mut session = NotesSession::new(store, Box::new(clock));
+    let view = session.generate_words(5).unwrap();
+    session.confirm_words_saved().unwrap();
+    let joined = view.words.join(" ");
+    assert!(session.retype_words(&joined).unwrap());
+    session.finish_create(&settings()).unwrap();
+    (session, joined)
+}
+
+fn create_unlocked(clock: Arc<TestClock>) -> (TempDir, NotesSession, String) {
+    let guard = TempDir::new();
+    let store = real_store(&guard.path);
+    let (session, words) = create_unlocked_with(store, clock);
+    (guard, session, words)
+}
+
+/// `count` valid words that are not `different_from` (normalized text).
+fn other_words(count: usize, different_from: &str) -> String {
+    let mut other = PassphraseSession::new(NOTES_WORD_LIMITS);
+    for _ in 0..20 {
+        let joined = other.generate(count).unwrap().join(" ");
+        if joined != different_from {
+            return joined;
+        }
+    }
+    panic!("could not generate different words");
+}
+
+fn id_of(session: &mut NotesSession, title: &str) -> String {
+    session
+        .list("")
+        .unwrap()
+        .into_iter()
+        .find(|item| item.title == title)
+        .expect("note in the list")
+        .id
+}
+
+fn corrupt_body(path: &std::path::Path) {
+    let mut bytes = fs::read(path).unwrap();
+    let index = bytes.len() / 2;
+    bytes[index] ^= 1;
+    fs::write(path, bytes).unwrap();
+}
+
+#[test]
+fn s1_create_flow() {
+    let clock = test_clock();
+    let (guard, mut session) = fresh_session(clock);
+    assert_eq!(
+        session.status(),
+        NotesStatus {
+            has_file: false,
+            unlocked: false,
+        }
+    );
+
+    let view = session.generate_words(5).unwrap();
+    assert_eq!(view.words.len(), 5);
+    assert_eq!(view.replacements_left, vec![3; 5]);
+
+    assert_eq!(
+        session.finish_create(&settings()).unwrap_err(),
+        NotesError::WordsNotConfirmed
+    );
+    session.confirm_words_saved().unwrap();
+    assert_eq!(
+        session.finish_create(&settings()).unwrap_err(),
+        NotesError::WordsNotRetyped
+    );
+    assert!(
+        !session
+            .retype_words("this is not the same passphrase")
+            .unwrap()
+    );
+    assert_eq!(
+        session.finish_create(&settings()).unwrap_err(),
+        NotesError::WordsNotRetyped
+    );
+
+    let typed = format!(" \t{} \t ", view.words.join(" \t ").to_uppercase());
+    assert!(session.retype_words(&typed).unwrap());
+    session.finish_create(&settings()).unwrap();
+    assert_eq!(
+        session.status(),
+        NotesStatus {
+            has_file: true,
+            unlocked: true,
+        }
+    );
+    assert!(real_store(&guard.path).exists());
+    assert!(matches!(
+        session.retype_words(&typed),
+        Err(NotesError::Words(_))
+    ));
+}
+
+#[test]
+fn s2_word_limits() {
+    let (_guard, mut session) = fresh_session(test_clock());
+
+    let message = "The passphrase must have between 5 and 12 words.".to_string();
+    assert_eq!(
+        session.generate_words(4).unwrap_err(),
+        NotesError::Words(message.clone())
+    );
+    assert_eq!(
+        session.generate_words(13).unwrap_err(),
+        NotesError::Words(message)
+    );
+    assert_eq!(session.generate_words(5).unwrap().words.len(), 5);
+    assert_eq!(session.generate_words(12).unwrap().words.len(), 12);
+
+    let weak = session.generate_words(5).unwrap();
+    assert!(weak.weak);
+    assert!((weak.entropy_bits - 64.6).abs() < 0.1);
+    let strong = session.generate_words(8).unwrap();
+    assert!(!strong.weak);
+}
+
+#[test]
+fn s3_states() {
+    let clock = test_clock();
+    let (guard, mut session, words) = create_unlocked(clock);
+    session.create_note("keep", "body").unwrap();
+    let report = session.lock();
+    assert!(report.was_unlocked);
+
+    assert_eq!(
+        session.generate_words(5).unwrap_err(),
+        NotesError::NotUnlocked
+    );
+    assert_eq!(session.list("").unwrap_err(), NotesError::NotUnlocked);
+    assert_eq!(
+        session
+            .get_note("00000000000000000000000000000000")
+            .unwrap_err(),
+        NotesError::NotUnlocked
+    );
+    assert_eq!(
+        session.create_note("title", "body").unwrap_err(),
+        NotesError::NotUnlocked
+    );
+    assert_eq!(session.settings().unwrap_err(), NotesError::NotUnlocked);
+    assert_eq!(session.save_now().unwrap_err(), NotesError::NotUnlocked);
+
+    let wrong = other_words(5, &words);
+    assert_eq!(
+        session.unlock(&wrong).unwrap_err(),
+        NotesError::WrongPassphraseOrHeader
+    );
+    assert!(matches!(
+        session.unlock("zzz1 zzz2 zzz3 zzz4 zzz5"),
+        Err(NotesError::Words(_))
+    ));
+
+    let noisy = format!("\t{}\n", words.to_uppercase().replace(' ', "   "));
+    assert_eq!(
+        session.unlock(&noisy).unwrap(),
+        super::session::UnlockOutcome { used_backup: false }
+    );
+    assert_eq!(
+        session.unlock(&words).unwrap_err(),
+        NotesError::AlreadyUnlocked
+    );
+    assert_eq!(
+        session.finish_create(&settings()).unwrap_err(),
+        NotesError::AlreadyUnlocked
+    );
+
+    let (_guard, mut empty) = fresh_session(test_clock());
+    assert_eq!(empty.unlock(&words).unwrap_err(), NotesError::NoNotesFile);
+
+    // The guard keeps the folder alive until the end of the test.
+    assert!(guard.path.exists());
+}
+
+#[test]
+fn s4_notes_crud_and_default_title() {
+    let clock = test_clock();
+    let (_guard, mut session, _) = create_unlocked(clock.clone());
+    let unix = clock.unix();
+
+    let blank = session.create_note("", "first body").unwrap();
+    assert_eq!(blank.title, "2023-11-14 22:13");
+    assert_eq!(blank.created, unix);
+    assert_eq!(blank.modified, unix);
+    let spaces = session.create_note("   ", "second body").unwrap();
+    assert_eq!(spaces.title, "2023-11-14 22:13");
+    let named = session.create_note("My title", "third body").unwrap();
+    assert_eq!(named.title, "My title");
+
+    let named_id = named.id.clone();
+    let named_created = named.created;
+    clock.advance(Duration::from_secs(10));
+    session
+        .update_note(&named_id, "Renamed", "new body")
+        .unwrap();
+    let updated = session.get_note(&named_id).unwrap();
+    assert_eq!(updated.id, named_id);
+    assert_eq!(updated.title, "Renamed");
+    assert_eq!(updated.body, "new body");
+    assert_eq!(updated.created, named_created);
+    assert_eq!(updated.modified, unix + 10);
+
+    session.delete_note(&named_id).unwrap();
+    assert_eq!(
+        session.get_note(&named_id).unwrap_err(),
+        NotesError::NoteNotFound
+    );
+    let unknown = "ffffffffffffffffffffffffffffffff";
+    assert_eq!(
+        session.get_note(unknown).unwrap_err(),
+        NotesError::NoteNotFound
+    );
+    assert_eq!(
+        session.update_note(unknown, "t", "b").unwrap_err(),
+        NotesError::NoteNotFound
+    );
+    assert_eq!(
+        session.delete_note(unknown).unwrap_err(),
+        NotesError::NoteNotFound
+    );
+
+    let before = session.list("").unwrap().len();
+    let too_long = "x".repeat(1025);
+    assert_eq!(
+        session.create_note(&too_long, "body").unwrap_err(),
+        NotesError::TitleTooLong
+    );
+    assert_eq!(session.list("").unwrap().len(), before);
+}
+
+#[test]
+fn s4_default_title_uses_created_time_and_utc_fallback() {
+    let clock = TestClock::new(1_700_000_000, None);
+    let (_guard, mut session, _) = create_unlocked(clock.clone());
+    let view = session.create_note("", "body").unwrap();
+    assert_eq!(view.title, "2023-11-14 22:13");
+    let id = view.id.clone();
+
+    clock.set_unix(1_700_003_600);
+    session.update_note(&id, "  ", "changed").unwrap();
+    let after = session.get_note(&id).unwrap();
+    assert_eq!(after.title, "2023-11-14 22:13");
+    assert_eq!(after.created, 1_700_000_000);
+    assert_eq!(after.modified, 1_700_003_600);
+    assert_eq!(after.body, "changed");
+}
+
+#[test]
+fn s5_list_preview_and_search() {
+    let clock = test_clock();
+    let (_guard, mut session, _) = create_unlocked(clock.clone());
+
+    let first = session
+        .create_note("first", "first body")
+        .unwrap()
+        .id
+        .clone();
+    clock.advance(Duration::from_secs(10));
+    let second = session
+        .create_note("second", "second body")
+        .unwrap()
+        .id
+        .clone();
+    clock.advance(Duration::from_secs(10));
+    let third = session
+        .create_note("third", "third body")
+        .unwrap()
+        .id
+        .clone();
+
+    let order: Vec<String> = session
+        .list("")
+        .unwrap()
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(order, vec![third.clone(), second.clone(), first.clone()]);
+
+    clock.advance(Duration::from_secs(10));
+    session
+        .update_note(&first, "first", "first body again")
+        .unwrap();
+    assert_eq!(session.list("").unwrap()[0].id, first);
+
+    assert!(
+        session
+            .list("")
+            .unwrap()
+            .into_iter()
+            .all(|item| item.preview.is_none())
+    );
+
+    session.set_settings(PreviewMode::FirstLine, 10).unwrap();
+    let previewed = session
+        .create_note("preview", "\n  \n  line one\nline two")
+        .unwrap();
+    let preview_id = previewed.id.clone();
+    let rows = session.list("").unwrap();
+    let row = rows.iter().find(|item| item.id == preview_id).unwrap();
+    assert_eq!(row.preview.as_deref(), Some("line one"));
+
+    let long = session
+        .create_note("long", &format!("{}\nsecond line", "x".repeat(130)))
+        .unwrap();
+    let long_id = long.id.clone();
+    let expected = format!("{}\u{2026}", "x".repeat(PREVIEW_MAX_CHARS));
+    let rows = session.list("").unwrap();
+    let row = rows.iter().find(|item| item.id == long_id).unwrap();
+    assert_eq!(row.preview.as_deref(), Some(expected.as_str()));
+
+    let persian = session
+        .create_note(PERSIAN_TITLE, "body")
+        .unwrap()
+        .id
+        .clone();
+    let found = session.list(ARABIC_QUERY).unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].id, persian);
+
+    session
+        .create_note("only in the body", "unique needle")
+        .unwrap();
+    assert!(session.list("unique needle").unwrap().is_empty());
+    assert!(session.list("nothing matches this").unwrap().is_empty());
+}
+
+#[test]
+fn s6_autosave_timing() {
+    let clock = test_clock();
+    let (guard, mut session, words) = create_unlocked(clock.clone());
+    session.create_note("note", "body").unwrap();
+    assert_eq!(session.save_state(), SaveState::Pending);
+
+    let tick = session.tick();
+    assert!(!tick.autosaved);
+    clock.advance(Duration::from_millis(1900));
+    let tick = session.tick();
+    assert!(!tick.autosaved);
+    assert_eq!(session.save_state(), SaveState::Pending);
+    clock.advance(Duration::from_millis(100));
+    let tick = session.tick();
+    assert!(tick.autosaved);
+    assert!(!tick.autosave_failed);
+    assert_eq!(session.save_state(), SaveState::Saved);
+
+    session.lock();
+    session.unlock(&words).unwrap();
+    assert_eq!(session.list("").unwrap().len(), 1);
+
+    // The timer restarts on every edit.
+    let clock = test_clock();
+    let (_guard, mut session, _) = create_unlocked(clock.clone());
+    session.create_note("timer", "body").unwrap();
+    clock.advance(Duration::from_millis(1500));
+    let timer_id = id_of(&mut session, "timer");
+    session.update_note(&timer_id, "timer", "edited").unwrap();
+    clock.advance(Duration::from_millis(700));
+    assert!(!session.tick().autosaved);
+    clock.advance(Duration::from_millis(1400));
+    assert!(session.tick().autosaved);
+    assert!(guard.path.exists());
+}
+
+#[test]
+fn s7_save_failure_and_retry() {
+    let clock = test_clock();
+    let guard = TempDir::new();
+    // Rename call 1 is the creation; call 2 is the first save.
+    let store = scripted_store(&guard.path, vec![2], false);
+    let (mut session, words) = create_unlocked_with(store, clock.clone());
+
+    session.create_note("note", "body").unwrap();
+    clock.advance(AUTOSAVE_DELAY);
+    let tick = session.tick();
+    assert!(!tick.autosaved);
+    assert!(tick.autosave_failed);
+    assert_eq!(session.save_state(), SaveState::Failed);
+    assert_eq!(session.list("").unwrap().len(), 1);
+
+    clock.advance(Duration::from_secs(4));
+    let tick = session.tick();
+    assert!(!tick.autosaved);
+    assert!(!tick.autosave_failed);
+
+    clock.advance(AUTOSAVE_RETRY - Duration::from_secs(4));
+    let tick = session.tick();
+    assert!(tick.autosaved);
+    assert!(!tick.autosave_failed);
+    assert_eq!(session.save_state(), SaveState::Saved);
+
+    session.lock();
+    session.unlock(&words).unwrap();
+    assert_eq!(session.list("").unwrap().len(), 1);
+}
+
+#[test]
+fn s8_idle_lock() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock.clone());
+
+    clock.advance(Duration::from_secs(9 * 60 + 59));
+    assert!(session.tick().locked.is_none());
+
+    session.list("").unwrap();
+    clock.advance(Duration::from_secs(9 * 60 + 59));
+    assert!(session.tick().locked.is_none());
+    assert!(session.status().unlocked);
+
+    clock.advance(Duration::from_secs(10 * 60));
+    assert_eq!(
+        session.tick().locked,
+        Some(LockReport {
+            was_unlocked: true,
+            final_save_failed: false,
+        })
+    );
+    assert!(!session.status().unlocked);
+
+    // The final save on lock keeps the note.
+    let clock = test_clock();
+    let (_guard, mut session, words) = create_unlocked(clock.clone());
+    session.create_note("save me", "body").unwrap();
+    clock.advance(Duration::from_secs(10 * 60));
+    assert!(session.tick().locked.is_some());
+    session.unlock(&words).unwrap();
+    assert_eq!(session.list("").unwrap().len(), 1);
+
+    // A one-minute auto lock, and settings that survive a lock.
+    let clock = test_clock();
+    let (_guard, mut session, words) = create_unlocked(clock.clone());
+    session.set_settings(PreviewMode::FirstLine, 1).unwrap();
+    clock.advance(Duration::from_secs(59));
+    assert!(session.tick().locked.is_none());
+    clock.advance(Duration::from_secs(1));
+    assert!(session.tick().locked.is_some());
+    session.unlock(&words).unwrap();
+    let settings = session.settings().unwrap();
+    assert_eq!(settings.preview, PreviewMode::FirstLine);
+    assert_eq!(settings.auto_lock_minutes, 1);
+
+    assert_eq!(
+        session.set_settings(PreviewMode::FirstLine, 0).unwrap_err(),
+        NotesError::DataInvalid
+    );
+    assert_eq!(
+        session
+            .set_settings(PreviewMode::FirstLine, 241)
+            .unwrap_err(),
+        NotesError::DataInvalid
+    );
+}
+
+#[test]
+fn s9_lock_with_failing_save() {
+    let clock = test_clock();
+    let guard = TempDir::new();
+    let store = scripted_store(&guard.path, vec![2], false);
+    let (mut session, _words) = create_unlocked_with(store, clock);
+    session.create_note("lost edit", "body").unwrap();
+
+    let report = session.lock();
+    assert_eq!(
+        report,
+        LockReport {
+            was_unlocked: true,
+            final_save_failed: true,
+        }
+    );
+    assert!(!session.status().unlocked);
+    assert_eq!(session.list("").unwrap_err(), NotesError::NotUnlocked);
+}
+
+#[test]
+fn s10_change_passphrase() {
+    let clock = test_clock();
+    let (guard, mut session, old_words) = create_unlocked(clock.clone());
+    session.create_note("one", "first").unwrap();
+    session.create_note("two", "second").unwrap();
+
+    let new_view = session.generate_words(6).unwrap();
+    let new_words = new_view.words.join(" ");
+    assert_eq!(
+        session
+            .change_passphrase(&old_words, &settings())
+            .unwrap_err(),
+        NotesError::WordsNotConfirmed
+    );
+    session.confirm_words_saved().unwrap();
+    assert_eq!(
+        session
+            .change_passphrase(&old_words, &settings())
+            .unwrap_err(),
+        NotesError::WordsNotRetyped
+    );
+    session.retype_words(&new_words).unwrap();
+
+    let wrong = other_words(5, &old_words);
+    assert_eq!(
+        session.change_passphrase(&wrong, &settings()).unwrap_err(),
+        NotesError::WrongPassphraseOrHeader
+    );
+    assert!(real_store(&guard.path).load(&old_words).is_ok());
+
+    let report = session.change_passphrase(&old_words, &settings()).unwrap();
+    assert!(report.old_backup_gone);
+
+    session.lock();
+    assert_eq!(
+        session
+            .change_passphrase(&old_words, &settings())
+            .unwrap_err(),
+        NotesError::NotUnlocked
+    );
+    assert_eq!(
+        session.unlock(&old_words).unwrap_err(),
+        NotesError::WrongPassphraseOrHeader
+    );
+    session.unlock(&new_words).unwrap();
+    assert_eq!(session.list("").unwrap().len(), 2);
+}
+
+#[test]
+fn s11_backup_load() {
+    let clock = test_clock();
+    let (guard, mut session, words) = create_unlocked(clock.clone());
+
+    session.create_note("one", "first").unwrap();
+    clock.advance(AUTOSAVE_DELAY);
+    assert!(session.tick().autosaved);
+    session.create_note("two", "second").unwrap();
+    clock.advance(AUTOSAVE_DELAY);
+    assert!(session.tick().autosaved);
+
+    let main_path = guard.path.join(MAIN_FILE_NAME);
+    let backup_path = guard.path.join(BACKUP_FILE_NAME);
+    assert!(main_path.exists());
+    assert!(backup_path.exists());
+    let backup_before = fs::read(&backup_path).unwrap();
+
+    session.lock();
+    corrupt_body(&main_path);
+    let outcome = session.unlock(&words).unwrap();
+    assert!(outcome.used_backup);
+
+    session.create_note("three", "third").unwrap();
+    clock.advance(AUTOSAVE_DELAY);
+    assert!(session.tick().autosaved);
+    assert_eq!(fs::read(&backup_path).unwrap(), backup_before);
+
+    session.lock();
+    let outcome = session.unlock(&words).unwrap();
+    assert!(!outcome.used_backup);
+
+    session.create_note("four", "fourth").unwrap();
+    clock.advance(AUTOSAVE_DELAY);
+    assert!(session.tick().autosaved);
+    assert_ne!(fs::read(&backup_path).unwrap(), backup_before);
+}
+
+#[test]
+fn s12_initial_settings() {
+    let (_guard, mut session, _) = create_unlocked(test_clock());
+    let settings = session.settings().unwrap();
+    assert_eq!(settings.preview, PreviewMode::Titles);
+    assert_eq!(settings.auto_lock_minutes, 10);
+}
+
+#[test]
+fn s13_debug_redaction() {
+    let (_guard, mut session, _) = create_unlocked(test_clock());
+    assert_eq!(
+        format!("{session:?}"),
+        "NotesSession { unlocked: true, .. }"
+    );
+    let view: NoteView = session
+        .create_note("secret title", "secret body text")
+        .unwrap();
+    let expected = format!("NoteView {{ id: {}, .. }}", view.id);
+    assert_eq!(format!("{view:?}"), expected);
+    let printed = format!("{view:?}");
+    assert!(!printed.contains("secret title"));
+    assert!(!printed.contains("secret body text"));
+
+    session.lock();
+    assert_eq!(
+        format!("{session:?}"),
+        "NotesSession { unlocked: false, .. }"
+    );
+}
+
+#[test]
+fn s14_locked_activity_and_tick() {
+    let (_guard, mut session) = fresh_session(test_clock());
+    session.activity();
+    let tick = session.tick();
+    assert!(!tick.autosaved);
+    assert!(!tick.autosave_failed);
+    assert!(tick.locked.is_none());
+    assert_eq!(session.save_state(), SaveState::Saved);
+}
+
+#[test]
+fn s15_save_now() {
+    let (guard, mut session, _) = create_unlocked(test_clock());
+    session.create_note("note", "body").unwrap();
+    assert!(session.save_now().is_ok());
+    assert_eq!(session.save_state(), SaveState::Saved);
+
+    let main = guard.path.join(MAIN_FILE_NAME);
+    let before = fs::read(&main).unwrap();
+    assert!(session.save_now().is_ok());
+    assert_eq!(fs::read(&main).unwrap(), before);
+}

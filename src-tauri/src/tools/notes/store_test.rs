@@ -2,14 +2,15 @@
 //! passphrase change. Every test uses its own temporary folder.
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
+use std::sync::atomic::AtomicUsize;
 use std::time::{Duration, SystemTime};
 
 use super::crypto::{self, CreateSettings, NotesKeys};
 use super::error::NotesError;
 use super::model::{MAX_NOTE_BODY_BYTES, NotesData};
 use super::store::*;
+use super::test_support::{ScriptedFs, TempDir, scripted_store};
 
 const WORDS_A: &str = "alpha bravo charlie delta echo";
 const WORDS_B: &str = "foxtrot golf hotel india juliet";
@@ -18,28 +19,6 @@ const PERSIAN: &str =
 
 fn settings() -> CreateSettings {
     CreateSettings::for_tests()
-}
-
-/// A folder under the system temporary folder that removes itself.
-struct TempDir {
-    path: PathBuf,
-}
-
-impl TempDir {
-    fn new() -> TempDir {
-        let mut bytes = [0u8; 8];
-        getrandom::fill(&mut bytes).unwrap();
-        let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
-        let path = std::env::temp_dir().join(format!("erx-notes-test-{hex}"));
-        fs::create_dir_all(&path).unwrap();
-        TempDir { path }
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
 }
 
 fn data_with(body: &str) -> NotesData {
@@ -110,44 +89,6 @@ fn corrupt_body(path: &Path) {
     let index = bytes.len() / 2;
     bytes[index] ^= 1;
     fs::write(path, bytes).unwrap();
-}
-
-struct ScriptedFs {
-    calls: AtomicUsize,
-    fail_rename_calls: Vec<usize>,
-    fail_remove: bool,
-}
-
-impl FsOps for ScriptedFs {
-    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
-        let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if self.fail_rename_calls.contains(&call) {
-            return Err(std::io::Error::other("scripted"));
-        }
-        std::fs::rename(from, to)
-    }
-
-    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
-        if self.fail_remove {
-            return Err(std::io::Error::other("scripted"));
-        }
-        std::fs::remove_file(path)
-    }
-}
-
-fn scripted_store(dir: &Path, fail_rename_calls: Vec<usize>, fail_remove: bool) -> NotesStore {
-    NotesStore::with_ops(
-        dir.to_path_buf(),
-        Box::new(ScriptedFs {
-            calls: AtomicUsize::new(0),
-            fail_rename_calls,
-            fail_remove,
-        }),
-        RetryPolicy {
-            attempts: 1,
-            delay: Duration::ZERO,
-        },
-    )
 }
 
 #[test]
