@@ -43,12 +43,6 @@ pub enum NotesError {
     AlreadyExists,
     #[error("The saved notes did not pass the safety check, so they were not used.")]
     VerifyFailed,
-    #[error("That folder is not a Secure Notes web-profile folder, so it was not deleted.")]
-    Refused,
-    #[error("No delete attempt was allowed.")]
-    NoAttempts,
-    #[error("The Secure Notes web-profile folder could not be deleted.")]
-    Failed,
     #[error("The notes are locked.")]
     NotUnlocked,
     #[error("The notes are already unlocked.")]

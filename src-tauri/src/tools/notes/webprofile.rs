@@ -32,6 +32,17 @@ pub struct StaleReport {
     pub failed: u32,
 }
 
+/// Why a profile folder was not deleted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeleteError {
+    /// The path is not a profile folder this app may delete.
+    Refused,
+    /// The caller asked for zero delete attempts.
+    NoAttempts,
+    /// Every delete attempt failed.
+    Failed,
+}
+
 /// Returns `bytes` random bytes as lower-case hex.
 pub fn random_hex(bytes: usize) -> Result<String, NotesError> {
     let mut random = vec![0u8; bytes];
@@ -96,24 +107,24 @@ pub fn delete_profile_dir(
     base: &Path,
     attempts: u32,
     delay: Duration,
-) -> Result<u32, NotesError> {
+) -> Result<u32, DeleteError> {
     if !is_safe_profile_dir(path, base) {
-        return Err(NotesError::Refused);
+        return Err(DeleteError::Refused);
     }
     if !path.exists() {
         return Ok(0);
     }
     if attempts == 0 {
-        return Err(NotesError::NoAttempts);
+        return Err(DeleteError::NoAttempts);
     }
     for attempt in 1..=attempts {
         match fs::remove_dir_all(path) {
             Ok(()) => return Ok(attempt),
             Err(_) if attempt < attempts => std::thread::sleep(delay),
-            Err(_) => return Err(NotesError::Failed),
+            Err(_) => return Err(DeleteError::Failed),
         }
     }
-    Err(NotesError::Failed)
+    Err(DeleteError::Failed)
 }
 
 /// Deletes every safe profile folder under `base` that is not in `keep`.

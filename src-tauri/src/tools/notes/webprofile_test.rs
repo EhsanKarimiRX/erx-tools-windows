@@ -150,7 +150,7 @@ fn p8_delete_refuses_unsafe() {
     fs::write(other.join("keep.txt"), b"keep").unwrap();
     assert_eq!(
         delete_profile_dir(&other, &guard.path, 3, SHORT_DELAY),
-        Err(NotesError::Refused)
+        Err(DeleteError::Refused)
     );
     assert!(other.join("keep.txt").exists());
 
@@ -161,7 +161,7 @@ fn p8_delete_refuses_unsafe() {
     fs::write(nested.join("keep.txt"), b"keep").unwrap();
     assert_eq!(
         delete_profile_dir(&nested, &guard.path, 3, SHORT_DELAY),
-        Err(NotesError::Refused)
+        Err(DeleteError::Refused)
     );
     assert!(nested.join("keep.txt").exists());
 
@@ -171,7 +171,7 @@ fn p8_delete_refuses_unsafe() {
     make_junction(&link, &target.path);
     assert_eq!(
         delete_profile_dir(&link, &guard.path, 3, SHORT_DELAY),
-        Err(NotesError::Refused)
+        Err(DeleteError::Refused)
     );
     assert!(target.path.join("target.txt").exists());
 }
@@ -195,7 +195,7 @@ fn p10_delete_attempt_counts() {
 
     assert_eq!(
         delete_profile_dir(&folder, &guard.path, 0, Duration::ZERO),
-        Err(NotesError::NoAttempts)
+        Err(DeleteError::NoAttempts)
     );
     assert!(folder.exists());
 
@@ -247,7 +247,7 @@ fn p12_delete_fails_when_held() {
         .unwrap();
 
     let result = delete_profile_dir(&folder, &guard.path, 3, SHORT_DELAY);
-    assert_eq!(result, Err(NotesError::Failed));
+    assert_eq!(result, Err(DeleteError::Failed));
     assert!(folder.exists());
     drop(handle);
 }
