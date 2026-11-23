@@ -13,10 +13,12 @@ pub mod format;
 pub mod hardening;
 pub mod instance;
 pub mod model;
+pub mod openflow;
 pub mod search;
 pub mod session;
 pub mod store;
 pub mod webprofile;
+pub mod windowgate;
 
 #[cfg(test)]
 mod clock_test;
@@ -33,6 +35,8 @@ mod instance_test;
 #[cfg(test)]
 mod model_test;
 #[cfg(test)]
+mod openflow_test;
+#[cfg(test)]
 mod search_test;
 #[cfg(test)]
 mod session_test;
@@ -42,3 +46,5 @@ mod store_test;
 pub(crate) mod test_support;
 #[cfg(test)]
 mod webprofile_test;
+#[cfg(test)]
+mod windowgate_test;
