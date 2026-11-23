@@ -143,8 +143,8 @@ fn e2_all_codes() {
 
 #[test]
 fn w1_window_label() {
-    assert!(check_window_label("main"));
-    for label in ["", "Main", "main ", "notes", "other"] {
+    assert!(check_window_label("notes"));
+    for label in ["main", "", "Notes", "notes ", "other"] {
         assert!(!check_window_label(label));
     }
 }

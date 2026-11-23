@@ -21,19 +21,24 @@ pub fn run() {
         .manage(tools::update_check::commands::UpdateState::default())
         .manage(tools::vault::commands::VaultState::default())
         .manage(tools::notes::commands::NotesState::default())
+        .manage(tools::notes::window::NotesWindowState::default())
         .setup(|app| {
             // Awake startup: resolve the state folder, run the app-start
             // reconcile (R4) and start the 5-second background thread.
             tools::system_manager::awake::commands::init(&app.handle().clone());
-            // Secure Notes: build the session from the app data folder and
-            // start the one-second timer thread (autosave and idle lock).
-            tools::notes::commands::init(&app.handle().clone());
+            // Secure Notes: only the first running instance may use Secure
+            // Notes; the others get "unavailable". The guard also removes
+            // profile folders left by an earlier run.
+            let handle = app.handle().clone();
+            if tools::notes::window::init(&handle) {
+                tools::notes::commands::init(&handle);
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
             // Awake R7: closing the app while Awake is on must ask the user
-            // first. This is the app's only window-event handler (nothing to
-            // chain with today).
+            // first. This handler also looks after the Secure Notes window
+            // below; nothing else chains here today.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event
                 && window.label() == "main"
                 && tools::system_manager::awake::commands::is_on_for_close_check(
@@ -42,6 +47,9 @@ pub fn run() {
             {
                 api.prevent_close();
                 let _ = window.app_handle().emit("awake://close-requested", ());
+            }
+            if let tauri::WindowEvent::Destroyed = event {
+                tools::notes::window::on_destroyed(window.app_handle(), window.label());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -109,6 +117,9 @@ pub fn run() {
             tools::notes::commands::notes_finish_create,
             tools::notes::commands::notes_unlock,
             tools::notes::commands::notes_change_passphrase,
+            // Secure Notes window: open the hardened window and close it.
+            tools::notes::window::notes_open_window,
+            tools::notes::window::notes_close_window,
             // Update check: the app's only network access (R3), run solely
             // when the user clicks the update button on the home screen.
             tools::update_check::commands::check_for_updates,
@@ -135,6 +146,9 @@ pub fn run() {
             // the process; this is the last chance to write the notes).
             if let tauri::RunEvent::Exit = event {
                 tools::notes::commands::on_exit(app_handle);
+                // First save and lock the notes, then remove the WebView2
+                // profile folder (order matters).
+                tools::notes::window::on_exit(app_handle);
             }
         });
 }

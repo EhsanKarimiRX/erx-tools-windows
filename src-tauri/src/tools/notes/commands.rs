@@ -22,8 +22,8 @@ use super::session::{
 };
 use super::store::NotesStore;
 
-/// The only window allowed to call the Secure Notes commands.
-pub const NOTES_WINDOW_LABEL: &str = "main";
+/// The label of the hardened notes window.
+pub const NOTES_WINDOW_LABEL: &str = "notes";
 /// The folder under the app data folder that holds the notes files.
 pub const NOTES_DIR_NAME: &str = "notes";
 /// How often the timer thread looks at the session.
@@ -265,10 +265,10 @@ pub fn exit_save(shared: &NotesShared) -> Option<LockReport> {
 /// Builds the session from the app data folder and starts the timer thread.
 /// Without the timer there is no auto-lock, so a failure fails closed.
 pub fn init(app: &AppHandle) {
-    let Ok(app_data_dir) = app.path().app_data_dir() else {
+    let Ok(app_local_data_dir) = app.path().app_local_data_dir() else {
         return;
     };
-    let dir = app_data_dir.join(NOTES_DIR_NAME);
+    let dir = app_local_data_dir.join(NOTES_DIR_NAME);
     let session = NotesSession::new(NotesStore::new(dir), Box::new(RealClock));
     let shared = Arc::clone(&app.state::<NotesState>().shared);
     *lock_shared(&shared) = Some(session);

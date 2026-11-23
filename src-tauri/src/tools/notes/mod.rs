@@ -18,6 +18,7 @@ pub mod search;
 pub mod session;
 pub mod store;
 pub mod webprofile;
+pub mod window;
 pub mod windowgate;
 
 #[cfg(test)]
@@ -46,5 +47,7 @@ mod store_test;
 pub(crate) mod test_support;
 #[cfg(test)]
 mod webprofile_test;
+#[cfg(test)]
+mod window_test;
 #[cfg(test)]
 mod windowgate_test;
