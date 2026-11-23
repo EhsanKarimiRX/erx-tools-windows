@@ -1,0 +1,30 @@
+.notes-window {
+  margin: 24px;
+}
+
+.notes-window h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.notes-window p {
+  margin: 8px 0;
+}
+
+.notes-window input,
+.notes-window textarea {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.notes-window textarea {
+  height: 260px;
+  resize: vertical;
+}
+
+.notes-window-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
