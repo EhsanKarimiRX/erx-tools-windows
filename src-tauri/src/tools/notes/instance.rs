@@ -28,6 +28,16 @@ impl fmt::Debug for InstanceGuard {
     }
 }
 
+// SAFETY: the mutex handle is only an identifier of a kernel object; it was
+// created with initial owner FALSE, so no thread owns the mutex; CloseHandle
+// may run on any thread; the guard has no other state.
+unsafe impl Send for InstanceGuard {}
+
+// SAFETY: the mutex handle is only an identifier of a kernel object; it was
+// created with initial owner FALSE, so no thread owns the mutex; CloseHandle
+// may run on any thread; the guard has no other state.
+unsafe impl Sync for InstanceGuard {}
+
 impl Drop for InstanceGuard {
     fn drop(&mut self) {
         // SAFETY: `handle` came from `CreateMutexW`, is owned by this guard and

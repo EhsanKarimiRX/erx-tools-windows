@@ -339,3 +339,13 @@ fn p16_stale_cleanup_counts_failures() {
     assert!(held.exists());
     drop(handle);
 }
+
+#[test]
+fn p17_delete_constants() {
+    assert_eq!(CLOSE_DELETE_ATTEMPTS, 20);
+    assert_eq!(CLOSE_DELETE_DELAY, Duration::from_millis(500));
+    assert_eq!(EXIT_DELETE_ATTEMPTS, 10);
+    assert_eq!(EXIT_DELETE_DELAY, Duration::from_millis(300));
+    assert_eq!(STALE_DELETE_ATTEMPTS, 3);
+    assert_eq!(STALE_DELETE_DELAY, Duration::from_millis(300));
+}

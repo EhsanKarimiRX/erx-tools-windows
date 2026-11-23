@@ -69,3 +69,18 @@ fn i6_constant_and_debug() {
     let guard = acquire_instance(&unique_name()).unwrap().unwrap();
     assert_eq!(format!("{:?}", guard), "InstanceGuard { .. }");
 }
+
+fn assert_send_sync<T: Send + Sync>() {}
+
+#[test]
+fn i8_guard_is_send_sync() {
+    assert_send_sync::<InstanceGuard>();
+}
+
+#[test]
+fn i9_guard_moves_between_threads() {
+    let name = unique_name();
+    let guard = acquire_instance(&name).unwrap().unwrap();
+    std::thread::spawn(move || drop(guard)).join().unwrap();
+    assert!(acquire_instance(&name).unwrap().is_some());
+}

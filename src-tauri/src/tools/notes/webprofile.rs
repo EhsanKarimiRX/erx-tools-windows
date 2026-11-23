@@ -21,6 +21,16 @@ pub const PROFILE_HEX_LEN: usize = 2 * PROFILE_RANDOM_BYTES;
 /// How many names are tried before creating a folder is given up.
 const CREATE_ATTEMPTS: usize = 8;
 
+/// Delete attempts and delay right after the notes window closes.
+pub const CLOSE_DELETE_ATTEMPTS: u32 = 20;
+pub const CLOSE_DELETE_DELAY: Duration = Duration::from_millis(500);
+/// Delete attempts and delay when the app exits.
+pub const EXIT_DELETE_ATTEMPTS: u32 = 10;
+pub const EXIT_DELETE_DELAY: Duration = Duration::from_millis(300);
+/// Delete attempts and delay when old folders are removed at startup.
+pub const STALE_DELETE_ATTEMPTS: u32 = 3;
+pub const STALE_DELETE_DELAY: Duration = Duration::from_millis(300);
+
 const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
 
 /// The result of removing stale profile folders.
