@@ -1,9 +1,12 @@
 //! Secure Notes: encrypted container (core), see docs/NOTES_FORMAT.md.
 
-// The tool is not wired up yet (a later step); remove this when it is.
+// A few items are used only by the tests today: `clock::days_from_civil`,
+// `crypto::NotesKeys::header`, `store::NotesStore::with_ops` and
+// `store::NotesStore::dir`. Remove this allow once the app itself uses them.
 #![allow(dead_code)]
 
 pub mod clock;
+pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod format;
@@ -14,6 +17,8 @@ pub mod store;
 
 #[cfg(test)]
 mod clock_test;
+#[cfg(test)]
+mod commands_test;
 #[cfg(test)]
 mod crypto_test;
 #[cfg(test)]

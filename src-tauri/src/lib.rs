@@ -20,10 +20,14 @@ pub fn run() {
         .manage(tools::system_manager::awake::commands::AwakeRuntime::default())
         .manage(tools::update_check::commands::UpdateState::default())
         .manage(tools::vault::commands::VaultState::default())
+        .manage(tools::notes::commands::NotesState::default())
         .setup(|app| {
             // Awake startup: resolve the state folder, run the app-start
             // reconcile (R4) and start the 5-second background thread.
             tools::system_manager::awake::commands::init(&app.handle().clone());
+            // Secure Notes: build the session from the app data folder and
+            // start the one-second timer thread (autosave and idle lock).
+            tools::notes::commands::init(&app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -84,6 +88,27 @@ pub fn run() {
             tools::metadata_remover::commands::mr_clean_files,
             tools::metadata_remover::commands::mr_cancel,
             tools::metadata_remover::commands::mr_reveal_files,
+            // Secure Notes: words flows, note operations, lock and save.
+            tools::notes::commands::notes_status,
+            tools::notes::commands::notes_generate_words,
+            tools::notes::commands::notes_refresh_word,
+            tools::notes::commands::notes_confirm_words_saved,
+            tools::notes::commands::notes_retype_words,
+            tools::notes::commands::notes_clear_words,
+            tools::notes::commands::notes_lock,
+            tools::notes::commands::notes_activity,
+            tools::notes::commands::notes_save_state,
+            tools::notes::commands::notes_save_now,
+            tools::notes::commands::notes_get_settings,
+            tools::notes::commands::notes_set_settings,
+            tools::notes::commands::notes_list,
+            tools::notes::commands::notes_get_note,
+            tools::notes::commands::notes_create_note,
+            tools::notes::commands::notes_update_note,
+            tools::notes::commands::notes_delete_note,
+            tools::notes::commands::notes_finish_create,
+            tools::notes::commands::notes_unlock,
+            tools::notes::commands::notes_change_passphrase,
             // Update check: the app's only network access (R3), run solely
             // when the user clicks the update button on the home screen.
             tools::update_check::commands::check_for_updates,
@@ -103,6 +128,13 @@ pub fn run() {
             tools::vault::commands::vault_decrypt_file,
             tools::vault::commands::vault_cancel,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Secure Notes: save and lock on exit (the timer thread ends with
+            // the process; this is the last chance to write the notes).
+            if let tauri::RunEvent::Exit = event {
+                tools::notes::commands::on_exit(app_handle);
+            }
+        });
 }
