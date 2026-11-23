@@ -242,7 +242,8 @@ fn spawn_delete(dir: PathBuf, attempts: u32, delay: Duration) {
 /// Removes the profile folder when the app exits.
 ///
 /// This is the last chance to remove the folder, so it blocks until the
-/// delete finishes. A missing state (early exit) is not an error.
+/// delete finishes. A missing state (early exit) is not an error. At worst
+/// the exit waits about 3 seconds for each folder that WebView2 still holds.
 pub fn on_exit(app: &AppHandle) {
     let Some(state) = app.try_state::<NotesWindowState>() else {
         return;
@@ -255,6 +256,22 @@ pub fn on_exit(app: &AppHandle) {
             EXIT_DELETE_DELAY,
         );
     });
+    // A normal close hands the folder to a background thread that ends with the process,
+    // so sweep what is left. Only the running instance that holds the guard ever makes
+    // these folders, so it may remove them all.
+    let owns_notes = state
+        .instance
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .is_some();
+    if owns_notes {
+        let _ = cleanup_stale_profiles(
+            &std::env::temp_dir(),
+            &[],
+            EXIT_DELETE_ATTEMPTS,
+            EXIT_DELETE_DELAY,
+        );
+    }
 }
 
 /// Opens the hardened Secure Notes window, or focuses it when it is open.

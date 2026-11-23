@@ -201,3 +201,71 @@ fn q7_source_scan_commands() {
     assert_eq!(source.matches("app_local_data_dir()").count(), 1);
     assert_eq!(source.matches("app_data_dir()").count(), 0);
 }
+
+fn body_of<'a>(source: &'a str, signature: &str, closing: &str) -> &'a str {
+    let start = source
+        .find(signature)
+        .unwrap_or_else(|| panic!("signature not found: {signature}"));
+    let rest = &source[start..];
+    let end = rest
+        .find(closing)
+        .unwrap_or_else(|| panic!("closing not found for signature: {signature}"));
+    &rest[..end + closing.len()]
+}
+
+#[test]
+fn q8_focus_guard_in_source() {
+    let source = include_str!("window.rs");
+    let body = body_of(source, "fn focus_existing(&mut self)", "\n    }\n");
+    assert!(body.contains("may_focus(&self.gate)"), "{body}");
+    assert!(
+        body.contains("get_webview_window(NOTES_WINDOW_LABEL)"),
+        "{body}"
+    );
+}
+
+#[test]
+fn q9_main_closes_notes_in_source() {
+    let source = include_str!("window.rs");
+    let body = body_of(source, "pub fn on_destroyed(", "\n}\n");
+    for needle in [
+        "OPENER_WINDOW_LABEL",
+        "get_webview_window(NOTES_WINDOW_LABEL)",
+        ".destroy()",
+        "CLOSE_DELETE_ATTEMPTS",
+        "CLOSE_DELETE_DELAY",
+    ] {
+        assert!(body.contains(needle), "{needle} missing from:\n{body}");
+    }
+}
+
+#[test]
+fn q10_init_uses_stale_timings() {
+    let source = include_str!("window.rs");
+    let body = body_of(source, "pub fn init(", "\n}\n");
+    for needle in [
+        "cleanup_stale_profiles(",
+        "STALE_DELETE_ATTEMPTS",
+        "STALE_DELETE_DELAY",
+    ] {
+        assert!(body.contains(needle), "{needle} missing from:\n{body}");
+    }
+    assert!(!body.contains("CLOSE_DELETE"), "{body}");
+    assert!(!body.contains("EXIT_DELETE"), "{body}");
+}
+
+#[test]
+fn q11_exit_sweeps_in_source() {
+    let source = include_str!("window.rs");
+    let body = body_of(source, "pub fn on_exit(", "\n}\n");
+    for needle in [
+        "release_and_hand_over(",
+        "delete_profile_dir(",
+        "EXIT_DELETE_ATTEMPTS",
+        "EXIT_DELETE_DELAY",
+        "cleanup_stale_profiles(",
+        ".instance",
+    ] {
+        assert!(body.contains(needle), "{needle} missing from:\n{body}");
+    }
+}
