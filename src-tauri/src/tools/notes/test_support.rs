@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -80,4 +81,37 @@ pub(crate) fn scripted_store(
         }),
         retry_once(),
     )
+}
+
+/// A scripted store plus a handle on its call counter, so a test can see
+/// whether a save attempt happened at all.
+pub(crate) fn scripted_store_counted(
+    dir: &Path,
+    fail_rename_calls: Vec<usize>,
+    fail_remove: bool,
+) -> (NotesStore, Arc<ScriptedFs>) {
+    let fs = Arc::new(ScriptedFs {
+        calls: AtomicUsize::new(0),
+        fail_rename_calls,
+        fail_remove,
+    });
+    let store = NotesStore::with_ops(
+        dir.to_path_buf(),
+        Box::new(SharedFs(Arc::clone(&fs))),
+        retry_once(),
+    );
+    (store, fs)
+}
+
+/// Forwards file operations to a shared `ScriptedFs`.
+struct SharedFs(Arc<ScriptedFs>);
+
+impl FsOps for SharedFs {
+    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+        self.0.rename(from, to)
+    }
+
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+        self.0.remove_file(path)
+    }
 }

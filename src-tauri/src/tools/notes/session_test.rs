@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::clock::{Clock, DateParts, TestClock};
@@ -14,7 +15,7 @@ use super::session::{
     PREVIEW_MAX_CHARS, SaveState,
 };
 use super::store::{BACKUP_FILE_NAME, MAIN_FILE_NAME, NotesStore};
-use super::test_support::{TempDir, real_store, scripted_store};
+use super::test_support::{TempDir, real_store, scripted_store, scripted_store_counted};
 use crate::tools::vault::passphrase::{NOTES_WORD_LIMITS, PassphraseSession};
 
 /// Persian "می‌خواهم" with a Persian yeh.
@@ -661,4 +662,204 @@ fn s15_save_now() {
     let before = fs::read(&main).unwrap();
     assert!(session.save_now().is_ok());
     assert_eq!(fs::read(&main).unwrap(), before);
+}
+
+#[test]
+fn s16_autosave_retry_gate() {
+    let clock = test_clock();
+    let guard = TempDir::new();
+    let (creator, words) = create_unlocked_with(real_store(&guard.path), clock.clone());
+    drop(creator);
+
+    // Every rename of this store fails, so every save attempt fails.
+    let (store, fs_calls) = scripted_store_counted(&guard.path, (1..=50).collect(), false);
+    let mut session = NotesSession::new(store, Box::new(clock.clone()));
+    session.unlock(&words).unwrap();
+    session.create_note("note", "body").unwrap();
+
+    clock.advance(AUTOSAVE_DELAY);
+    let tick = session.tick();
+    assert!(tick.autosave_failed);
+    assert!(!tick.autosaved);
+    let after_failure = fs_calls.calls.load(Ordering::SeqCst);
+    assert!(after_failure > 0);
+
+    // Only 3 s after the failure: less than AUTOSAVE_RETRY, no attempt.
+    clock.advance(Duration::from_secs(3));
+    let tick = session.tick();
+    assert!(!tick.autosaved);
+    assert!(!tick.autosave_failed);
+    assert!(tick.locked.is_none());
+    assert_eq!(fs_calls.calls.load(Ordering::SeqCst), after_failure);
+
+    // 5 s after the failure: a new attempt happens.
+    clock.advance(Duration::from_secs(2));
+    let tick = session.tick();
+    assert!(tick.autosave_failed);
+    assert!(fs_calls.calls.load(Ordering::SeqCst) > after_failure);
+}
+
+#[test]
+fn s17_activity_refreshed() {
+    type Operation = Box<dyn Fn(&mut NotesSession, &str)>;
+    let operations: Vec<(&str, Operation)> = vec![
+        ("activity", Box::new(|session, _id| session.activity())),
+        (
+            "settings",
+            Box::new(|session, _id| {
+                session.settings().unwrap();
+            }),
+        ),
+        (
+            "set_settings",
+            Box::new(|session, _id| {
+                session.set_settings(PreviewMode::Titles, 10).unwrap();
+            }),
+        ),
+        (
+            "list",
+            Box::new(|session, _id| {
+                session.list("").unwrap();
+            }),
+        ),
+        (
+            "get_note",
+            Box::new(|session, id| {
+                session.get_note(id).unwrap();
+            }),
+        ),
+        (
+            "create_note",
+            Box::new(|session, _id| {
+                session.create_note("second", "body two").unwrap();
+            }),
+        ),
+        (
+            "update_note",
+            Box::new(|session, id| {
+                session.update_note(id, "edited", "body three").unwrap();
+            }),
+        ),
+        (
+            "delete_note",
+            Box::new(|session, id| {
+                session.delete_note(id).unwrap();
+            }),
+        ),
+    ];
+
+    for (name, operation) in operations {
+        let clock = test_clock();
+        let (guard, mut session, _words) = create_unlocked(clock.clone());
+        let id = session.create_note("note", "body").unwrap().id.clone();
+
+        clock.advance(Duration::from_secs(9 * 60));
+        operation(&mut session, &id);
+        clock.advance(Duration::from_secs(9 * 60));
+        assert!(
+            session.tick().locked.is_none(),
+            "{name} did not refresh the idle timer"
+        );
+
+        clock.advance(Duration::from_secs(2 * 60));
+        assert!(
+            session.tick().locked.is_some(),
+            "{name} kept the session unlocked after the idle limit"
+        );
+        drop(guard);
+    }
+}
+
+#[test]
+fn s18_lock_clears_words() {
+    let clock = test_clock();
+    let (guard, mut session, words) = create_unlocked(clock);
+
+    let view = session.generate_words(5).unwrap();
+    session.confirm_words_saved().unwrap();
+    let joined = view.words.join(" ");
+    assert!(session.retype_words(&joined).unwrap());
+
+    session.lock();
+    session.unlock(&words).unwrap();
+
+    let main = guard.path.join(MAIN_FILE_NAME);
+    let backup = guard.path.join(BACKUP_FILE_NAME);
+    let main_before = fs::read(&main).unwrap();
+    let backup_before = fs::read(&backup).ok();
+
+    // The generated words were wiped by the lock, so there is nothing to use.
+    let error = session.change_passphrase(&words, &settings()).unwrap_err();
+    assert!(matches!(error, NotesError::Words(_)));
+    assert_eq!(fs::read(&main).unwrap(), main_before);
+    assert_eq!(fs::read(&backup).ok(), backup_before);
+
+    // New words, confirmed but not retyped: still refused.
+    session.generate_words(5).unwrap();
+    session.confirm_words_saved().unwrap();
+    assert_eq!(
+        session.change_passphrase(&words, &settings()).unwrap_err(),
+        NotesError::WordsNotRetyped
+    );
+    assert_eq!(fs::read(&main).unwrap(), main_before);
+    assert_eq!(fs::read(&backup).ok(), backup_before);
+}
+
+#[test]
+fn s19_change_passphrase_needs_retype() {
+    let clock = test_clock();
+    let (guard, mut session, words) = create_unlocked(clock);
+    session.generate_words(5).unwrap();
+    session.confirm_words_saved().unwrap();
+
+    let main = guard.path.join(MAIN_FILE_NAME);
+    let backup = guard.path.join(BACKUP_FILE_NAME);
+    let main_before = fs::read(&main).unwrap();
+    let backup_before = fs::read(&backup).ok();
+
+    assert_eq!(
+        session.change_passphrase(&words, &settings()).unwrap_err(),
+        NotesError::WordsNotRetyped
+    );
+    assert_eq!(fs::read(&main).unwrap(), main_before);
+    assert_eq!(fs::read(&backup).ok(), backup_before);
+    assert_eq!(session.list("").unwrap().len(), 0);
+}
+
+#[test]
+fn s20_change_passphrase_resets_main_is_good() {
+    let clock = test_clock();
+    let (guard, mut session, words) = create_unlocked(clock.clone());
+    session.create_note("one", "first").unwrap();
+    clock.advance(AUTOSAVE_DELAY);
+    assert!(session.tick().autosaved);
+    session.create_note("two", "second").unwrap();
+    clock.advance(AUTOSAVE_DELAY);
+    assert!(session.tick().autosaved);
+
+    let main = guard.path.join(MAIN_FILE_NAME);
+    let backup = guard.path.join(BACKUP_FILE_NAME);
+    assert!(main.exists());
+    assert!(backup.exists());
+
+    session.lock();
+    corrupt_body(&main);
+    assert!(session.unlock(&words).unwrap().used_backup);
+
+    let view = session.generate_words(6).unwrap();
+    session.confirm_words_saved().unwrap();
+    let new_words = view.words.join(" ");
+    assert!(session.retype_words(&new_words).unwrap());
+    session.change_passphrase(&words, &settings()).unwrap();
+
+    // change_passphrase writes the same bytes to main and backup. Make the
+    // backup differ so the next save shows whether the old main was rotated
+    // into it.
+    let snapshot = fs::read(&main).unwrap();
+    corrupt_body(&backup);
+
+    let id = session.list("").unwrap().first().unwrap().id.clone();
+    session.update_note(&id, "one", "edited").unwrap();
+    session.save_now().unwrap();
+    assert_eq!(fs::read(&backup).unwrap(), snapshot);
 }
