@@ -10,10 +10,12 @@ pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod format;
+pub mod instance;
 pub mod model;
 pub mod search;
 pub mod session;
 pub mod store;
+pub mod webprofile;
 
 #[cfg(test)]
 mod clock_test;
@@ -24,6 +26,8 @@ mod crypto_test;
 #[cfg(test)]
 mod format_test;
 #[cfg(test)]
+mod instance_test;
+#[cfg(test)]
 mod model_test;
 #[cfg(test)]
 mod search_test;
@@ -33,3 +37,5 @@ mod session_test;
 mod store_test;
 #[cfg(test)]
 pub(crate) mod test_support;
+#[cfg(test)]
+mod webprofile_test;
