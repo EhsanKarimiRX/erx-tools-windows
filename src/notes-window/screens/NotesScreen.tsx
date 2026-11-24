@@ -499,15 +499,17 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     <div className="nw-notes">
       <section className="nw-list-pane" aria-label="Notes list">
         <div className="nw-pane-head">
-          <h2 className="nw-pane-title">Notes</h2>
-          <button
-            type="button"
-            className="nw-button-secondary"
-            onClick={() => void handleNew()}
-            disabled={working}
-          >
-            New note
-          </button>
+          <h2 className="nw-pane-title">List of notes</h2>
+          {selectedId !== null && (
+            <button
+              type="button"
+              className="nw-button-primary"
+              onClick={() => void handleNew()}
+              disabled={working}
+            >
+              New note
+            </button>
+          )}
         </div>
         <input
           type="search"
@@ -726,11 +728,9 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
                   {exportMessage}
                 </span>
               )}
-              {copiedUntil !== null && (
-                <span className="nw-copied" role="status">
-                  Copied.
-                </span>
-              )}
+              <span className="nw-copied-slot" role="status">
+                {copiedUntil !== null ? "Copied." : ""}
+              </span>
             </div>
           </>
         )}

@@ -121,10 +121,6 @@ export default function AboutButton({ version }: { version: string | null }) {
                 ERX Tools is a small, offline toolbox for Windows. In Ehsan&rsquo;s opinion, it is a set of
                 tools that almost everyone who uses Windows will need at some point.
               </p>
-              <p>
-                It was built by combining Claude Sonnet 5.5 with the Z.ai agent, using the GLM Flash
-                models (earlier versions also used DeepSeek Flash).
-              </p>
               <p className="about-license">
                 Passphrase words in the Quantum Resistance Vault come from the EFF Large Wordlist
                 for Passphrases by the Electronic Frontier Foundation, licensed under CC BY 3.0 US
