@@ -22,6 +22,7 @@ pub fn run() {
         .manage(tools::vault::commands::VaultState::default())
         .manage(tools::notes::commands::NotesState::default())
         .manage(tools::notes::window::NotesWindowState::default())
+        .manage(tools::notes::clipboard::NotesClipboardState::default())
         .setup(|app| {
             // Awake startup: resolve the state folder, run the app-start
             // reconcile (R4) and start the 5-second background thread.
@@ -32,6 +33,7 @@ pub fn run() {
             let handle = app.handle().clone();
             if tools::notes::window::init(&handle) {
                 tools::notes::commands::init(&handle);
+                tools::notes::clipboard::init(&handle);
             }
             Ok(())
         })
@@ -120,6 +122,8 @@ pub fn run() {
             // Secure Notes window: open the hardened window and close it.
             tools::notes::window::notes_open_window,
             tools::notes::window::notes_close_window,
+            // Secure Notes clipboard: Rust writes the selected text.
+            tools::notes::clipboard::notes_copy_text,
             // Update check: the app's only network access (R3), run solely
             // when the user clicks the update button on the home screen.
             tools::update_check::commands::check_for_updates,
@@ -149,6 +153,8 @@ pub fn run() {
                 // First save and lock the notes, then remove the WebView2
                 // profile folder (order matters).
                 tools::notes::window::on_exit(app_handle);
+                // Remove our text from the clipboard if it is still ours.
+                tools::notes::clipboard::on_exit(app_handle);
             }
         });
 }

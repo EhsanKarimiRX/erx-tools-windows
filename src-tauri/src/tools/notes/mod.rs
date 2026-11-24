@@ -5,6 +5,7 @@
 // `store::NotesStore::dir`. Remove this allow once the app itself uses them.
 #![allow(dead_code)]
 
+pub mod clipboard;
 pub mod clock;
 pub mod commands;
 pub mod crypto;
@@ -21,6 +22,8 @@ pub mod webprofile;
 pub mod window;
 pub mod windowgate;
 
+#[cfg(test)]
+mod clipboard_test;
 #[cfg(test)]
 mod clock_test;
 #[cfg(test)]

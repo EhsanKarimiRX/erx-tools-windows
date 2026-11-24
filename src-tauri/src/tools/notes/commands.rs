@@ -125,6 +125,13 @@ pub struct NotesState {
     shared: Arc<NotesShared>,
 }
 
+impl NotesState {
+    /// The shared session, for the other Secure Notes modules.
+    pub(crate) fn shared(&self) -> Arc<NotesShared> {
+        Arc::clone(&self.shared)
+    }
+}
+
 /// Locks the session. A poisoned lock is recovered: the app aborts on a panic
 /// in release builds, so this only matters in tests and development.
 pub(crate) fn lock_shared(shared: &NotesShared) -> MutexGuard<'_, Option<NotesSession>> {
