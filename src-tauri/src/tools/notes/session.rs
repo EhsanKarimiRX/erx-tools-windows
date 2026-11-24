@@ -4,15 +4,15 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
 use super::clock::{Clock, utc_parts};
 use super::crypto::{CreateSettings, NotesKeys};
 use super::error::NotesError;
 use super::model::{
-    MAX_AUTO_LOCK_MINUTES, MIN_AUTO_LOCK_MINUTES, NotesData, PreviewMode, Settings, default_title,
-    preview_line,
+    MAX_AUTO_LOCK_MINUTES, MIN_AUTO_LOCK_MINUTES, Note, NotesData, PreviewMode, Settings,
+    default_title, preview_line,
 };
 use super::search::search_titles;
 use super::store::{LoadSource, NotesStore, SaveReport};
@@ -74,7 +74,7 @@ pub struct NoteListItem {
 
 /// One note with its text. The manual `Debug` and `Drop` keep the text out
 /// of logs and wipe it when it is no longer needed.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteView {
     pub id: String,
@@ -493,6 +493,27 @@ impl NotesSession {
             created: note.created,
             modified: note.modified,
         })
+    }
+
+    /// A copy of the open notes for a full export. Fails when locked.
+    pub fn export_data(&self) -> Result<NotesData, NotesError> {
+        let unlocked = self.unlocked.as_ref().ok_or(NotesError::NotUnlocked)?;
+        Ok(unlocked.data.clone())
+    }
+
+    /// Appends notes to the open notes, giving colliding ids a new value.
+    /// Returns how many notes were added.
+    pub fn import_notes(&mut self, imported: &[Note]) -> Result<usize, NotesError> {
+        let now = self.clock.now();
+        let unlocked = self.unlocked.as_mut().ok_or(NotesError::NotUnlocked)?;
+        let count = super::export::append_notes(&mut unlocked.data, imported.to_vec())?;
+        if count > 0 {
+            unlocked.dirty = true;
+            unlocked.save_failed = false;
+            unlocked.last_edit = Some(now);
+            unlocked.last_activity = now;
+        }
+        Ok(count)
     }
 
     pub fn create_note(&mut self, title: &str, body: &str) -> Result<NoteView, NotesError> {

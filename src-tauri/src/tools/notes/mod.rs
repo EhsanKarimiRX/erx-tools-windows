@@ -10,6 +10,7 @@ pub mod clock;
 pub mod commands;
 pub mod crypto;
 pub mod error;
+pub mod export;
 pub mod format;
 pub mod hardening;
 pub mod instance;
@@ -30,6 +31,8 @@ mod clock_test;
 mod commands_test;
 #[cfg(test)]
 mod crypto_test;
+#[cfg(test)]
+mod export_test;
 #[cfg(test)]
 mod format_test;
 #[cfg(test)]

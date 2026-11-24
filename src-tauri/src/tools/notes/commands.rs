@@ -5,22 +5,29 @@
 //! asynchronous and do their work on a blocking thread; all other commands are
 //! asynchronous too, so they never run on the main UI thread.
 
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
 use super::clock::RealClock;
-use super::crypto::{CreateSettings, NOTES_KDF_TARGET, tune_kdf};
+use super::crypto::{CreateSettings, NOTES_KDF_TARGET, create, open, tune_kdf};
 use super::error::NotesError;
-use super::model::PreviewMode;
+use super::export::{
+    EXPORT_DEFAULT_PASSPHRASE, export_payload_all, export_payload_single, import_payload,
+    is_encrypted_container, note_to_plain,
+};
+use super::model::{NOTE_FORMAT_TEXT, Note, NotesData, PreviewMode, new_note_id};
 use super::session::{
     LockReport, NoteListItem, NoteView, NotesSession, NotesStatus, RefreshView, SaveState,
     SettingsView, TickOutcome, UnlockOutcome, WordsView,
 };
 use super::store::NotesStore;
+use crate::tools::vault::passphrase::normalize_passphrase;
 
 /// The label of the hardened notes window.
 pub const NOTES_WINDOW_LABEL: &str = "notes";
@@ -543,4 +550,220 @@ pub async fn notes_change_passphrase(
     })
     .await
     .map_err(|_| NotesCommandError::internal())?
+}
+
+/// A short, safe file name stem taken from a note title.
+fn safe_file_stem(title: &str) -> String {
+    const MAX_STEM_CHARS: usize = 80;
+    let mut stem = String::with_capacity(title.len().min(MAX_STEM_CHARS));
+    for ch in title.chars().take(MAX_STEM_CHARS) {
+        let clean = if ch.is_control()
+            || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+        {
+            '_'
+        } else {
+            ch
+        };
+        stem.push(clean);
+    }
+    let trimmed = stem.trim().trim_end_matches('.').trim();
+    if trimmed.is_empty() {
+        return "note".to_string();
+    }
+    let upper = trimmed.to_ascii_uppercase();
+    let reserved = matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (upper.len() == 4
+            && (upper.starts_with("COM") || upper.starts_with("LPT"))
+            && upper.as_bytes()[3].is_ascii_digit());
+    if reserved {
+        return format!("_{trimmed}");
+    }
+    trimmed.to_string()
+}
+
+/// Adds the extension when the chosen name has none.
+fn ensure_extension(path: PathBuf, extension: &str) -> PathBuf {
+    if path.extension().is_none() {
+        path.with_extension(extension)
+    } else {
+        path
+    }
+}
+
+/// Encrypts one export payload with the fixed export passphrase.
+fn encrypt_export(payload: &[u8]) -> Result<Vec<u8>, NotesCommandError> {
+    let settings = production_settings()?;
+    let normalized = normalize_passphrase(EXPORT_DEFAULT_PASSPHRASE);
+    let (file, keys) = create(normalized.as_str(), &settings, payload)?;
+    drop(keys);
+    Ok(file)
+}
+
+/// Writes one note as plain text or as an encrypted single-note file.
+fn write_note_export(path: &Path, note: &NoteView, format: &str) -> Result<(), NotesCommandError> {
+    if format == "erxnote" {
+        let payload = export_payload_single(note)?;
+        let file = encrypt_export(payload.as_slice())?;
+        std::fs::write(path, file.as_slice()).map_err(|_| NotesError::Io)?;
+    } else {
+        let plain = Zeroizing::new(note_to_plain(note, format)?);
+        std::fs::write(path, plain.as_bytes()).map_err(|_| NotesError::Io)?;
+    }
+    Ok(())
+}
+
+fn export_note_blocking(
+    app: &AppHandle,
+    note: NoteView,
+    format: &str,
+) -> Result<Option<String>, NotesCommandError> {
+    let (label, extension) = match format {
+        "txt" => ("Text file", "txt"),
+        "md" => ("Markdown file", "md"),
+        "erxnote" => ("ERX Secure Notes file", "erxnote"),
+        _ => return Err(NotesError::DataInvalid.into()),
+    };
+    let target = app
+        .dialog()
+        .file()
+        .add_filter(label, &[extension])
+        .set_file_name(format!("{}.{extension}", safe_file_stem(&note.title)))
+        .blocking_save_file();
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    let path = ensure_extension(target.into_path().map_err(|_| NotesError::Io)?, extension);
+    if path.as_os_str().is_empty() {
+        return Ok(None);
+    }
+    write_note_export(&path, &note, format)?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+fn export_all_blocking(
+    app: &AppHandle,
+    data: NotesData,
+) -> Result<Option<String>, NotesCommandError> {
+    let target = app
+        .dialog()
+        .file()
+        .add_filter("ERX Secure Notes backup", &["erxnote"])
+        .set_file_name("secure-notes-backup.erxnote")
+        .blocking_save_file();
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    let path = ensure_extension(target.into_path().map_err(|_| NotesError::Io)?, "erxnote");
+    if path.as_os_str().is_empty() {
+        return Ok(None);
+    }
+    let payload = export_payload_all(&data)?;
+    let file = encrypt_export(payload.as_slice())?;
+    std::fs::write(&path, file.as_slice()).map_err(|_| NotesError::Io)?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+fn unix_now() -> Result<i64, NotesError> {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| NotesError::Internal)?
+        .as_secs();
+    i64::try_from(seconds).map_err(|_| NotesError::Internal)
+}
+
+/// Reads one file and appends its notes to the open session.
+fn import_blocking(
+    app: &AppHandle,
+    shared: &NotesShared,
+) -> Result<Option<usize>, NotesCommandError> {
+    let target = app
+        .dialog()
+        .file()
+        .add_filter("ERX Secure Notes or text", &["erxnote", "txt", "md"])
+        .add_filter("All files", &["*"])
+        .blocking_pick_file();
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    let path = target.into_path().map_err(|_| NotesError::Io)?;
+    let bytes = std::fs::read(&path).map_err(|_| NotesError::Io)?;
+
+    let notes = if is_encrypted_container(&bytes) {
+        let normalized = normalize_passphrase(EXPORT_DEFAULT_PASSPHRASE);
+        let (keys, payload) = open(&bytes, normalized.as_str())?;
+        drop(keys);
+        let mut staging = NotesData::new_empty();
+        import_payload(payload.as_slice(), &mut staging)?;
+        std::mem::take(&mut staging.notes)
+    } else {
+        let body = Zeroizing::new(String::from_utf8(bytes).map_err(|_| NotesError::DataInvalid)?);
+        let title = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| !stem.is_empty())
+            .unwrap_or("Imported note")
+            .to_string();
+        let created = unix_now()?;
+        vec![Note {
+            id: new_note_id()?,
+            title,
+            body: body.to_string(),
+            format: NOTE_FORMAT_TEXT.to_string(),
+            created,
+            modified: created,
+        }]
+    };
+
+    let count = with_session(shared, |session| session.import_notes(&notes))?;
+    Ok(Some(count))
+}
+
+/// Saves one note as `txt`, `md` or an encrypted `erxnote` file. Returns the
+/// written path, or `None` when the dialog was cancelled.
+#[tauri::command]
+pub async fn notes_export_note(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, NotesState>,
+    id: String,
+    format: String,
+) -> Result<Option<String>, NotesCommandError> {
+    check_window(&window)?;
+    if !matches!(format.as_str(), "txt" | "md" | "erxnote") {
+        return Err(NotesError::DataInvalid.into());
+    }
+    let note = with_session(&state.shared, |session| session.get_note(&id))?;
+    tauri::async_runtime::spawn_blocking(move || export_note_blocking(&app, note, &format))
+        .await
+        .map_err(|_| NotesCommandError::internal())?
+}
+
+/// Saves every note as one encrypted `erxnote` backup. Returns the written
+/// path, or `None` when the dialog was cancelled.
+#[tauri::command]
+pub async fn notes_export_all(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, NotesState>,
+) -> Result<Option<String>, NotesCommandError> {
+    check_window(&window)?;
+    let data = with_session(&state.shared, |session| session.export_data())?;
+    tauri::async_runtime::spawn_blocking(move || export_all_blocking(&app, data))
+        .await
+        .map_err(|_| NotesCommandError::internal())?
+}
+
+/// Appends the notes of an `erxnote` backup or a plain `txt` / `md` file.
+/// Returns how many notes were added, or `None` when the dialog was cancelled.
+#[tauri::command]
+pub async fn notes_import(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, NotesState>,
+) -> Result<Option<usize>, NotesCommandError> {
+    check_window(&window)?;
+    let shared = Arc::clone(&state.shared);
+    tauri::async_runtime::spawn_blocking(move || import_blocking(&app, &shared))
+        .await
+        .map_err(|_| NotesCommandError::internal())?
 }

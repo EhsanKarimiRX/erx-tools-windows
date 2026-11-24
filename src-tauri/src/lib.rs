@@ -125,6 +125,10 @@ pub fn run() {
             // Secure Notes clipboard: Rust writes the selected text.
             tools::notes::clipboard::notes_copy_text,
             tools::notes::clipboard::notes_copy_words,
+            // Secure Notes export and restore: Rust-side dialogs and files.
+            tools::notes::commands::notes_export_note,
+            tools::notes::commands::notes_export_all,
+            tools::notes::commands::notes_import,
             // Update check: the app's only network access (R3), run solely
             // when the user clicks the update button on the home screen.
             tools::update_check::commands::check_for_updates,

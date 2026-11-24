@@ -9,7 +9,7 @@ use std::time::Duration;
 use super::clock::{Clock, DateParts, TestClock};
 use super::crypto::CreateSettings;
 use super::error::NotesError;
-use super::model::PreviewMode;
+use super::model::{Note, PreviewMode};
 use super::session::{
     AUTOSAVE_DELAY, AUTOSAVE_RETRY, LockReport, NoteView, NotesSession, NotesStatus,
     PREVIEW_MAX_CHARS, SaveState,
@@ -965,4 +965,68 @@ fn s28_words_text_works_when_unlocked() {
         session.words_text().unwrap().as_str(),
         view.words.join(" ").as_str()
     );
+}
+
+#[test]
+fn sn_export_data_requires_unlock() {
+    let clock = test_clock();
+    let (_guard, session) = fresh_session(clock);
+    assert_eq!(session.export_data().unwrap_err(), NotesError::NotUnlocked);
+}
+
+#[test]
+fn sn_import_appends() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    assert_eq!(session.list("").unwrap().len(), 0);
+
+    let imported = [
+        Note::new(
+            "0123456789abcdef0123456789abcdef".to_string(),
+            "first".to_string(),
+            "body one".to_string(),
+            1_700_000_100,
+        ),
+        Note::new(
+            "fedcba9876543210fedcba9876543210".to_string(),
+            "second".to_string(),
+            "body two".to_string(),
+            1_700_000_200,
+        ),
+    ];
+    assert_eq!(session.import_notes(&imported).unwrap(), 2);
+    assert_eq!(session.list("").unwrap().len(), 2);
+    assert_eq!(session.save_state(), SaveState::Pending);
+
+    let titles: Vec<String> = session
+        .list("")
+        .unwrap()
+        .into_iter()
+        .map(|item| item.title)
+        .collect();
+    assert!(titles.contains(&"first".to_string()));
+    assert!(titles.contains(&"second".to_string()));
+}
+
+#[test]
+fn sn_import_regenerates_colliding_id() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    session.create_note("existing", "body").unwrap();
+    assert_eq!(session.list("").unwrap().len(), 1);
+    let existing_id = id_of(&mut session, "existing");
+
+    let imported = [Note::new(
+        existing_id.clone(),
+        "imported".to_string(),
+        "other body".to_string(),
+        1_700_000_300,
+    )];
+    assert_eq!(session.import_notes(&imported).unwrap(), 1);
+    assert_eq!(session.list("").unwrap().len(), 2);
+
+    let imported_id = id_of(&mut session, "imported");
+    assert_ne!(imported_id, existing_id);
+    assert_eq!(imported_id.len(), 32);
+    assert_eq!(id_of(&mut session, "existing"), existing_id);
 }

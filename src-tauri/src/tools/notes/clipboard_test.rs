@@ -425,7 +425,7 @@ fn c13_source_scan_lib_and_commands() {
             .count(),
         1
     );
-    assert_eq!(commands.matches("#[tauri::command").count(), 20);
+    assert_eq!(commands.matches("#[tauri::command").count(), 23);
 }
 
 /// Opens the clipboard for reading, with the same retry as the module.
