@@ -1,30 +1,380 @@
-.notes-window {
-  margin: 24px;
+/* Secure Notes window. Colours and the font come from src/styles/theme.css and
+   src/styles/fonts.css; this file only composes them. */
+
+.nw-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-notes);
+  font-size: 14px;
 }
 
-.notes-window h1 {
+/* ---------- Header ---------- */
+
+.nw-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.nw-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.nw-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nw-save {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.nw-save-failed {
+  color: var(--error);
+}
+
+/* ---------- Body ---------- */
+
+.nw-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.nw-muted {
+  color: var(--text-muted);
+}
+
+.nw-centered {
+  max-width: 720px;
+  margin: 40px auto;
+}
+
+.nw-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.nw-notice {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* ---------- Buttons ---------- */
+
+.nw-button-primary,
+.nw-button-secondary,
+.nw-button-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.nw-button-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.nw-button-primary:hover:enabled {
+  filter: brightness(1.08);
+}
+
+.nw-button-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.nw-button-secondary:hover:enabled {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.nw-button-danger {
+  background: var(--error);
+  color: var(--surface);
+}
+
+.nw-button-primary:disabled,
+.nw-button-secondary:disabled,
+.nw-button-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.nw-root button:focus-visible,
+.nw-root input:focus-visible,
+.nw-root select:focus-visible,
+.nw-root textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.nw-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---------- Lock failure ---------- */
+
+.nw-lock-error {
+  flex: 0 0 auto;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.nw-lock-error p {
   margin: 0 0 8px;
-  font-size: 22px;
 }
 
-.notes-window p {
-  margin: 8px 0;
+.nw-lock-error > p:first-child {
+  color: var(--error);
 }
 
-.notes-window input,
-.notes-window textarea {
-  display: block;
+/* ---------- Damaged-file banner ---------- */
+
+.nw-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.nw-banner p {
+  margin: 0;
+}
+
+/* ---------- Create and unlock screens ---------- */
+
+.nw-screen {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.nw-screen h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.nw-screen p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.nw-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nw-field label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.nw-input,
+.nw-select,
+.nw-textarea {
   width: 100%;
-  margin: 8px 0;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
 }
 
-.notes-window textarea {
-  height: 260px;
+.nw-textarea {
   resize: vertical;
 }
 
-.notes-window-actions {
-  display: flex;
+.nw-error {
+  color: var(--error);
+}
+
+.nw-warning {
+  color: var(--error);
+}
+
+/* ---------- Word grid (same idea as the Vault's) ---------- */
+
+.nw-words {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 8px;
-  margin: 12px 0;
+}
+
+.nw-word {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.nw-word-number {
+  min-width: 16px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.nw-word-text {
+  font-size: 14px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.nw-word-replace {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 3px 8px;
+  background: none;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nw-word-replace:hover:enabled {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.nw-word-replace:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.nw-strength {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ---------- Copy words and its countdown ---------- */
+
+.nw-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.nw-copied {
+  font-size: 13px;
+}
+
+.nw-blink {
+  font-weight: 700;
+  animation: nw-blink 1.1s ease-in-out infinite;
+}
+
+@keyframes nw-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nw-blink {
+    animation: none;
+    text-decoration: underline;
+  }
+}
+
+.nw-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- Notes screen skeleton (N8b fills it) ---------- */
+
+.nw-notes {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: clamp(200px, 30%, 320px) 1fr;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.nw-list-pane {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.nw-editor-pane {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--surface);
+}
+
+.nw-pane-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
 }
