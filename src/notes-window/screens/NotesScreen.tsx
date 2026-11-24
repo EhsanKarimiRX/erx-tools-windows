@@ -658,16 +658,27 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
                 >
                   <Redo2 size={16} aria-hidden="true" />
                 </button>
-                <button
-                  type="button"
-                  className="nw-toolbar-btn"
-                  onClick={() => void handleCopy()}
-                  disabled={!canCopy || working || loadingNote}
-                  title="Copy note text"
-                  aria-label="Copy note text"
-                >
-                  <Copy size={16} aria-hidden="true" />
-                </button>
+                <span className="nw-popup-anchor">
+                  <button
+                    type="button"
+                    className="nw-toolbar-btn"
+                    onClick={() => void handleCopy()}
+                    disabled={!canCopy || working || loadingNote}
+                    title="Copy note text"
+                    aria-label="Copy note text"
+                  >
+                    <Copy size={16} aria-hidden="true" />
+                  </button>
+                  {copiedUntil !== null && (
+                    <span
+                      className="nw-popup"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      Copied.
+                    </span>
+                  )}
+                </span>
               </div>
               <div
                 className="nw-export"
@@ -713,6 +724,11 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
                     </button>
                   </div>
                 )}
+                {exportMessage !== null && (
+                  <span className="nw-popup" role="status" aria-live="polite">
+                    {exportMessage}
+                  </span>
+                )}
               </div>
               <button
                 type="button"
@@ -723,14 +739,6 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
                 <Trash2 size={14} aria-hidden="true" />
                 Delete
               </button>
-              {exportMessage !== null && (
-                <span className="nw-status" role="status">
-                  {exportMessage}
-                </span>
-              )}
-              <span className="nw-copied-slot" role="status">
-                {copiedUntil !== null ? "Copied." : ""}
-              </span>
             </div>
           </>
         )}
