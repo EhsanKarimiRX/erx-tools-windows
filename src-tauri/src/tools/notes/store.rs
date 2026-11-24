@@ -152,10 +152,12 @@ impl NotesStore {
     }
 
     /// A store with a caller-supplied file system and retry policy.
+    #[allow(dead_code)] // used by tests only
     pub fn with_ops(dir: PathBuf, ops: Box<dyn FsOps>, retry: RetryPolicy) -> NotesStore {
         NotesStore { dir, ops, retry }
     }
 
+    #[allow(dead_code)] // used by tests only
     pub fn dir(&self) -> &Path {
         &self.dir
     }

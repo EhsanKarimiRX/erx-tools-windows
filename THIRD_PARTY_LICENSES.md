@@ -1,6 +1,6 @@
 # Third-party licenses for ERX Tools
 
-ERX Tools is MIT-licensed. It includes the following third-party components, each under its own license. Generated for version 0.3.0.
+ERX Tools is MIT-licensed. It includes the following third-party components, each under its own license. Generated for version 0.5.0.
 
 Windows components such as WebView2 and the HEIF/HEVC codecs are provided by Microsoft and are not part of this file.
 
@@ -4930,7 +4930,7 @@ SOFTWARE.
 
 Used by:
 
-- [erx-tools 0.3.0](https://github.com/EhsanKarimiRX/erx-tools-windows)
+- [erx-tools 0.5.0](https://github.com/EhsanKarimiRX/erx-tools-windows)
 - [brotli-decompressor 6.2.0](https://github.com/dropbox/rust-brotli-decompressor)
 - [cargo_toml 1.0.1](https://gitlab.com/lib.rs/cargo_toml)
 - [dpi 0.1.2](https://github.com/rust-windowing/winit)

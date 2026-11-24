@@ -52,9 +52,9 @@ Parsing is strict. The checks run in this order: length, magic, version, flags, 
 
 ## 5. Changing the words
 
-Changing the words is not a separate operation. The caller creates a new file with the new words, which makes a new UUID, salt, data key and body key. An old file and the old words cannot open the new file. The file store wraps this as a passphrase change; see "Files and saving".
+Changing the words is not a separate operation. The caller creates a new file with the new words, which makes a new UUID, salt, data key and body key. An old file and the old words cannot open the new file. The file store wraps this as a passphrase change; see section 6.
 
-## Files and saving
+## 6. Files and saving
 
 The file store uses two names in one folder:
 
@@ -91,7 +91,7 @@ What this does not do:
 - The file date and the file size (in 256 KiB steps) stay visible.
 - A crash can lose the last edit.
 
-## 6. Notes data (the payload)
+## 7. Notes data (the payload)
 
 The payload is UTF-8 JSON. With default settings and one note it looks exactly like this (one line, no spaces added):
 
@@ -121,14 +121,19 @@ Note text is stored exactly as typed: the half-space and Persian digits are not 
 
 Search looks only at titles, never at bodies. The letters Arabic yeh and Arabic kaf match Persian yeh and Persian kaf, and case is ignored; Persian digits and Latin digits are not treated as equal.
 
-While the notes are open, the text is kept in the memory of the app. The app wipes the strings when a note is removed or the notes are locked, but this is best effort: copies made by the JSON parser or by Windows (page file, hibernation) are not controlled.
+While the notes are open, the text is kept in the memory of the app. When a note is removed or the notes are locked, the app overwrites the note's id, title and body text in place (zeroize). This is best effort only: copies made by the JSON parser, the allocator, or by Windows (page file, hibernation) are not controlled, and the `format` field and timestamps are not wiped.
 
-## 7. Errors
+## 8. Errors
+
+| Condition | Error | Message |
+|---|---|---|
+Container and key errors (raised while opening or saving a file):
 
 | Condition | Error | Message |
 |---|---|---|
 | Wrong magic | `NotANotesFile` | This file is not an ERX Secure Notes file. |
 | Version other than 1, or any flag bit set | `UnsupportedVersion` | This notes file needs a different version of ERX Tools. |
+| A newer payload version than this code knows | `DataTooNew` | These notes were saved by a newer version of ERX Tools. |
 | Header length not 192, KDF id not 1, reserved bytes not zero, file too short, file length not a multiple of 262,144, or the wrapped key or body fails authentication | `DamagedFile` | The notes file is damaged. |
 | Commitment tag mismatch: wrong words or a changed UUID, salt, wrap nonce, wrapped key or commitment tag | `WrongPassphraseOrHeader` | The words are wrong, or the notes file is damaged. |
 | Argon2 parameters outside the allowed range | `InvalidKdfParams` | The notes file has invalid key settings. |
@@ -137,10 +142,34 @@ While the notes are open, the text is kept in the memory of the app. The app wip
 | Payload larger than 67,108,864 bytes when saving | `NotesTooLarge` | The notes are too large to save. |
 | Windows random source fails | `RandomUnavailable` | Could not get secure random numbers from Windows. |
 | Internal length check fails | `Internal` | Internal error in Secure Notes. |
+| Payload does not match the schema or limits | `DataInvalid` | The notes data is not valid. |
+
+Data errors (raised while validating the payload):
+
+| Condition | Error | Message |
+|---|---|---|
+| More than 10,000 notes | `TooManyNotes` | There are too many notes. |
+| Note body larger than 4,194,304 bytes | `NoteTooLarge` | This note is too large. |
+| Title larger than 1,024 bytes | `TitleTooLong` | The title is too long. |
+| Requested note id not found | `NoteNotFound` | That note was not found. |
+
+Store and session errors (raised by the file store and the open session):
+
+| Condition | Error | Message |
+|---|---|---|
+| The notes file could not be read or written | `Io` | The notes file could not be read or written. |
+| No notes file exists in the folder | `NoNotesFile` | No notes file was found. |
+| A notes file already exists | `AlreadyExists` | A notes file already exists. |
+| The saved file did not pass the read-back safety check | `VerifyFailed` | The saved notes did not pass the safety check, so they were not used. |
+| The notes are locked | `NotUnlocked` | The notes are locked. |
+| The notes are already unlocked | `AlreadyUnlocked` | The notes are already unlocked. |
+| The words were not confirmed as saved | `WordsNotConfirmed` | Confirm that you saved the words first. |
+| The words were not retyped correctly | `WordsNotRetyped` | Type the words again to confirm that you saved them. |
+| A words-validation failure (count or list) | `Words(String)` | The message carried by the error. |
 
 A wrong passphrase and a changed header that passes the structural checks give the same error: `WrongPassphraseOrHeader`.
 
-## 8. Limits
+## 9. Limits
 
 | Item | Value |
 |---|---|
@@ -155,7 +184,7 @@ A wrong passphrase and a changed header that passes the structural checks give t
 
 Every file length is a multiple of 262,144 bytes.
 
-## 9. What an attacker with only the file can see
+## 10. What an attacker with only the file can see
 
 - That it is an ERX notes file, and the format version.
 - The Argon2 settings, the salt and the file UUID.
@@ -163,7 +192,7 @@ Every file length is a multiple of 262,144 bytes.
 - The file size in steps of 256 KiB, so the real payload size is only known roughly.
 - The file date that the file system shows.
 
-## 10. What the container does not protect against
+## 11. What the container does not protect against
 
 - Malware, a keylogger or screen capture on the PC, and anyone who sees or gets the words.
 - Memory written to disk by Windows (page file, hibernation) while the file is open.
@@ -172,12 +201,11 @@ Every file length is a multiple of 262,144 bytes.
 
 Strength depends on the words. The passphrase code accepts 5 to 12 words. With the 7776-word list a word is about 12.9 bits, so 5 words are about 64.6 bits and 8 words are about 103.4 bits.
 
-## 11. Versioning
+## 12. Versioning
 
 The version field is 1. A different version or any flag bit is refused with `UnsupportedVersion`. The 31 reserved header bytes must be zero; anything else is `DamagedFile`.
 
-## 12. Tests
-
+## 13. Tests
 The tests in `format_test.rs` and `crypto_test.rs` check:
 
 - The header offsets and sizes add up to 192 bytes, and a header survives a write and parse round trip.

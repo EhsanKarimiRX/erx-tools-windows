@@ -85,6 +85,7 @@ impl WindowGate {
     }
 
     /// True in Opening and Open.
+    #[allow(dead_code)] // used by tests only
     pub fn is_active(&self) -> bool {
         let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         !matches!(&*state, GateState::Closed)

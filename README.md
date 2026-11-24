@@ -67,8 +67,16 @@ See what is hidden inside photos and videos (GPS location, camera and lens, date
 - **Limits, honestly:** only metadata fields are removed. It cannot remove what is visible in the picture or video, watermarks, the file name, the dates of the new file, traces inside the video stream itself (for example an encoder name), or other copies of the file. It is not a guarantee of anonymity.
 - What is removed in each format and how the safety checks work is described in [docs/METADATA_REMOVER.md](docs/METADATA_REMOVER.md).
 
-### Encrypted Notes
-Planned for a later version. Currently a placeholder tile.
+### Secure Notes
+Keep private notes in an encrypted file on your PC, opened in a hardened window that is isolated from the rest of the app and from the browser. Nothing is uploaded.
+- **File:** one encrypted file per user profile folder, `secure-notes.erxnotes`, with an automatic backup (`secure-notes.erxnotes.bak`). The format is documented in [docs/NOTES_FORMAT.md](docs/NOTES_FORMAT.md).
+- **Passphrase:** 5 to 12 random words from the same word list as the Vault. There is no recovery: **if the words are lost, the notes are lost.**
+- **Hardened window:** Secure Notes opens in its own window with an isolated, incognito profile, no autofill, no password saving, no right-click menu, no browser shortcuts, no DevTools and screen-capture protection. The window is hidden until its settings are applied.
+- **Editor:** RTL-friendly rich text with undo/redo, search by title, save indicator, auto-save every 2 seconds, and auto-lock after 10 minutes of inactivity (configurable). Copying words uses a 30-second countdown that clears the clipboard.
+- **Export and restore:** export a single note as text, Markdown or an encrypted `.erxnote` file, or export the whole notebook as one encrypted backup. Restoring appends the notes and regenerates duplicate ids; it never replaces your existing notes.
+- **Settings:** preview mode (titles or first line), auto-lock minutes, and changing the passphrase (the file is re-encrypted with new words and new keys).
+- **Clipboard:** words are copied by Rust code, never by the web page, and the clipboard is cleared after 30 seconds if it still holds them, and at exit.
+- **Limits, honestly:** the code has had no professional security audit. Windows memory (page file, hibernation) and malware on the PC are outside its protection. After a hard kill the temporary profile folder is swept at the next start.
 
 ## About the app
 

@@ -79,6 +79,7 @@ impl std::fmt::Debug for NotesKeys {
 
 impl NotesKeys {
     /// The parsed header of this file.
+    #[allow(dead_code)] // used by tests only
     pub fn header(&self) -> Result<Header, NotesError> {
         Header::parse(&self.header_bytes)
     }

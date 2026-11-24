@@ -29,6 +29,7 @@ pub struct DateParts {
 }
 
 /// Days since 1970-01-01 of a civil date (standard civil algorithm).
+#[allow(dead_code)] // used by tests only
 pub(crate) fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
     let year = i64::from(year);
     let month = i64::from(month);

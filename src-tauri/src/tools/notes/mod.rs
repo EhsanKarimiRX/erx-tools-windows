@@ -1,9 +1,6 @@
 //! Secure Notes: encrypted container (core), see docs/NOTES_FORMAT.md.
 
-// A few items are used only by the tests today: `clock::days_from_civil`,
-// `crypto::NotesKeys::header`, `store::NotesStore::with_ops` and
-// `store::NotesStore::dir`. Remove this allow once the app itself uses them.
-#![allow(dead_code)]
+// Items that are test-only carry their own `#[allow(dead_code)]`.
 
 pub mod clipboard;
 pub mod clock;
