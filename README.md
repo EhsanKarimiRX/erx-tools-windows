@@ -77,6 +77,7 @@ Keep private notes in an encrypted file on your PC, opened in a hardened window 
 - **Settings:** preview mode (titles or first line), auto-lock minutes, and changing the passphrase (the file is re-encrypted with new words and new keys).
 - **Clipboard:** words are copied by Rust code, never by the web page, and the clipboard is cleared after 30 seconds if it still holds them, and at exit.
 - **Limits, honestly:** the code has had no professional security audit. Windows memory (page file, hibernation) and malware on the PC are outside its protection. After a hard kill the temporary profile folder is swept at the next start.
+- **If you forget the words, there is no recovery and no reset.** To start over with an empty notebook, close ERX Tools completely (including the Secure Notes window) and delete everything in `%LOCALAPPDATA%\com.erxtools.windows\notes\` — at least `secure-notes.erxnotes`, `secure-notes.erxnotes.bak` and any `secure-notes.erxnotes.*.erxtmp`. Deleting only the main file is not enough: the backup would be loaded instead. **This permanently deletes all your notes; export a backup first if you still can.**
 
 ## About the app
 

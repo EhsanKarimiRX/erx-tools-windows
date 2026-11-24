@@ -91,6 +91,10 @@ What this does not do:
 - The file date and the file size (in 256 KiB steps) stay visible.
 - A crash can lose the last edit.
 
+### Resetting after forgotten words
+
+There is no recovery and no password reset. To start over with an empty notebook, close the app completely and delete both `secure-notes.erxnotes` and `secure-notes.erxnotes.bak` (and any `secure-notes.erxnotes.<8 hex>.erxtmp`) from the notes folder. Deleting only the main file is not enough, because the store falls back to the backup. After the next start the Create flow runs again. This permanently deletes all notes; there is no way to get them back.
+
 ## 7. Notes data (the payload)
 
 The payload is UTF-8 JSON. With default settings and one note it looks exactly like this (one line, no spaces added):
