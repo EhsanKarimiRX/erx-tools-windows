@@ -25,7 +25,7 @@ interface SettingsScreenProps {
   onBack: () => void;
 }
 
-type ChangePhase = "choose" | "words" | "retype" | "old" | "done";
+type ChangePhase = "choose" | "words" | "verify" | "done";
 
 /** Must match MIN_AUTO_LOCK_MINUTES and MAX_AUTO_LOCK_MINUTES in
  * src-tauri/src/tools/notes/model.rs. */
@@ -82,9 +82,9 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   const [info, setInfo] = useState<WordsView | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
-  // The new and the current words stay in state only and are dropped as soon
+  // The new and the previous words stay in state only and are dropped as soon
   // as they are no longer needed.
-  const [typed, setTyped] = useState("");
+  const [typedNew, setTypedNew] = useState("");
   const [typedOld, setTypedOld] = useState("");
   const [working, setWorking] = useState(false);
   const [changeError, setChangeError] = useState<string | null>(null);
@@ -168,7 +168,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
     setInfo(null);
     setConfirmed(false);
     setSavedTick(false);
-    setTyped("");
+    setTypedNew("");
     setTypedOld("");
     setCopyRound(null);
     setChangeError(null);
@@ -245,25 +245,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
       await confirmWordsSaved();
       setConfirmed(true);
       setCopyRound(null);
-      setPhase("retype");
-    } catch (problem) {
-      setChangeError(toApiError(problem).message);
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function handleCheck() {
-    setWorking(true);
-    setChangeError(null);
-    try {
-      const matches = await retypeWords(typed);
-      if (matches) {
-        setTyped("");
-        setPhase("old");
-      } else {
-        setChangeError("The words do not match. Check the spelling and the spaces.");
-      }
+      setPhase("verify");
     } catch (problem) {
       setChangeError(toApiError(problem).message);
     } finally {
@@ -272,14 +254,21 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   }
 
   async function handleChange() {
-    if (typedOld.trim() === "") return;
+    if (typedNew.trim() === "" || typedOld.trim() === "") return;
     setWorking(true);
     setChangeError(null);
     try {
+      const matches = await retypeWords(typedNew);
+      if (!matches) {
+        setChangeError(
+          "The new words do not match. Check the spelling and the spaces.",
+        );
+        return;
+      }
       const result = await changePassphrase(typedOld);
       changed.current = true;
       setInfo(null);
-      setTyped("");
+      setTypedNew("");
       setTypedOld("");
       setConfirmed(false);
       setSavedTick(false);
@@ -302,7 +291,32 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
     <div className="nw-screen">
       {!changing && (
         <>
-          <h2>Settings</h2>
+          <div className="nw-settings-bar">
+            <h2>Settings</h2>
+            <div className="nw-settings-actions">
+              {saved && (
+                <span className="nw-muted" role="status">
+                  Settings saved.
+                </span>
+              )}
+              <button
+                type="button"
+                className="nw-button-primary"
+                onClick={() => void handleSave()}
+                disabled={loading || saving}
+              >
+                {saving ? "Saving..." : "Save settings"}
+              </button>
+              <button
+                type="button"
+                className="nw-button-secondary"
+                onClick={onBack}
+                disabled={saving}
+              >
+                Back
+              </button>
+            </div>
+          </div>
 
           {loading ? (
             <p className="nw-muted">Loading settings...</p>
@@ -340,22 +354,6 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
                 />
                 <p className="nw-hint">minutes (1 to 240)</p>
               </div>
-
-              <div className="nw-settings-actions">
-                <button
-                  type="button"
-                  className="nw-button-primary"
-                  onClick={() => void handleSave()}
-                  disabled={saving}
-                >
-                  {saving ? "Saving..." : "Save settings"}
-                </button>
-                {saved && (
-                  <span className="nw-muted" role="status">
-                    Settings saved.
-                  </span>
-                )}
-              </div>
             </div>
           )}
 
@@ -378,14 +376,6 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
               disabled={loading || saving}
             >
               Change passphrase
-            </button>
-            <button
-              type="button"
-              className="nw-button-secondary"
-              onClick={onBack}
-              disabled={saving}
-            >
-              Back
             </button>
           </div>
         </>
@@ -542,65 +532,56 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
             </>
           )}
 
-          {phase === "retype" && (
+          {phase === "verify" && (
             <>
-              <p>Type the new words again to confirm that you saved them.</p>
-              <textarea
-                className="nw-textarea"
-                rows={3}
-                value={typed}
-                onChange={(event) => setTyped(event.target.value)}
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                dir="ltr"
-                aria-label="Your new words"
-                disabled={working}
-              />
-              <div className="nw-settings-actions">
-                <button
-                  type="button"
-                  className="nw-button-primary"
-                  onClick={() => void handleCheck()}
-                  disabled={working || typed.trim() === ""}
-                >
-                  Check words
-                </button>
-                <button
-                  type="button"
-                  className="nw-button-secondary"
-                  onClick={handleCancel}
+              <p>
+                Type the new words again, and your previous words below, to
+                confirm the change.
+              </p>
+              <div className="nw-field">
+                <label htmlFor="nw-new-words">Your new words</label>
+                <textarea
+                  id="nw-new-words"
+                  className="nw-textarea"
+                  rows={3}
+                  value={typedNew}
+                  onChange={(event) => setTypedNew(event.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  dir="ltr"
+                  aria-label="Your new words"
                   disabled={working}
-                >
-                  Cancel
-                </button>
+                />
               </div>
-            </>
-          )}
-
-          {phase === "old" && (
-            <>
-              <p>Type your CURRENT words to confirm the change.</p>
-              <textarea
-                className="nw-textarea"
-                rows={3}
-                value={typedOld}
-                onChange={(event) => setTypedOld(event.target.value)}
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                dir="ltr"
-                aria-label="Your current words"
-                disabled={working}
-              />
+              <div className="nw-field">
+                <label htmlFor="nw-previous-words">Your previous words</label>
+                <textarea
+                  id="nw-previous-words"
+                  className="nw-textarea"
+                  rows={3}
+                  value={typedOld}
+                  onChange={(event) => setTypedOld(event.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  dir="ltr"
+                  aria-label="Your previous words"
+                  disabled={working}
+                />
+              </div>
               <div className="nw-settings-actions">
                 <button
                   type="button"
                   className="nw-button-primary"
                   onClick={() => void handleChange()}
-                  disabled={working || typedOld.trim() === ""}
+                  disabled={
+                    working ||
+                    typedNew.trim() === "" ||
+                    typedOld.trim() === ""
+                  }
                 >
                   {working
                     ? "Changing... this takes about a second"

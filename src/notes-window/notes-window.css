@@ -566,6 +566,22 @@
   flex-wrap: wrap;
 }
 
+.nw-settings-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.nw-settings-bar h2 {
+  margin: 0;
+}
+
+.nw-settings-bar .nw-settings-actions {
+  margin: 0;
+}
+
 .nw-change {
   display: flex;
   flex-direction: column;
