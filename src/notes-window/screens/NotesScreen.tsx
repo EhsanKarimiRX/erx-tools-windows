@@ -27,6 +27,12 @@ interface PendingUpdate {
   body: string;
 }
 
+/** One whole-note state in the undo stack: the title and body together. */
+interface NoteSnapshot {
+  title: string;
+  body: string;
+}
+
 interface NotesScreenProps {
   /** Called on every editor change so the shell can show "Saving...". */
   onDirty: () => void;
@@ -46,6 +52,8 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
   const [copiedUntil, setCopiedUntil] = useState<number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [history, setHistory] = useState<NoteSnapshot[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
   const searchTimer = useRef<number | null>(null);
   const exportTimer = useRef<number | null>(null);
@@ -57,6 +65,10 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
   const titleRef = useRef<HTMLInputElement>(null);
   const focusTitle = useRef(false);
   const newNoteRef = useRef<() => void>(() => {});
+  // Mirrors of the undo stack so two edits in one frame cannot read stale
+  // state; the state copies drive the buttons' disabled props.
+  const historyRef = useRef<NoteSnapshot[]>([]);
+  const historyIndexRef = useRef(0);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -224,16 +236,73 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     }, UPDATE_DEBOUNCE_MS);
   }
 
+  /** Publishes a history stack to both the ref and the rendered state. */
+  function commitHistory(entries: NoteSnapshot[], index: number) {
+    historyRef.current = entries;
+    historyIndexRef.current = index;
+    setHistory(entries);
+    setHistoryIndex(index);
+  }
+
+  /** Starts a fresh undo history for a note that was just opened. */
+  function resetHistory(nextTitle: string, nextBody: string) {
+    commitHistory([{ title: nextTitle, body: nextBody }], 0);
+  }
+
+  /** Records one whole-note edit and drops everything after the current
+   * position, so the redo branch belongs to the old text only. */
+  function recordHistory(nextTitle: string, nextBody: string) {
+    const current = historyRef.current;
+    const index = historyIndexRef.current;
+    const top = current[index];
+    if (top !== undefined && top.title === nextTitle && top.body === nextBody) {
+      return;
+    }
+    const entries = current.slice(0, index + 1);
+    entries.push({ title: nextTitle, body: nextBody });
+    commitHistory(entries, entries.length - 1);
+  }
+
+  /** Puts an undo/redo snapshot back in the editor and queues its save. */
+  function applyHistorySnapshot(snapshot: NoteSnapshot) {
+    setTitle(snapshot.title);
+    setBody(snapshot.body);
+    onDirty();
+    scheduleUpdate(snapshot.title, snapshot.body);
+  }
+
+  function handleUndo() {
+    if (loadingNote) return;
+    const index = historyIndexRef.current;
+    if (index <= 0) return;
+    const snapshot = historyRef.current[index - 1];
+    if (snapshot === undefined) return;
+    commitHistory(historyRef.current, index - 1);
+    applyHistorySnapshot(snapshot);
+  }
+
+  function handleRedo() {
+    if (loadingNote) return;
+    const index = historyIndexRef.current;
+    if (index >= historyRef.current.length - 1) return;
+    const snapshot = historyRef.current[index + 1];
+    if (snapshot === undefined) return;
+    commitHistory(historyRef.current, index + 1);
+    applyHistorySnapshot(snapshot);
+  }
+
   function handleTitleChange(value: string) {
     setTitle(value);
     onDirty();
     scheduleUpdate(value, body);
+    recordHistory(value, body);
   }
 
   function handleBodyChange(value: string) {
     setBody(value);
     onDirty();
     scheduleUpdate(title, value);
+    recordHistory(title, value);
   }
 
   async function selectNote(id: string) {
@@ -245,6 +314,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     setSelectedId(id);
     setTitle("");
     setBody("");
+    resetHistory("", "");
     setCopiedUntil(null);
     setExportOpen(false);
     setExportMessage(null);
@@ -256,6 +326,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
       if (seq !== noteSeq.current) return;
       setTitle(note.title);
       setBody(note.body);
+      resetHistory(note.title, note.body);
     } catch (loadError) {
       if (seq !== noteSeq.current) return;
       setError(toApiError(loadError).message);
@@ -276,6 +347,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
       setSelectedId(note.id);
       setTitle(note.title);
       setBody(note.body);
+      resetHistory(note.title, note.body);
       setLoadingNote(false);
       setCopiedUntil(null);
       setExportOpen(false);
@@ -312,6 +384,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
       setSelectedId(null);
       setTitle("");
       setBody("");
+      resetHistory("", "");
       setLoadingNote(false);
       setCopiedUntil(null);
       setExportOpen(false);
@@ -477,6 +550,24 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
               disabled={loadingNote}
             />
             <div className="nw-editor-actions">
+              <button
+                type="button"
+                className="nw-button-secondary"
+                onClick={handleUndo}
+                disabled={historyIndex === 0 || working || loadingNote}
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                className="nw-button-secondary"
+                onClick={handleRedo}
+                disabled={
+                  historyIndex >= history.length - 1 || working || loadingNote
+                }
+              >
+                Redo
+              </button>
               <button
                 type="button"
                 className="nw-button-primary"

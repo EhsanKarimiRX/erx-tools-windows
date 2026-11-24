@@ -143,6 +143,12 @@
   flex-wrap: wrap;
 }
 
+.nw-spinner {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
 /* ---------- Lock failure ---------- */
 
 .nw-lock-error {
