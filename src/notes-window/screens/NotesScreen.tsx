@@ -2,6 +2,15 @@
  * Edits are debounced and sent to Rust; the shell owns the save indicator. */
 import { useEffect, useRef, useState } from "react";
 import {
+  Copy,
+  Download,
+  Plus,
+  Redo2,
+  Save,
+  Trash2,
+  Undo2,
+} from "lucide-react";
+import {
   copyText,
   createNote,
   deleteNote,
@@ -63,6 +72,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
   const pendingRef = useRef<PendingUpdate | null>(null);
   const noteSeq = useRef(0);
   const titleRef = useRef<HTMLInputElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
   const focusTitle = useRef(false);
   const newNoteRef = useRef<() => void>(() => {});
   // Mirrors of the undo stack so two edits in one frame cannot read stale
@@ -132,6 +142,25 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
       }
     };
   }, []);
+
+  // Close the export menu on a click outside it. Escape is handled on the
+  // menu wrapper so it only closes while the menu is open.
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onMouseDown = (event: MouseEvent) => {
+      const wrapper = exportRef.current;
+      if (
+        wrapper !== null &&
+        event.target instanceof Node &&
+        wrapper.contains(event.target)
+      ) {
+        return;
+      }
+      setExportOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [exportOpen]);
 
   // Send an edit that is still waiting in the debounce before the window
   // closes or locks. This is fire-and-forget: the window may be going away.
@@ -402,6 +431,15 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     }
   }
 
+  /** Deletes the note behind one list row. The delete flow works on the
+   * selected note, so select the row first when it is not already open. */
+  async function handleDeleteItem(id: string) {
+    if (id !== selectedIdRef.current) {
+      await selectNote(id);
+    }
+    await handleDelete();
+  }
+
   async function handleSaveNow() {
     if (working) return;
     setWorking(true);
@@ -492,39 +530,68 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
           </p>
         ) : (
           <ul className="nw-list">
-            {notes.map((note) => (
-              <li key={note.id}>
-                <button
-                  type="button"
-                  className={
-                    note.id === selectedId
-                      ? "nw-list-item selected"
-                      : "nw-list-item"
-                  }
-                  onClick={() => void selectNote(note.id)}
-                  aria-current={note.id === selectedId ? "true" : undefined}
-                >
-                  <span className="nw-list-title" dir="auto">
-                    {note.title.trim() === "" ? "(untitled)" : note.title}
-                  </span>
-                  {note.preview !== null && note.preview !== "" && (
-                    <span className="nw-list-preview" dir="auto">
-                      {note.preview}
-                    </span>
-                  )}
-                  <span className="nw-list-date">
-                    {new Date(note.modified * 1000).toLocaleDateString()}
-                  </span>
-                </button>
-              </li>
-            ))}
+            {notes.map((note) => {
+              const label =
+                note.title.trim() === "" ? "(untitled)" : note.title;
+              return (
+                <li key={note.id}>
+                  <div
+                    className={
+                      note.id === selectedId
+                        ? "nw-list-item selected"
+                        : "nw-list-item"
+                    }
+                  >
+                    <button
+                      type="button"
+                      className="nw-list-item-body"
+                      onClick={() => void selectNote(note.id)}
+                      aria-current={note.id === selectedId ? "true" : undefined}
+                    >
+                      <span className="nw-list-title" dir="auto">
+                        {label}
+                      </span>
+                      {note.preview !== null && note.preview !== "" && (
+                        <span className="nw-list-preview" dir="auto">
+                          {note.preview}
+                        </span>
+                      )}
+                      <span className="nw-list-date">
+                        {new Date(note.modified * 1000).toLocaleDateString()}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="nw-list-delete"
+                      onClick={() => void handleDeleteItem(note.id)}
+                      disabled={working}
+                      title="Delete note"
+                      aria-label={`Delete ${label}`}
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
 
       <section className="nw-editor-pane nw-editor" aria-label="Note editor">
         {selectedId === null ? (
-          <p className="nw-empty">Select a note or create a new one.</p>
+          <div className="nw-empty">
+            <p>Select a note or create a new one.</p>
+            <button
+              type="button"
+              className="nw-button-primary nw-empty-cta"
+              onClick={() => void handleNew()}
+              disabled={working}
+            >
+              <Plus size={14} aria-hidden="true" />
+              New note
+            </button>
+          </div>
         ) : (
           <>
             <input
@@ -552,40 +619,57 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
             <div className="nw-editor-actions">
               <button
                 type="button"
-                className="nw-button-secondary"
-                onClick={handleUndo}
-                disabled={historyIndex === 0 || working || loadingNote}
-              >
-                Undo
-              </button>
-              <button
-                type="button"
-                className="nw-button-secondary"
-                onClick={handleRedo}
-                disabled={
-                  historyIndex >= history.length - 1 || working || loadingNote
-                }
-              >
-                Redo
-              </button>
-              <button
-                type="button"
                 className="nw-button-primary"
                 onClick={() => void handleSaveNow()}
                 disabled={working || loadingNote}
               >
+                <Save size={14} aria-hidden="true" />
                 {saveWorking ? "Saving..." : "Save now"}
               </button>
-              <button
-                type="button"
-                className="nw-button-secondary"
-                onClick={() => void handleCopy()}
-                disabled={!canCopy || working || loadingNote}
+              <span className="nw-editor-spacer" />
+              <div
+                className="nw-toolbar-group"
+                role="group"
+                aria-label="Editing"
               >
-                Copy
-              </button>
+                <button
+                  type="button"
+                  className="nw-toolbar-btn"
+                  onClick={handleUndo}
+                  disabled={historyIndex === 0 || working || loadingNote}
+                  title="Undo"
+                  aria-label="Undo"
+                >
+                  <Undo2 size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="nw-toolbar-btn"
+                  onClick={handleRedo}
+                  disabled={
+                    historyIndex >= history.length - 1 ||
+                    working ||
+                    loadingNote
+                  }
+                  title="Redo"
+                  aria-label="Redo"
+                >
+                  <Redo2 size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="nw-toolbar-btn"
+                  onClick={() => void handleCopy()}
+                  disabled={!canCopy || working || loadingNote}
+                  title="Copy note text"
+                  aria-label="Copy note text"
+                >
+                  <Copy size={16} aria-hidden="true" />
+                </button>
+              </div>
               <div
                 className="nw-export"
+                ref={exportRef}
                 onKeyDown={(event) => {
                   if (event.key === "Escape" && exportOpen) {
                     setExportOpen(false);
@@ -599,6 +683,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
                   disabled={selectedId === null || working || loadingNote}
                   aria-expanded={exportOpen}
                 >
+                  <Download size={14} aria-hidden="true" />
                   Export
                 </button>
                 {exportOpen && (
@@ -627,6 +712,15 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
                   </div>
                 )}
               </div>
+              <button
+                type="button"
+                className="nw-button-danger"
+                onClick={() => void handleDelete()}
+                disabled={working || loadingNote}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Delete
+              </button>
               {exportMessage !== null && (
                 <span className="nw-status" role="status">
                   {exportMessage}
@@ -637,15 +731,6 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
                   Copied.
                 </span>
               )}
-              <span className="nw-editor-spacer" />
-              <button
-                type="button"
-                className="nw-button-danger"
-                onClick={() => void handleDelete()}
-                disabled={working || loadingNote}
-              >
-                Delete
-              </button>
             </div>
           </>
         )}

@@ -462,18 +462,70 @@
 
 .nw-list-item {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 4px 6px 4px 10px;
   border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
   color: inherit;
+}
+
+.nw-list-item-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+/* The row keeps the hover background; the delete button is only in the way
+   once the row is hovered or something inside it has keyboard focus. */
+.nw-list-delete {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  min-width: 32px;
+  min-height: 32px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.nw-list-item:hover .nw-list-delete,
+.nw-list-item:focus-within .nw-list-delete,
+.nw-list-delete:focus-visible {
+  opacity: 1;
+}
+
+.nw-list-delete:hover:enabled {
+  background: var(--surface-hover);
+  color: var(--error);
+}
+
+.nw-list-delete:disabled {
+  cursor: default;
+}
+
+.nw-list-item-body:focus-visible,
+.nw-list-delete:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .nw-list-item:hover {
@@ -567,10 +619,57 @@
   flex: 1 1 auto;
 }
 
+/* Icon cluster: undo, redo and copy share one bordered box. */
+.nw-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.nw-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 6px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.nw-toolbar-btn:hover:enabled {
+  background: var(--surface-hover);
+}
+
+.nw-toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.nw-toolbar-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
 .nw-empty {
   color: var(--text-muted);
   text-align: center;
   margin: 24px 0;
+}
+
+.nw-empty p {
+  margin: 0;
+}
+
+.nw-empty-cta {
+  margin-top: 12px;
 }
 
 /* ---------- Settings and change passphrase ---------- */
@@ -664,6 +763,11 @@
 
 .nw-export-option:hover {
   background: var(--surface-hover);
+}
+
+.nw-export-option:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .nw-status {
