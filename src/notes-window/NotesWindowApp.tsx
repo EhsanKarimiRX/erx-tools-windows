@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { lockNotes, notesActivity, notesStatus } from "./api";
 import { isCode, toApiError } from "./errors";
+import CreateScreen from "./screens/CreateScreen";
 import NotesScreen from "./screens/NotesScreen";
+import UnlockScreen from "./screens/UnlockScreen";
 import type { AutoLockedEvent, AutosaveEvent, SaveState } from "./types";
 
 type Screen =
@@ -112,6 +114,7 @@ export default function NotesWindowApp() {
   useEffect(() => {
     if (screen.kind !== "notes") return;
     let cancelled = false;
+    lastActivity.current = 0;
 
     const ping = () => {
       const now = Date.now();
@@ -232,16 +235,24 @@ export default function NotesWindowApp() {
         )}
 
         {screen.kind === "create" && (
-          <p className="nw-muted nw-centered">Create flow comes next.</p>
+          <CreateScreen
+            onCreated={() => {
+              setUsedBackup(false);
+              setSaveIndicator("saved");
+              setScreen({ kind: "notes" });
+            }}
+          />
         )}
 
         {screen.kind === "unlock" && (
-          <div className="nw-message nw-centered">
-            {screen.notice !== null && (
-              <p className="nw-notice">{screen.notice}</p>
-            )}
-            <p className="nw-muted">Unlock flow comes next.</p>
-          </div>
+          <UnlockScreen
+            notice={screen.notice}
+            onUnlocked={(openedBackup) => {
+              setUsedBackup(openedBackup);
+              setSaveIndicator("saved");
+              setScreen({ kind: "notes" });
+            }}
+          />
         )}
 
         {screen.kind === "notes" && (
