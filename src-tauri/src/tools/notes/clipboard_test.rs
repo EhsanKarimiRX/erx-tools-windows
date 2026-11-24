@@ -365,6 +365,17 @@ fn c11_error_mapping() {
     );
 }
 
+fn body_of<'a>(source: &'a str, signature: &str, closing: &str) -> &'a str {
+    let start = source
+        .find(signature)
+        .unwrap_or_else(|| panic!("signature not found: {signature}"));
+    let rest = &source[start..];
+    let end = rest
+        .find(closing)
+        .unwrap_or_else(|| panic!("closing not found for signature: {signature}"));
+    &rest[..end + closing.len()]
+}
+
 #[test]
 fn c12_source_scan_clipboard() {
     let source = include_str!("clipboard.rs");
@@ -488,4 +499,17 @@ fn c14_real_clipboard_roundtrip() {
         unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT as u32) },
         0
     );
+}
+
+#[test]
+fn c15_sequence_read_before_close() {
+    let body = body_of(
+        include_str!("clipboard.rs"),
+        "fn write_text(&mut self, utf16: &[u16]) -> Result<u32, ClipboardError> {",
+        "\n    }\n",
+    );
+    let read = body.find("GetClipboardSequenceNumber()").unwrap();
+    let close = body.rfind("CloseClipboard()").unwrap();
+    assert!(read < close);
+    assert_eq!(body.matches("GetClipboardSequenceNumber()").count(), 1);
 }

@@ -268,4 +268,8 @@ fn q11_exit_sweeps_in_source() {
     ] {
         assert!(body.contains(needle), "{needle} missing from:\n{body}");
     }
+    let sweep = &body[body.find("cleanup_stale_profiles(").unwrap()..];
+    assert!(sweep.contains("EXIT_DELETE_ATTEMPTS"), "{sweep}");
+    assert!(sweep.contains("EXIT_DELETE_DELAY"), "{sweep}");
+    assert!(!body.contains("CLOSE_DELETE"), "{body}");
 }
