@@ -124,6 +124,7 @@ pub fn run() {
             tools::notes::window::notes_close_window,
             // Secure Notes clipboard: Rust writes the selected text.
             tools::notes::clipboard::notes_copy_text,
+            tools::notes::clipboard::notes_copy_words,
             // Update check: the app's only network access (R3), run solely
             // when the user clicks the update button on the home screen.
             tools::update_check::commands::check_for_updates,

@@ -377,3 +377,24 @@ pub async fn notes_copy_text(
         .map_err(|_| NotesCommandError::internal())?
         .map_err(error_to_command_error)
 }
+
+/// Copies the passphrase words (kept in Rust) to the clipboard. Needs words, not an unlocked session.
+#[tauri::command]
+pub async fn notes_copy_words(
+    window: tauri::Window,
+    clipboard: State<'_, NotesClipboardState>,
+    notes: State<'_, NotesState>,
+) -> Result<(), NotesCommandError> {
+    if !check_window_label(window.label()) {
+        return Err(NotesCommandError {
+            code: "wrong_window".to_string(),
+            message: "This window may not use Secure Notes.".to_string(),
+        });
+    }
+    let words = with_session(&notes.shared(), |session| session.words_text())?;
+    let core = Arc::clone(&clipboard.core);
+    tauri::async_runtime::spawn_blocking(move || core.copy(words.as_str(), Instant::now()))
+        .await
+        .map_err(|_| NotesCommandError::internal())?
+        .map_err(error_to_command_error)
+}

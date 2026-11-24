@@ -5,7 +5,7 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::clock::{Clock, utc_parts};
 use super::crypto::{CreateSettings, NotesKeys};
@@ -247,6 +247,20 @@ impl NotesSession {
     pub fn clear_words(&mut self) {
         self.words.clear();
         self.retyped = false;
+    }
+
+    /// The words as one text (single spaces) for copying. Fails when there are no words. The caller must wipe the text; the pieces are wiped here.
+    pub fn words_text(&self) -> Result<Zeroizing<String>, NotesError> {
+        let mut parts = self.words.display_words();
+        if parts.is_empty() {
+            return Err(PassphraseError::NoPassphrase)
+                .map_err(|error| NotesError::Words(error.to_string()));
+        }
+        let joined = parts.join(" ");
+        for part in parts.iter_mut() {
+            part.zeroize();
+        }
+        Ok(Zeroizing::new(joined))
     }
 
     pub fn finish_create(&mut self, settings: &CreateSettings) -> Result<(), NotesError> {

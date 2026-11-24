@@ -368,14 +368,16 @@ fn c11_error_mapping() {
 #[test]
 fn c12_source_scan_clipboard() {
     let source = include_str!("clipboard.rs");
-    assert_eq!(source.matches("#[tauri::command").count(), 1);
+    assert_eq!(source.matches("#[tauri::command").count(), 2);
     assert_eq!(source.matches("pub async fn notes_copy_text(").count(), 1);
+    assert_eq!(source.matches("pub async fn notes_copy_words(").count(), 1);
     assert_eq!(
         source.matches("check_window_label(window.label())").count(),
-        1
+        2
     );
     assert_eq!(source.matches("status().unlocked").count(), 1);
-    assert!(source.matches("spawn_blocking").count() >= 1);
+    assert_eq!(source.matches("words_text()").count(), 1);
+    assert!(source.matches("spawn_blocking").count() >= 2);
     assert!(source.matches("EmptyClipboard()").count() >= 3);
     for name in MARKER_FORMAT_NAMES {
         assert_eq!(source.matches(name).count(), 1);
@@ -389,6 +391,11 @@ fn c13_source_scan_lib_and_commands() {
     let lib = include_str!("../../lib.rs");
     assert_eq!(
         lib.matches("tools::notes::clipboard::notes_copy_text,")
+            .count(),
+        1
+    );
+    assert_eq!(
+        lib.matches("tools::notes::clipboard::notes_copy_words,")
             .count(),
         1
     );

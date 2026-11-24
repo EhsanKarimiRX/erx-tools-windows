@@ -863,3 +863,106 @@ fn s20_change_passphrase_resets_main_is_good() {
     session.save_now().unwrap();
     assert_eq!(fs::read(&backup).unwrap(), snapshot);
 }
+
+#[test]
+fn s21_words_text_without_words() {
+    let clock = test_clock();
+    let (_guard, session) = fresh_session(clock);
+    assert!(matches!(session.words_text(), Err(NotesError::Words(_))));
+}
+
+#[test]
+fn s22_words_text_matches_view() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    let view = session.generate_words(5).unwrap();
+    let joined = view.words.join(" ");
+    let status = session.status();
+    let save_state = session.save_state();
+
+    let first = session.words_text().unwrap();
+    let second = session.words_text().unwrap();
+    assert_eq!(first.as_str(), joined.as_str());
+    assert_eq!(second.as_str(), joined.as_str());
+    assert_eq!(session.status(), status);
+    assert_eq!(session.save_state(), save_state);
+}
+
+#[test]
+fn s23_words_text_follows_refresh() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    let view = session.generate_words(5).unwrap();
+    let refreshed = session.refresh_word(0).unwrap();
+
+    let mut expected = view.words;
+    expected[0] = refreshed.word;
+    assert_eq!(
+        session.words_text().unwrap().as_str(),
+        expected.join(" ").as_str()
+    );
+}
+
+#[test]
+fn s24_words_text_after_confirm_and_retype() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    let view = session.generate_words(5).unwrap();
+    let before = session.words_text().unwrap();
+
+    session.confirm_words_saved().unwrap();
+    let joined = view.words.join(" ");
+    assert!(session.retype_words(&joined).unwrap());
+    assert_eq!(session.words_text().unwrap().as_str(), before.as_str());
+}
+
+#[test]
+fn s25_words_text_cleared() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+
+    session.generate_words(5).unwrap();
+    session.clear_words();
+    assert!(matches!(session.words_text(), Err(NotesError::Words(_))));
+
+    session.generate_words(5).unwrap();
+    session.lock();
+    assert!(matches!(session.words_text(), Err(NotesError::Words(_))));
+}
+
+#[test]
+fn s26_words_text_gone_after_finish_create() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    let view = session.generate_words(5).unwrap();
+    session.confirm_words_saved().unwrap();
+    let joined = view.words.join(" ");
+    assert!(session.retype_words(&joined).unwrap());
+    session.finish_create(&settings()).unwrap();
+
+    assert!(matches!(session.words_text(), Err(NotesError::Words(_))));
+}
+
+#[test]
+fn s27_words_text_gone_after_change_passphrase() {
+    let clock = test_clock();
+    let (_guard, mut session, old_words) = create_unlocked(clock);
+    let view = session.generate_words(5).unwrap();
+    session.confirm_words_saved().unwrap();
+    let joined = view.words.join(" ");
+    assert!(session.retype_words(&joined).unwrap());
+    session.change_passphrase(&old_words, &settings()).unwrap();
+
+    assert!(matches!(session.words_text(), Err(NotesError::Words(_))));
+}
+
+#[test]
+fn s28_words_text_works_when_unlocked() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_words(5).unwrap();
+    assert_eq!(
+        session.words_text().unwrap().as_str(),
+        view.words.join(" ").as_str()
+    );
+}
