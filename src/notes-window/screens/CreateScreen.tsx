@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Copy, RefreshCw } from "lucide-react";
 import {
   clearWords,
   confirmWordsSaved,
@@ -41,20 +42,18 @@ function CopyCountdown() {
   }, []);
 
   if (left === 0) {
-    return (
-      <p className="nw-copied">
-        The clipboard was cleared (unless you copied something else).
-      </p>
-    );
+    return <>The clipboard was cleared (unless you copied something else).</>;
   }
 
   return (
-    <p className="nw-copied">
-      Copied.{" "}
-      <span className={left <= 10 ? "nw-blink" : undefined}>
+    <>
+      <strong>Copied.</strong>{" "}
+      <span className="nw-blink">
         The clipboard will be cleared in {left} seconds.
-      </span>
-    </p>
+      </span>{" "}
+      After that the words can no longer be pasted, so paste them somewhere safe
+      first (a note or a document) or write them down.
+    </>
   );
 }
 
@@ -265,8 +264,15 @@ export default function CreateScreen({ onCreated }: CreateScreenProps) {
                       className="nw-word-replace"
                       onClick={() => void handleRefresh(slot)}
                       disabled={working || left === 0}
+                      title={
+                        left === 0
+                          ? "No replacements left for this word"
+                          : `Replace this word (${left} left)`
+                      }
+                      aria-label={`Replace word ${slot + 1}, ${left} replacements left`}
                     >
-                      Replace ({left} left)
+                      <RefreshCw size={14} aria-hidden="true" />
+                      <span>{left}</span>
                     </button>
                   )}
                 </li>
@@ -287,10 +293,11 @@ export default function CreateScreen({ onCreated }: CreateScreenProps) {
             <div className="nw-actions">
               <button
                 type="button"
-                className="nw-button-secondary"
+                className="button-secondary"
                 onClick={() => void handleCopy()}
                 disabled={working}
               >
+                <Copy size={14} aria-hidden="true" />
                 Copy words
               </button>
               <button
@@ -305,7 +312,13 @@ export default function CreateScreen({ onCreated }: CreateScreenProps) {
             <p className="nw-muted">
               Other programs can read the clipboard while the words are on it.
             </p>
-            {copyRound !== null && <CopyCountdown key={copyRound} />}
+            {copyRound !== null && (
+              <div className="nw-copied" role="note">
+                <p>
+                  <CopyCountdown key={copyRound} />
+                </p>
+              </div>
+            )}
           </div>
 
           <label className="nw-check">

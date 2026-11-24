@@ -253,11 +253,10 @@
 }
 
 .nw-word {
-  display: grid;
-  grid-template-columns: auto 1fr;
+  display: flex;
   align-items: center;
-  gap: 4px 8px;
-  padding: 8px 10px;
+  gap: 8px;
+  padding: 6px 8px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -271,14 +270,16 @@
 }
 
 .nw-word-text {
+  flex: 1;
   font-size: 14px;
   font-weight: 600;
   word-break: break-all;
 }
 
 .nw-word-replace {
-  grid-column: 1 / -1;
-  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 3px 8px;
   background: none;
   color: var(--text-muted);
@@ -314,6 +315,7 @@
 }
 
 .nw-copied {
+  margin-top: 4px;
   font-size: 13px;
 }
 
