@@ -5,8 +5,10 @@ import {
   clearWords,
   confirmWordsSaved,
   copyWords,
+  exportAll,
   generateWords,
   getSettings,
+  importNotes,
   refreshWord,
   retypeWords,
   setSettings,
@@ -75,6 +77,10 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [backupWorking, setBackupWorking] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
 
   const [changing, setChanging] = useState(false);
   const [phase, setPhase] = useState<ChangePhase>("choose");
@@ -160,6 +166,42 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
       setError(toApiError(problem).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleExportAll() {
+    setBackupMessage(null);
+    setBackupError(null);
+    setBackupWorking(true);
+    try {
+      const path = await exportAll();
+      setBackupMessage(
+        path === null ? "Export cancelled." : `Exported to ${path}.`,
+      );
+    } catch (problem) {
+      setBackupError(toApiError(problem).message);
+    } finally {
+      setBackupWorking(false);
+    }
+  }
+
+  async function handleRestore() {
+    setBackupMessage(null);
+    setBackupError(null);
+    setBackupWorking(true);
+    try {
+      const count = await importNotes();
+      if (count === null) {
+        setBackupMessage("Restore cancelled.");
+      } else if (count === 0) {
+        setBackupMessage("No notes were added.");
+      } else {
+        setBackupMessage(`Added ${count} note(s).`);
+      }
+    } catch (problem) {
+      setBackupError(toApiError(problem).message);
+    } finally {
+      setBackupWorking(false);
     }
   }
 
@@ -378,6 +420,45 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
               Change passphrase
             </button>
           </div>
+
+          <section className="nw-backup" aria-labelledby="nw-backup-title">
+            <h3 id="nw-backup-title" className="nw-pane-title">
+              Backup and restore
+            </h3>
+            <p className="nw-hint">
+              Export all notes to one encrypted file, or add the notes of a
+              backup or text file. Restored notes are added; existing notes stay
+              unchanged.
+            </p>
+            <div className="nw-settings-actions">
+              <button
+                type="button"
+                className="nw-button-secondary"
+                onClick={() => void handleExportAll()}
+                disabled={loading || saving || backupWorking}
+              >
+                {backupWorking ? "Working..." : "Export all notes"}
+              </button>
+              <button
+                type="button"
+                className="nw-button-secondary"
+                onClick={() => void handleRestore()}
+                disabled={loading || saving || backupWorking}
+              >
+                Restore from file
+              </button>
+            </div>
+            {backupMessage !== null && (
+              <p className="nw-status" role="status">
+                {backupMessage}
+              </p>
+            )}
+            {backupError !== null && (
+              <p className="nw-error" role="alert">
+                {backupError}
+              </p>
+            )}
+          </section>
         </>
       )}
 

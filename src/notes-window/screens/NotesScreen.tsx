@@ -5,6 +5,7 @@ import {
   copyText,
   createNote,
   deleteNote,
+  exportNote,
   getNote,
   listNotes,
   saveNow,
@@ -16,6 +17,9 @@ import type { NoteListItem } from "../types";
 const SEARCH_DEBOUNCE_MS = 200;
 const UPDATE_DEBOUNCE_MS = 400;
 const COPIED_MS = 2_000;
+const EXPORT_STATUS_MS = 2_000;
+
+type ExportFormat = "txt" | "md" | "erxnote";
 
 interface PendingUpdate {
   id: string;
@@ -40,8 +44,11 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
   const [saveWorking, setSaveWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedUntil, setCopiedUntil] = useState<number | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   const searchTimer = useRef<number | null>(null);
+  const exportTimer = useRef<number | null>(null);
   const updateTimer = useRef<number | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   const queryRef = useRef("");
@@ -104,6 +111,16 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     return () => window.clearTimeout(timer);
   }, [copiedUntil]);
 
+  // Drop the export confirmation timer when the screen goes away.
+  useEffect(() => {
+    return () => {
+      if (exportTimer.current !== null) {
+        window.clearTimeout(exportTimer.current);
+        exportTimer.current = null;
+      }
+    };
+  }, []);
+
   // Send an edit that is still waiting in the debounce before the window
   // closes or locks. This is fire-and-forget: the window may be going away.
   useEffect(() => {
@@ -144,6 +161,26 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  function clearExportTimer() {
+    if (exportTimer.current !== null) {
+      window.clearTimeout(exportTimer.current);
+      exportTimer.current = null;
+    }
+  }
+
+  /** Shows the export result; a null delay keeps the message until the next
+   * export or note switch. */
+  function showExportStatus(message: string, clearAfter: number | null) {
+    clearExportTimer();
+    setExportMessage(message);
+    if (clearAfter !== null) {
+      exportTimer.current = window.setTimeout(() => {
+        exportTimer.current = null;
+        setExportMessage(null);
+      }, clearAfter);
+    }
+  }
 
   async function refreshList(search: string): Promise<void> {
     try {
@@ -209,6 +246,9 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     setTitle("");
     setBody("");
     setCopiedUntil(null);
+    setExportOpen(false);
+    setExportMessage(null);
+    clearExportTimer();
     setError(null);
     setLoadingNote(true);
     try {
@@ -238,6 +278,9 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
       setBody(note.body);
       setLoadingNote(false);
       setCopiedUntil(null);
+      setExportOpen(false);
+      setExportMessage(null);
+      clearExportTimer();
       focusTitle.current = true;
       if (queryRef.current !== "") {
         setQuery("");
@@ -271,6 +314,9 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
       setBody("");
       setLoadingNote(false);
       setCopiedUntil(null);
+      setExportOpen(false);
+      setExportMessage(null);
+      clearExportTimer();
       const items = await listNotes(queryRef.current);
       setNotes(items);
       if (items.length > 0) {
@@ -310,6 +356,29 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
       setCopiedUntil(Date.now() + COPIED_MS);
     } catch (copyError) {
       setError(toApiError(copyError).message);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleExport(format: ExportFormat) {
+    const id = selectedIdRef.current;
+    setExportOpen(false);
+    if (id === null || working) return;
+    setWorking(true);
+    setError(null);
+    try {
+      // Export what is on screen, not the last debounced save.
+      const flushed = await flushPending();
+      if (!flushed) return;
+      const path = await exportNote(id, format);
+      if (path === null) {
+        showExportStatus("Export cancelled.", EXPORT_STATUS_MS);
+      } else {
+        showExportStatus(`Exported to ${path}.`, EXPORT_STATUS_MS);
+      }
+    } catch (exportError) {
+      setError(toApiError(exportError).message);
     } finally {
       setWorking(false);
     }
@@ -424,6 +493,54 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
               >
                 Copy
               </button>
+              <div
+                className="nw-export"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && exportOpen) {
+                    setExportOpen(false);
+                  }
+                }}
+              >
+                <button
+                  type="button"
+                  className="nw-button-secondary"
+                  onClick={() => setExportOpen((open) => !open)}
+                  disabled={selectedId === null || working || loadingNote}
+                  aria-expanded={exportOpen}
+                >
+                  Export
+                </button>
+                {exportOpen && (
+                  <div className="nw-export-menu">
+                    <button
+                      type="button"
+                      className="nw-export-option"
+                      onClick={() => void handleExport("txt")}
+                    >
+                      Text (.txt)
+                    </button>
+                    <button
+                      type="button"
+                      className="nw-export-option"
+                      onClick={() => void handleExport("md")}
+                    >
+                      Markdown (.md)
+                    </button>
+                    <button
+                      type="button"
+                      className="nw-export-option"
+                      onClick={() => void handleExport("erxnote")}
+                    >
+                      Encrypted (.erxnote)
+                    </button>
+                  </div>
+                )}
+              </div>
+              {exportMessage !== null && (
+                <span className="nw-status" role="status">
+                  {exportMessage}
+                </span>
+              )}
               {copiedUntil !== null && (
                 <span className="nw-copied" role="status">
                   Copied.

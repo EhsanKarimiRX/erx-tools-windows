@@ -191,6 +191,33 @@ export async function changePassphrase(
   }
 }
 
+export async function exportNote(
+  id: string,
+  format: "txt" | "md" | "erxnote",
+): Promise<string | null> {
+  try {
+    return await invoke<string | null>("notes_export_note", { id, format });
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function exportAll(): Promise<string | null> {
+  try {
+    return await invoke<string | null>("notes_export_all");
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function importNotes(): Promise<number | null> {
+  try {
+    return await invoke<number | null>("notes_import");
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
 export async function copyText(text: string): Promise<void> {
   try {
     return await invoke<void>("notes_copy_text", { text });
