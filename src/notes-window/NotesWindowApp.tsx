@@ -272,7 +272,7 @@ export default function NotesWindowApp() {
                 </button>
               </div>
             )}
-            <NotesScreen />
+            <NotesScreen onDirty={() => setSaveIndicator("pending")} />
           </>
         )}
       </div>
