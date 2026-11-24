@@ -292,13 +292,16 @@ impl ClipboardApi for WinClipboard {
         if !Self::set_global(CF_UNICODETEXT as u32, &bytes) {
             return Self::fail();
         }
-        // Read the number while the clipboard is still ours: after the close
-        // another program could change the clipboard before we read it.
-        // SAFETY: no pointers; reads the global clipboard counter.
-        let sequence = unsafe { GetClipboardSequenceNumber() };
         // SAFETY: closing the clipboard we own.
         unsafe { CloseClipboard() };
-        Ok(sequence)
+        // The number is read AFTER the close on purpose: the real test c14 saw
+        // 94 before the close and 97 after it, so a number read earlier would
+        // never match a later read and the 30 s clear would never happen. A
+        // program that changes the clipboard between the close and this read
+        // would be taken for us; that window is a few microseconds and is
+        // accepted.
+        // SAFETY: no pointers; reads the global clipboard counter.
+        Ok(unsafe { GetClipboardSequenceNumber() })
     }
 
     fn current_sequence(&mut self) -> u32 {

@@ -501,8 +501,11 @@ fn c14_real_clipboard_roundtrip() {
     );
 }
 
+// The number must be read after the close: the real test c14 saw 94 before
+// the close and 97 after it, so a number read earlier would never match a
+// later read and the 30 s clear would never happen.
 #[test]
-fn c15_sequence_read_before_close() {
+fn c15_sequence_read_after_close() {
     let body = body_of(
         include_str!("clipboard.rs"),
         "fn write_text(&mut self, utf16: &[u16]) -> Result<u32, ClipboardError> {",
@@ -510,6 +513,6 @@ fn c15_sequence_read_before_close() {
     );
     let read = body.find("GetClipboardSequenceNumber()").unwrap();
     let close = body.rfind("CloseClipboard()").unwrap();
-    assert!(read < close);
+    assert!(read > close);
     assert_eq!(body.matches("GetClipboardSequenceNumber()").count(), 1);
 }
