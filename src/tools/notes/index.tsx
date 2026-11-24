@@ -1,4 +1,3 @@
-// TEMPORARY (N6-5): a test button for the hardened window. N8 replaces this file with the real tool.
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -6,47 +5,58 @@ interface OpenWindowResult {
   alreadyOpen: boolean;
 }
 
-function describe(error: unknown): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    "message" in error
-  ) {
-    const code = (error as { code: unknown }).code;
-    const message = (error as { message: unknown }).message;
-    if (typeof code === "string" && typeof message === "string") {
-      return `${code}: ${message}`;
+/** Shows a message only when it is a real user-facing string. */
+function errorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null) {
+    const candidate = error as { message?: unknown };
+    if (typeof candidate.message === "string") {
+      return candidate.message;
     }
   }
-  return String(error);
+  return "Something went wrong.";
 }
 
-export default function EncryptedNotes() {
+/** Secure Notes: the tool screen only opens the hardened window. Notes are
+ * read, written and encrypted there, never here. */
+export default function SecureNotes() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
 
   async function openWindow() {
     setError(null);
+    setMessage(null);
+    setOpening(true);
     try {
       const result = await invoke<OpenWindowResult>("notes_open_window");
       setMessage(
         result.alreadyOpen ? "The window was already open." : "Window opened.",
       );
     } catch (caught) {
-      setMessage(null);
-      setError(describe(caught));
+      setError(errorMessage(caught));
+    } finally {
+      setOpening(false);
     }
   }
 
   return (
-    <>
-      <p className="tool-placeholder">This tool is not built yet.</p>
-      <button type="button" onClick={openWindow}>
-        Open test window (temporary)
+    <div>
+      <h2>Secure Notes</h2>
+      <p>Encrypted notes on this PC, protected by a set of words.</p>
+      <button
+        type="button"
+        className="button-primary"
+        onClick={() => void openWindow()}
+        disabled={opening}
+      >
+        Open Secure Notes
       </button>
-      {message !== null && <p>{message}</p>}
-      {error !== null && <p>{error}</p>}
-    </>
+      {message !== null && <p role="status">{message}</p>}
+      {error !== null && (
+        <p className="tool-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

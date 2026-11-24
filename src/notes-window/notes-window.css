@@ -532,3 +532,42 @@
   text-align: center;
   margin: 24px 0;
 }
+
+/* ---------- Settings and change passphrase ---------- */
+
+.nw-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 360px;
+}
+
+.nw-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nw-settings-field label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.nw-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.nw-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nw-change {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

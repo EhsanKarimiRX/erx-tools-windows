@@ -4,6 +4,7 @@ import { lockNotes, notesActivity, notesStatus } from "./api";
 import { isCode, toApiError } from "./errors";
 import CreateScreen from "./screens/CreateScreen";
 import NotesScreen from "./screens/NotesScreen";
+import SettingsScreen from "./screens/SettingsScreen";
 import UnlockScreen from "./screens/UnlockScreen";
 import type { AutoLockedEvent, AutosaveEvent, SaveState } from "./types";
 
@@ -13,7 +14,8 @@ type Screen =
   | { kind: "failed"; message: string }
   | { kind: "create" }
   | { kind: "unlock"; notice: string | null }
-  | { kind: "notes" };
+  | { kind: "notes" }
+  | { kind: "settings" };
 
 const ACTIVITY_THROTTLE_MS = 10_000;
 
@@ -110,9 +112,11 @@ export default function NotesWindowApp() {
     };
   }, []);
 
-  // Only the notes screen reports activity, at most once per 10 seconds.
+  // The notes and settings screens report activity, at most once per 10
+  // seconds. Settings counts too so a passphrase change cannot be interrupted
+  // by the auto-lock timer while the user writes the words down.
   useEffect(() => {
-    if (screen.kind !== "notes") return;
+    if (screen.kind !== "notes" && screen.kind !== "settings") return;
     let cancelled = false;
     lastActivity.current = 0;
 
@@ -172,6 +176,14 @@ export default function NotesWindowApp() {
             <span className={`nw-save nw-save-${saveIndicator}`}>
               {saveLabel(saveIndicator)}
             </span>
+            <button
+              type="button"
+              className="nw-button-secondary"
+              onClick={() => setScreen({ kind: "settings" })}
+              disabled={locking}
+            >
+              Settings
+            </button>
             <button
               type="button"
               className="nw-button-secondary"
@@ -274,6 +286,10 @@ export default function NotesWindowApp() {
             )}
             <NotesScreen onDirty={() => setSaveIndicator("pending")} />
           </>
+        )}
+
+        {screen.kind === "settings" && (
+          <SettingsScreen onBack={() => setScreen({ kind: "notes" })} />
         )}
       </div>
     </div>
