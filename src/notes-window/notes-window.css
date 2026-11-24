@@ -199,6 +199,40 @@
   line-height: 1.5;
 }
 
+/* Unlock card: centred, with the lock icon and heading forming the hierarchy. */
+
+.nw-unlock-card {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 28px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.nw-unlock-card h2 {
+  text-align: center;
+}
+
+.nw-unlock-icon {
+  color: var(--text-muted);
+  align-self: center;
+}
+
+.nw-unlock-hint {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.nw-button-primary.nw-unlock-submit {
+  width: 100%;
+}
+
 .nw-form-row {
   display: flex;
   align-items: center;

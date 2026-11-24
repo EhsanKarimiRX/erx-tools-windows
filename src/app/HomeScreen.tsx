@@ -16,6 +16,19 @@ export default function HomeScreen({
   onOpenTool: (toolId: string) => void;
 }) {
   const [version, setVersion] = useState<string | null>(null);
+  // Secure Notes opens in its own hardened window, so the tile asks Rust to
+  // show it instead of navigating the main window to an intermediate page.
+  const [openingNotes, setOpeningNotes] = useState(false);
+
+  function openNotesWindow() {
+    if (openingNotes) return;
+    setOpeningNotes(true);
+    void invoke("notes_open_window")
+      .catch(() => {
+        /* Best effort: if the window cannot open there is nothing to show. */
+      })
+      .finally(() => setOpeningNotes(false));
+  }
 
   useEffect(() => {
     // Fetch the version from Rust; also proves the frontend-to-Rust bridge.
@@ -54,8 +67,14 @@ export default function HomeScreen({
                   ? tool.description
                   : `${tool.description} (coming soon)`
               }
-              disabled={!isReady}
-              onClick={() => onOpenTool(tool.id)}
+              disabled={!isReady || (tool.id === "notes" && openingNotes)}
+              onClick={() => {
+                if (tool.id === "notes") {
+                  openNotesWindow();
+                } else {
+                  onOpenTool(tool.id);
+                }
+              }}
             >
               <Icon size={48} strokeWidth={1.5} aria-hidden="true" />
               <span className="tile-name">{tool.name}</span>

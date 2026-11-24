@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Lock } from "lucide-react";
 import { unlockNotes } from "../api";
 import { toApiError } from "../errors";
 
@@ -37,50 +38,61 @@ export default function UnlockScreen({
 
   return (
     <div className="nw-screen">
-      <h2>Unlock Secure Notes</h2>
-
-      {notice !== null && <p className="nw-notice">{notice}</p>}
-
-      <div className="nw-field">
-        <label htmlFor="nw-unlock-words">Your words</label>
-        <textarea
-          id="nw-unlock-words"
-          className="nw-textarea"
-          rows={3}
-          value={typed}
-          onChange={(event) => setTyped(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && event.ctrlKey) {
-              event.preventDefault();
-              void handleUnlock();
-            }
-          }}
-          spellCheck={false}
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          dir="ltr"
-          autoFocus
-          disabled={running}
+      <div className="nw-unlock-card">
+        <Lock
+          className="nw-unlock-icon"
+          size={28}
+          strokeWidth={1.5}
+          aria-hidden="true"
         />
-      </div>
+        <h2>Unlock Secure Notes</h2>
 
-      <div className="nw-actions">
-        <button
-          type="button"
-          className="nw-button-primary"
-          onClick={() => void handleUnlock()}
-          disabled={running || typed.trim() === ""}
-        >
-          Unlock
-        </button>
-      </div>
+        {notice !== null && <p className="nw-notice">{notice}</p>}
 
-      {error !== null && (
-        <p className="nw-error" role="alert">
-          {error}
-        </p>
-      )}
+        <div className="nw-field">
+          <label htmlFor="nw-unlock-words">Your words</label>
+          <textarea
+            id="nw-unlock-words"
+            className="nw-textarea"
+            rows={3}
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && event.ctrlKey) {
+                event.preventDefault();
+                void handleUnlock();
+              }
+            }}
+            spellCheck={false}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            dir="ltr"
+            autoFocus
+            disabled={running}
+          />
+          <p className="nw-unlock-hint">
+            Type the words you saved when you created your notes.
+          </p>
+        </div>
+
+        <div className="nw-actions">
+          <button
+            type="button"
+            className="nw-button-primary nw-unlock-submit"
+            onClick={() => void handleUnlock()}
+            disabled={running || typed.trim() === ""}
+          >
+            Unlock
+          </button>
+        </div>
+
+        {error !== null && (
+          <p className="nw-error" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
