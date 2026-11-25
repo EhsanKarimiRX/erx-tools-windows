@@ -7,12 +7,13 @@ use std::path::Path;
 use super::crypto::{CreateSettings, create, open};
 use super::error::NotesError;
 use super::export::{
-    ExportCrypto, ExportKind, ImportOutcome, LEGACY_EXPORT_PASSPHRASE, export_bytes,
+    ExportCrypto, ExportKind, ImportOutcome, ImportPrep, LEGACY_EXPORT_PASSPHRASE, export_bytes,
     export_payload_all, export_payload_single, import_payload, is_encrypted_container,
-    note_to_plain, open_export_candidates, open_export_typed, render_all_export,
-    render_note_export, write_export_file,
+    note_to_plain, open_export_candidates, open_export_typed, prepare_import, read_file_limited,
+    render_all_export, render_note_export, write_export_file,
 };
-use super::model::{NOTE_FORMAT_TEXT, Note, NotesData, new_note_id};
+use super::format::MAX_FILE_BYTES;
+use super::model::{MAX_NOTE_BODY_BYTES, NOTE_FORMAT_TEXT, Note, NotesData, new_note_id};
 use super::session::NoteView;
 use super::test_support::TempDir;
 use crate::tools::vault::passphrase::normalize_passphrase;
@@ -420,4 +421,203 @@ fn r3_write_empty_path() {
         write_export_file(Path::new(""), b"bytes").unwrap_err(),
         NotesError::Io
     );
+}
+
+#[test]
+fn r4_read_limited_ok() {
+    let guard = TempDir::new();
+    let path = guard.path.join("ten.bin");
+    fs::write(&path, b"0123456789").unwrap();
+    assert_eq!(read_file_limited(&path, 10).unwrap(), b"0123456789");
+
+    let empty = guard.path.join("empty.bin");
+    fs::write(&empty, b"").unwrap();
+    assert_eq!(read_file_limited(&empty, 10).unwrap(), Vec::<u8>::new());
+}
+
+#[test]
+fn r4_read_limited_too_large() {
+    let guard = TempDir::new();
+    let path = guard.path.join("eleven.bin");
+    fs::write(&path, b"0123456789a").unwrap();
+    assert_eq!(
+        read_file_limited(&path, 10).unwrap_err(),
+        NotesError::FileTooLarge
+    );
+}
+
+#[test]
+fn r4_read_limited_not_a_file() {
+    let guard = TempDir::new();
+    let folder = guard.path.join("folder");
+    fs::create_dir(&folder).unwrap();
+    assert_eq!(read_file_limited(&folder, 10).unwrap_err(), NotesError::Io);
+
+    let missing = guard.path.join("missing.bin");
+    assert_eq!(read_file_limited(&missing, 10).unwrap_err(), NotesError::Io);
+}
+
+#[test]
+fn r4_prepare_legacy_file() {
+    let mut data = NotesData::new_empty();
+    data.add_note("first", "body one", 10).unwrap();
+    data.add_note("second", "body two", 20).unwrap();
+    let payload = export_payload_all(&data).unwrap();
+    let words = normalize_passphrase(LEGACY_EXPORT_PASSPHRASE);
+    let (file, _keys) = create(
+        words.as_str(),
+        &CreateSettings::for_tests(),
+        payload.as_slice(),
+    )
+    .unwrap();
+
+    match prepare_import(file, "picked", 0, MAX_FILE_BYTES, MAX_NOTE_BODY_BYTES).unwrap() {
+        ImportPrep::Ready { notes, legacy } => {
+            assert!(legacy);
+            assert_eq!(notes.len(), 2);
+            assert_eq!(notes[0].title, "first");
+            assert_eq!(notes[1].title, "second");
+        }
+        other => panic!("unexpected prep: {other:?}"),
+    }
+}
+
+#[test]
+fn r4_prepare_user_file_needs_passphrase() {
+    let file = r1_new_export();
+    let returned = match prepare_import(
+        file.clone(),
+        "picked",
+        0,
+        MAX_FILE_BYTES,
+        MAX_NOTE_BODY_BYTES,
+    )
+    .unwrap()
+    {
+        ImportPrep::NeedsPassphrase(bytes) => bytes,
+        other => panic!("unexpected prep: {other:?}"),
+    };
+    assert_eq!(returned, file);
+}
+
+#[test]
+fn r4_prepare_plain_text() {
+    match prepare_import(
+        b"hello".to_vec(),
+        "My title",
+        1234,
+        MAX_FILE_BYTES,
+        MAX_NOTE_BODY_BYTES,
+    )
+    .unwrap()
+    {
+        ImportPrep::Ready { notes, legacy } => {
+            assert!(!legacy);
+            assert_eq!(notes.len(), 1);
+            assert_eq!(notes[0].title, "My title");
+            assert_eq!(notes[0].body, "hello");
+            assert_eq!(notes[0].format, NOTE_FORMAT_TEXT);
+            assert_eq!(notes[0].created, 1234);
+            assert_eq!(notes[0].modified, 1234);
+            assert!(!notes[0].id.is_empty());
+        }
+        other => panic!("unexpected prep: {other:?}"),
+    }
+
+    match prepare_import(
+        b"hello".to_vec(),
+        "",
+        1234,
+        MAX_FILE_BYTES,
+        MAX_NOTE_BODY_BYTES,
+    )
+    .unwrap()
+    {
+        ImportPrep::Ready { notes, legacy } => {
+            assert!(!legacy);
+            assert_eq!(notes.len(), 1);
+            assert_eq!(notes[0].title, "Imported note");
+        }
+        other => panic!("unexpected prep: {other:?}"),
+    }
+}
+
+#[test]
+fn r4_prepare_text_limit() {
+    assert!(prepare_import(b"0123456789".to_vec(), "title", 0, MAX_FILE_BYTES, 10,).is_ok());
+    assert_eq!(
+        prepare_import(b"0123456789a".to_vec(), "title", 0, MAX_FILE_BYTES, 10).unwrap_err(),
+        NotesError::NoteTooLarge
+    );
+}
+
+#[test]
+fn r4_prepare_encrypted_limit() {
+    let file = r1_legacy_file();
+    let length = file.len();
+    assert!(prepare_import(file.clone(), "picked", 0, length, MAX_NOTE_BODY_BYTES,).is_ok());
+    assert_eq!(
+        prepare_import(file, "picked", 0, length - 1, MAX_NOTE_BODY_BYTES).unwrap_err(),
+        NotesError::FileTooLarge
+    );
+}
+
+#[test]
+fn r4_prepare_invalid_utf8() {
+    assert_eq!(
+        prepare_import(
+            vec![0xff, 0xfe, 0xfd],
+            "title",
+            0,
+            MAX_FILE_BYTES,
+            MAX_NOTE_BODY_BYTES,
+        )
+        .unwrap_err(),
+        NotesError::DataInvalid
+    );
+}
+
+#[test]
+fn r4_prepare_damaged_container() {
+    let file = r1_legacy_file();
+    assert!(is_encrypted_container(&file[..100]));
+    let expected = open_export_candidates(&file[..100], &[]).unwrap_err();
+    assert_eq!(
+        prepare_import(
+            file[..100].to_vec(),
+            "picked",
+            0,
+            MAX_FILE_BYTES,
+            MAX_NOTE_BODY_BYTES,
+        )
+        .unwrap_err(),
+        expected
+    );
+    assert_eq!(expected, NotesError::DamagedFile);
+}
+
+#[test]
+fn r4_prepare_wrong_flag_file_needs_passphrase() {
+    let file = r1_new_export();
+    let bytes =
+        match prepare_import(file, "picked", 0, MAX_FILE_BYTES, MAX_NOTE_BODY_BYTES).unwrap() {
+            ImportPrep::NeedsPassphrase(bytes) => bytes,
+            other => panic!("unexpected prep: {other:?}"),
+        };
+    match open_export_typed(&bytes, R1_WORDS).unwrap() {
+        ImportOutcome::Opened(notes) => assert_eq!(notes.len(), 1),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+    assert!(matches!(
+        open_export_typed(&bytes, R1_OTHER).unwrap(),
+        ImportOutcome::WrongPassphrase
+    ));
+}
+
+#[test]
+fn r4_prepare_no_secret_in_debug() {
+    let printed = format!("{:?}", ImportPrep::NeedsPassphrase(vec![1, 2, 3]));
+    for word in R1_WORDS.split(' ') {
+        assert!(!printed.contains(word));
+    }
 }

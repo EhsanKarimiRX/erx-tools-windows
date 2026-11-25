@@ -2,7 +2,7 @@
 //! `ERXNOTES` container for backups, and the shapes that restore accepts.
 //! No UI and no Tauri in this file.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -219,6 +219,91 @@ pub fn open_export_typed(
 /// True when the bytes start with the `ERXNOTES` magic.
 pub fn is_encrypted_container(bytes: &[u8]) -> bool {
     bytes.starts_with(&MAGIC)
+}
+
+/// Reads a file of at most `limit` bytes. Bigger files are `FileTooLarge`;
+/// anything that is not a readable regular file is `Io`.
+#[allow(dead_code)] // used from R4b
+pub fn read_file_limited(path: &Path, limit: u64) -> Result<Vec<u8>, NotesError> {
+    let meta = std::fs::metadata(path).map_err(|_| NotesError::Io)?;
+    if !meta.is_file() {
+        return Err(NotesError::Io);
+    }
+    if meta.len() > limit {
+        return Err(NotesError::FileTooLarge);
+    }
+    let file = std::fs::File::open(path).map_err(|_| NotesError::Io)?;
+    let mut bytes = Vec::new();
+    file.take(limit.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|_| NotesError::Io)?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > limit {
+        return Err(NotesError::FileTooLarge);
+    }
+    Ok(bytes)
+}
+
+/// What a picked import file turned into.
+#[allow(dead_code)] // used from R4b
+#[derive(Debug, PartialEq)]
+pub enum ImportPrep {
+    /// The notes are ready to append. `legacy` is true for a v0.5.0 file
+    /// that was opened with the built-in passphrase.
+    Ready { notes: Vec<Note>, legacy: bool },
+    /// Encrypted with words only the user knows. The bytes are handed back
+    /// so the caller can keep them until the words are typed.
+    NeedsPassphrase(Vec<u8>),
+}
+
+/// Plain text becomes one note titled `title_stem` (or "Imported note").
+/// Encrypted containers are tried with the built-in legacy passphrase only;
+/// otherwise they need the user's words. Size limits are checked first.
+#[allow(dead_code)] // used from R4b
+pub fn prepare_import(
+    bytes: Vec<u8>,
+    title_stem: &str,
+    now: i64,
+    max_file_bytes: usize,
+    max_text_bytes: usize,
+) -> Result<ImportPrep, NotesError> {
+    if is_encrypted_container(&bytes) {
+        if bytes.len() > max_file_bytes {
+            return Err(NotesError::FileTooLarge);
+        }
+        return match open_export_candidates(&bytes, &[])? {
+            ImportOutcome::Opened(notes) => Ok(ImportPrep::Ready {
+                notes,
+                legacy: false,
+            }),
+            ImportOutcome::LegacyOpened(notes) => Ok(ImportPrep::Ready {
+                notes,
+                legacy: true,
+            }),
+            ImportOutcome::NeedsPassphrase | ImportOutcome::WrongPassphrase => {
+                Ok(ImportPrep::NeedsPassphrase(bytes))
+            }
+        };
+    }
+    if bytes.len() > max_text_bytes {
+        return Err(NotesError::NoteTooLarge);
+    }
+    let body = String::from_utf8(bytes).map_err(|_| NotesError::DataInvalid)?;
+    let title = if title_stem.is_empty() {
+        "Imported note"
+    } else {
+        title_stem
+    };
+    Ok(ImportPrep::Ready {
+        notes: vec![Note {
+            id: new_note_id()?,
+            title: title.to_string(),
+            body,
+            format: NOTE_FORMAT_TEXT.to_string(),
+            created: now,
+            modified: now,
+        }],
+        legacy: false,
+    })
 }
 
 /// Appends notes to `target`, giving a colliding id a fresh value and
