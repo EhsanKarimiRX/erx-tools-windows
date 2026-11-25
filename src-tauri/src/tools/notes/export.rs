@@ -2,6 +2,9 @@
 //! `ERXNOTES` container for backups, and the shapes that restore accepts.
 //! No UI and no Tauri in this file.
 
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
@@ -103,6 +106,41 @@ pub fn export_bytes(
     let (file, keys) = create_export(normalized_words, settings, payload.as_slice())?;
     drop(keys);
     Ok(file)
+}
+
+/// The words and the key-derivation settings for one encrypted export.
+#[allow(dead_code)] // used from R3b
+pub struct ExportCrypto<'a> {
+    pub words: &'a str,
+    pub settings: &'a CreateSettings,
+}
+
+/// Builds the bytes of one exported note. `txt` and `md` are plain and must
+/// come with `crypto == None`; `erxnote` is encrypted and needs `Some`.
+/// Anything else is `DataInvalid`.
+#[allow(dead_code)] // used from R3b
+pub fn render_note_export(
+    note: &NoteView,
+    format: &str,
+    crypto: Option<&ExportCrypto<'_>>,
+) -> Result<Zeroizing<Vec<u8>>, NotesError> {
+    match (format, crypto) {
+        ("txt" | "md", None) => Ok(Zeroizing::new(note_to_plain(note, format)?.into_bytes())),
+        ("erxnote", Some(crypto)) => {
+            let file = export_bytes(ExportKind::Single(note), crypto.words, crypto.settings)?;
+            Ok(Zeroizing::new(file))
+        }
+        _ => Err(NotesError::DataInvalid),
+    }
+}
+
+/// Builds the bytes of an encrypted backup of all notes.
+#[allow(dead_code)] // used from R3b
+pub fn render_all_export(
+    data: &NotesData,
+    crypto: &ExportCrypto<'_>,
+) -> Result<Vec<u8>, NotesError> {
+    export_bytes(ExportKind::All(data), crypto.words, crypto.settings)
 }
 
 /// Result of trying to open an encrypted export. No variant carries
@@ -239,4 +277,49 @@ fn is_valid_id(id: &str) -> bool {
         && id
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Writes `bytes` to `path` atomically: a temporary file next to the target
+/// is written, synced and read back, then renamed over the target. The
+/// temporary file is removed on every failure.
+#[allow(dead_code)] // used from R3b
+pub fn write_export_file(path: &Path, bytes: &[u8]) -> Result<(), NotesError> {
+    let temp = export_temp_path(path)?;
+    let written = (|| -> std::io::Result<()> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
+        file.write_all(bytes)?;
+        file.flush()?;
+        file.sync_all()?;
+        Ok(())
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+        return Err(NotesError::Io);
+    }
+    match std::fs::read(&temp) {
+        Ok(read_back) if read_back == bytes => {}
+        _ => {
+            let _ = std::fs::remove_file(&temp);
+            return Err(NotesError::Io);
+        }
+    }
+    if std::fs::rename(&temp, path).is_err() {
+        let _ = std::fs::remove_file(&temp);
+        return Err(NotesError::Io);
+    }
+    Ok(())
+}
+
+/// A temporary name next to the target: `<name>.<8 hex>.erxtmp`.
+fn export_temp_path(path: &Path) -> Result<PathBuf, NotesError> {
+    let name = path.file_name().ok_or(NotesError::Io)?;
+    let mut random = [0u8; 4];
+    getrandom::fill(&mut random).map_err(|_| NotesError::RandomUnavailable)?;
+    let hex: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+    let mut temp_name = name.to_os_string();
+    temp_name.push(format!(".{hex}.erxtmp"));
+    Ok(path.with_file_name(temp_name))
 }

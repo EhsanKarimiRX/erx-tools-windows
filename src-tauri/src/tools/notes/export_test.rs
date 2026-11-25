@@ -1,15 +1,20 @@
 //! Export and import tests: the plain text shapes, the two payload shapes
 //! and the id handling when notes are appended.
 
+use std::fs;
+use std::path::Path;
+
 use super::crypto::{CreateSettings, create, open};
 use super::error::NotesError;
 use super::export::{
-    ExportKind, ImportOutcome, LEGACY_EXPORT_PASSPHRASE, export_bytes, export_payload_all,
-    export_payload_single, import_payload, is_encrypted_container, note_to_plain,
-    open_export_candidates, open_export_typed,
+    ExportCrypto, ExportKind, ImportOutcome, LEGACY_EXPORT_PASSPHRASE, export_bytes,
+    export_payload_all, export_payload_single, import_payload, is_encrypted_container,
+    note_to_plain, open_export_candidates, open_export_typed, render_all_export,
+    render_note_export, write_export_file,
 };
 use super::model::{NOTE_FORMAT_TEXT, Note, NotesData, new_note_id};
 use super::session::NoteView;
+use super::test_support::TempDir;
 use crate::tools::vault::passphrase::normalize_passphrase;
 
 fn note_view(id: &str, title: &str, body: &str) -> NoteView {
@@ -244,5 +249,175 @@ fn r1_unknown_flag_and_short_files_are_errors() {
     assert_eq!(
         open_export_candidates(&file[..100], &[]).unwrap_err(),
         NotesError::DamagedFile
+    );
+}
+
+fn erxtmp_leftovers(dir: &Path) -> Vec<String> {
+    fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".erxtmp"))
+        .collect()
+}
+
+#[test]
+fn r3_render_plain_formats() {
+    let note = note_view(VALID_ID, "Title", "Body");
+    for format in ["txt", "md"] {
+        let rendered = render_note_export(&note, format, None).unwrap();
+        let expected = note_to_plain(&note, format).unwrap().into_bytes();
+        assert_eq!(rendered.as_slice(), expected.as_slice());
+    }
+}
+
+#[test]
+fn r3_render_plain_rejects_crypto() {
+    let note = note_view(VALID_ID, "Title", "Body");
+    let settings = CreateSettings::for_tests();
+    let crypto = ExportCrypto {
+        words: R1_WORDS,
+        settings: &settings,
+    };
+    assert_eq!(
+        render_note_export(&note, "txt", Some(&crypto)).unwrap_err(),
+        NotesError::DataInvalid
+    );
+}
+
+#[test]
+fn r3_render_erxnote_needs_crypto() {
+    let note = note_view(VALID_ID, "Title", "Body");
+    assert_eq!(
+        render_note_export(&note, "erxnote", None).unwrap_err(),
+        NotesError::DataInvalid
+    );
+}
+
+#[test]
+fn r3_render_unknown_format() {
+    let note = note_view(VALID_ID, "Title", "Body");
+    let settings = CreateSettings::for_tests();
+    let crypto = ExportCrypto {
+        words: R1_WORDS,
+        settings: &settings,
+    };
+    assert_eq!(
+        render_note_export(&note, "pdf", None).unwrap_err(),
+        NotesError::DataInvalid
+    );
+    assert_eq!(
+        render_note_export(&note, "pdf", Some(&crypto)).unwrap_err(),
+        NotesError::DataInvalid
+    );
+}
+
+#[test]
+fn r3_render_erxnote_round_trip() {
+    let note = note_view(VALID_ID, "Title", "Body");
+    let settings = CreateSettings::for_tests();
+    let crypto = ExportCrypto {
+        words: R1_WORDS,
+        settings: &settings,
+    };
+    let bytes = render_note_export(&note, "erxnote", Some(&crypto)).unwrap();
+
+    match open_export_typed(bytes.as_slice(), R1_WORDS).unwrap() {
+        ImportOutcome::Opened(notes) => {
+            assert_eq!(notes.len(), 1);
+            assert_eq!(notes[0].title, "Title");
+            assert_eq!(notes[0].body, "Body");
+        }
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+    assert!(matches!(
+        open_export_candidates(bytes.as_slice(), &[]).unwrap(),
+        ImportOutcome::NeedsPassphrase
+    ));
+    assert!(matches!(
+        open_export_typed(bytes.as_slice(), R1_OTHER).unwrap(),
+        ImportOutcome::WrongPassphrase
+    ));
+
+    let legacy = normalize_passphrase(LEGACY_EXPORT_PASSPHRASE);
+    assert!(open(bytes.as_slice(), legacy.as_str()).is_err());
+    assert!(matches!(
+        open_export_typed(bytes.as_slice(), legacy.as_str()).unwrap(),
+        ImportOutcome::WrongPassphrase
+    ));
+}
+
+#[test]
+fn r3_render_all_round_trip() {
+    let mut data = NotesData::new_empty();
+    data.add_note("first", "body one", 10).unwrap();
+    data.add_note("second", "body two", 20).unwrap();
+    let settings = CreateSettings::for_tests();
+    let crypto = ExportCrypto {
+        words: R1_WORDS,
+        settings: &settings,
+    };
+    let bytes = render_all_export(&data, &crypto).unwrap();
+
+    match open_export_typed(&bytes, R1_WORDS).unwrap() {
+        ImportOutcome::Opened(notes) => assert_eq!(notes.len(), 2),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+}
+
+#[test]
+fn r3_write_new_file() {
+    let guard = TempDir::new();
+    let path = guard.path.join("note.erxnote");
+    let bytes = b"encoded bytes";
+
+    write_export_file(&path, bytes).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert!(erxtmp_leftovers(&guard.path).is_empty());
+}
+
+#[test]
+fn r3_write_replaces_existing() {
+    let guard = TempDir::new();
+    let path = guard.path.join("note.erxnote");
+    fs::write(&path, b"old bytes").unwrap();
+    let bytes = b"new bytes";
+
+    write_export_file(&path, bytes).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert!(erxtmp_leftovers(&guard.path).is_empty());
+}
+
+#[test]
+fn r3_write_target_is_directory() {
+    let guard = TempDir::new();
+    let target = guard.path.join("folder");
+    fs::create_dir(&target).unwrap();
+
+    assert_eq!(
+        write_export_file(&target, b"bytes").unwrap_err(),
+        NotesError::Io
+    );
+    assert!(erxtmp_leftovers(&guard.path).is_empty());
+    assert!(target.is_dir());
+}
+
+#[test]
+fn r3_write_missing_parent() {
+    let guard = TempDir::new();
+    let folder = guard.path.join("missing");
+    let target = folder.join("note.erxnote");
+
+    assert_eq!(
+        write_export_file(&target, b"bytes").unwrap_err(),
+        NotesError::Io
+    );
+    assert!(!folder.exists());
+}
+
+#[test]
+fn r3_write_empty_path() {
+    assert_eq!(
+        write_export_file(Path::new(""), b"bytes").unwrap_err(),
+        NotesError::Io
     );
 }
