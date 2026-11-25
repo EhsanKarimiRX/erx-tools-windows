@@ -82,6 +82,7 @@ pub fn import_payload(bytes: &[u8], target: &mut NotesData) -> Result<usize, Not
 }
 
 /// What an export contains.
+#[allow(dead_code)] // used from R3
 pub enum ExportKind<'a> {
     Single(&'a NoteView),
     All(&'a NotesData),

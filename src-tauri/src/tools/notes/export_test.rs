@@ -8,7 +8,6 @@ use super::export::{
     export_payload_single, import_payload, is_encrypted_container, note_to_plain,
     open_export_candidates, open_export_typed,
 };
-use super::format::FLAG_USER_PASSPHRASE;
 use super::model::{NOTE_FORMAT_TEXT, Note, NotesData, new_note_id};
 use super::session::NoteView;
 use crate::tools::vault::passphrase::normalize_passphrase;
