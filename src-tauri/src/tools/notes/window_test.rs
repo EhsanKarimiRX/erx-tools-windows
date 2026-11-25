@@ -202,7 +202,9 @@ fn q7_source_scan_commands() {
     assert_eq!(source.matches("app_data_dir()").count(), 0);
 }
 
-fn body_of<'a>(source: &'a str, signature: &str, closing: &str) -> &'a str {
+fn body_of(source: &str, signature: &str, closing: &str) -> String {
+    // Sources may be checked out with CRLF (git core.autocrlf=true on Windows).
+    let source = source.replace("\r\n", "\n");
     let start = source
         .find(signature)
         .unwrap_or_else(|| panic!("signature not found: {signature}"));
@@ -210,7 +212,7 @@ fn body_of<'a>(source: &'a str, signature: &str, closing: &str) -> &'a str {
     let end = rest
         .find(closing)
         .unwrap_or_else(|| panic!("closing not found for signature: {signature}"));
-    &rest[..end + closing.len()]
+    rest[..end + closing.len()].to_string()
 }
 
 #[test]
