@@ -576,3 +576,33 @@ fn c23_open_body_reads_the_payload_without_the_words() {
         b"after open"
     );
 }
+
+#[test]
+fn export_file_sets_user_passphrase_flag_and_round_trips() {
+    let payload = b"export payload";
+    let (file, _keys) = create_export(WORDS, &test_settings(), payload).unwrap();
+    assert_eq!(&file[10..12], &[1u8, 0u8]);
+    let (_keys, opened) = open(&file, WORDS).unwrap();
+    assert_eq!(opened.as_slice(), payload);
+}
+
+#[test]
+fn notebook_create_still_writes_flags_zero() {
+    let (file, _keys) = create(WORDS, &test_settings(), b"notebook").unwrap();
+    assert_eq!(&file[10..12], &[0u8, 0u8]);
+}
+
+#[test]
+fn export_file_wrong_words_returns_no_plaintext() {
+    let (file, _keys) = create_export(WORDS, &test_settings(), b"secret").unwrap();
+    assert!(open(&file, OTHER_WORDS).is_err());
+}
+
+#[test]
+fn flipping_the_flag_bit_does_not_make_open_succeed() {
+    let (file, _keys) = create_export(WORDS, &test_settings(), b"secret").unwrap();
+    let mut tampered = file;
+    tampered[10] = 0;
+    assert!(open(&tampered, WORDS).is_err());
+    assert!(open(&tampered, OTHER_WORDS).is_err());
+}

@@ -18,10 +18,10 @@ use zeroize::{Zeroize, Zeroizing};
 
 use super::error::NotesError;
 use super::format::{
-    AAD_WRAP_END, AEAD_TAG_LEN, BODY_NONCE_LEN, COMMIT_TAG_LEN, HEADER_LEN, Header,
-    KDF_ARGON2ID_V13, LEN_FIELD, MAX_FILE_BYTES, MAX_PAYLOAD_BYTES, NONCE_LEN, OFFSET_RESERVED,
-    OFFSET_TAG, OFFSET_WRAPPED_KEY, PAD_BUCKET, SALT_LEN, TAG_COVERS, UUID_LEN, WRAPPED_KEY_LEN,
-    pad_payload, padded_file_len, unpad_plaintext,
+    AAD_WRAP_END, AEAD_TAG_LEN, BODY_NONCE_LEN, COMMIT_TAG_LEN, FLAG_USER_PASSPHRASE, HEADER_LEN,
+    Header, KDF_ARGON2ID_V13, LEN_FIELD, MAX_FILE_BYTES, MAX_PAYLOAD_BYTES, NONCE_LEN,
+    OFFSET_RESERVED, OFFSET_TAG, OFFSET_WRAPPED_KEY, PAD_BUCKET, SALT_LEN, TAG_COVERS, UUID_LEN,
+    WRAPPED_KEY_LEN, pad_payload, padded_file_len, unpad_plaintext,
 };
 use crate::tools::vault::kdf::{KEY_LEN, KdfParams, MAX_T_COST, MIN_M_COST_KIB_FOR_ENCRYPTION};
 use crate::tools::vault::runtime::KDF_MEMORY_KIB;
@@ -280,11 +280,12 @@ fn open_body_with(
 }
 
 /// Creates a file from fixed randomness. Tests use this to pin the layout.
-pub(crate) fn create_with(
+pub(crate) fn create_with_flags(
     normalized_words: &str,
     settings: &CreateSettings,
     payload: &[u8],
     random: Randomness,
+    flags: u16,
 ) -> Result<(Vec<u8>, NotesKeys), NotesError> {
     let plaintext = pad_payload(payload)?;
 
@@ -293,7 +294,7 @@ pub(crate) fn create_with(
     let commit_key = hkdf_key(master.as_slice(), LABEL_COMMIT, &random.uuid)?;
 
     let header = Header {
-        flags: 0,
+        flags,
         file_uuid: random.uuid,
         kdf: settings.kdf,
         salt: random.salt,
@@ -340,6 +341,16 @@ pub(crate) fn create_with(
     ))
 }
 
+/// Layout-pinning entry point for notebook files: flags are always 0.
+pub(crate) fn create_with(
+    normalized_words: &str,
+    settings: &CreateSettings,
+    payload: &[u8],
+    random: Randomness,
+) -> Result<(Vec<u8>, NotesKeys), NotesError> {
+    create_with_flags(normalized_words, settings, payload, random, 0)
+}
+
 /// Creates a new notes file with fresh randomness.
 pub fn create(
     normalized_words: &str,
@@ -347,6 +358,21 @@ pub fn create(
     payload: &[u8],
 ) -> Result<(Vec<u8>, NotesKeys), NotesError> {
     create_with(normalized_words, settings, payload, Randomness::random()?)
+}
+
+/// Creates an export file: fresh randomness, FLAG_USER_PASSPHRASE set.
+pub fn create_export(
+    normalized_words: &str,
+    settings: &CreateSettings,
+    payload: &[u8],
+) -> Result<(Vec<u8>, NotesKeys), NotesError> {
+    create_with_flags(
+        normalized_words,
+        settings,
+        payload,
+        Randomness::random()?,
+        FLAG_USER_PASSPHRASE,
+    )
 }
 
 /// Opens a notes file. The returned keys can re-seal a new payload.
