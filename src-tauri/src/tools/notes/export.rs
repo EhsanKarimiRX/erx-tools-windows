@@ -5,17 +5,20 @@
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+use super::crypto::{CreateSettings, create_export, open};
 use super::error::NotesError;
-use super::format::{MAGIC, MAX_PAYLOAD_BYTES};
+use super::format::{FLAG_USER_PASSPHRASE, HEADER_LEN, Header, MAGIC, MAX_PAYLOAD_BYTES};
 use super::model::{
     ID_LEN, MAX_NOTE_BODY_BYTES, MAX_NOTES, MAX_TITLE_BYTES, NOTE_FORMAT_TEXT, Note, NotesData,
     new_note_id,
 };
 use super::session::NoteView;
+use crate::tools::vault::passphrase::normalize_passphrase;
 
-/// The fixed passphrase of every encrypted export. It keeps the file
-/// protected from casual reading, not from someone who has this code.
-pub const EXPORT_DEFAULT_PASSPHRASE: &str = "erx-notes-export-default";
+/// The fixed passphrase that v0.5.0 used for every `.erxnote` export.
+/// ONLY for opening files exported by v0.5.0. It must never be used to
+/// write a new export: such files are effectively unprotected.
+pub const LEGACY_EXPORT_PASSPHRASE: &str = "erx-notes-export-default";
 
 /// The payload of a single-note encrypted export.
 #[derive(Deserialize)]
@@ -76,6 +79,107 @@ pub fn import_payload(bytes: &[u8], target: &mut NotesData) -> Result<usize, Not
             append_notes(target, vec![note])
         }
     }
+}
+
+/// What an export contains.
+pub enum ExportKind<'a> {
+    Single(&'a NoteView),
+    All(&'a NotesData),
+}
+
+/// Builds one encrypted export file (fresh randomness, FLAG_USER_PASSPHRASE
+/// set). `normalized_words` must already be normalized by the caller.
+#[allow(dead_code)] // used from R3
+pub fn export_bytes(
+    kind: ExportKind<'_>,
+    normalized_words: &str,
+    settings: &CreateSettings,
+) -> Result<Vec<u8>, NotesError> {
+    let payload = match kind {
+        ExportKind::Single(note) => export_payload_single(note)?,
+        ExportKind::All(data) => export_payload_all(data)?,
+    };
+    let (file, keys) = create_export(normalized_words, settings, payload.as_slice())?;
+    drop(keys);
+    Ok(file)
+}
+
+/// Result of trying to open an encrypted export. No variant carries
+/// plaintext except the two that opened.
+#[derive(Debug)]
+#[allow(dead_code)] // used from R4
+pub enum ImportOutcome {
+    /// Opened with one of the candidate passphrases.
+    Opened(Vec<Note>),
+    /// Opened with the built-in v0.5.0 passphrase.
+    LegacyOpened(Vec<Note>),
+    /// Nothing worked yet: ask the user for the words.
+    NeedsPassphrase,
+    /// The typed words did not open the file.
+    WrongPassphrase,
+}
+
+fn parse_header(bytes: &[u8]) -> Result<Header, NotesError> {
+    if bytes.len() < HEADER_LEN {
+        return Err(NotesError::DamagedFile);
+    }
+    Header::parse(&bytes[..HEADER_LEN])
+}
+
+fn decode_notes(payload: &[u8]) -> Result<Vec<Note>, NotesError> {
+    let mut staging = NotesData::new_empty();
+    import_payload(payload, &mut staging)?;
+    Ok(std::mem::take(&mut staging.notes))
+}
+
+/// Ok(Some) = opened, Ok(None) = wrong words, Err = anything else.
+fn try_open(bytes: &[u8], normalized_words: &str) -> Result<Option<Vec<Note>>, NotesError> {
+    match open(bytes, normalized_words) {
+        Ok((keys, payload)) => {
+            drop(keys);
+            Ok(Some(decode_notes(payload.as_slice())?))
+        }
+        Err(NotesError::WrongPassphraseOrHeader) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// Tries each already-normalized candidate in order, then the legacy
+/// passphrase. The legacy attempt is skipped when the header carries
+/// FLAG_USER_PASSPHRASE: the flag is only a hint (a tampered flag breaks the
+/// commitment, it can never make a wrong passphrase succeed).
+#[allow(dead_code)] // used from R4
+pub fn open_export_candidates(
+    bytes: &[u8],
+    candidates: &[&str],
+) -> Result<ImportOutcome, NotesError> {
+    let header = parse_header(bytes)?;
+    for words in candidates {
+        if let Some(notes) = try_open(bytes, words)? {
+            return Ok(ImportOutcome::Opened(notes));
+        }
+    }
+    if header.flags & FLAG_USER_PASSPHRASE == 0 {
+        let legacy = normalize_passphrase(LEGACY_EXPORT_PASSPHRASE);
+        if let Some(notes) = try_open(bytes, legacy.as_str())? {
+            return Ok(ImportOutcome::LegacyOpened(notes));
+        }
+    }
+    Ok(ImportOutcome::NeedsPassphrase)
+}
+
+/// Opens with words the user typed (already normalized). Never tries the
+/// legacy passphrase.
+#[allow(dead_code)] // used from R4
+pub fn open_export_typed(
+    bytes: &[u8],
+    normalized_words: &str,
+) -> Result<ImportOutcome, NotesError> {
+    parse_header(bytes)?;
+    Ok(match try_open(bytes, normalized_words)? {
+        Some(notes) => ImportOutcome::Opened(notes),
+        None => ImportOutcome::WrongPassphrase,
+    })
 }
 
 /// True when the bytes start with the `ERXNOTES` magic.

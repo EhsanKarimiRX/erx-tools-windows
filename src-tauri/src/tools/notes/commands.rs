@@ -18,7 +18,7 @@ use super::clock::RealClock;
 use super::crypto::{CreateSettings, NOTES_KDF_TARGET, create, open, tune_kdf};
 use super::error::NotesError;
 use super::export::{
-    EXPORT_DEFAULT_PASSPHRASE, export_payload_all, export_payload_single, import_payload,
+    LEGACY_EXPORT_PASSPHRASE, export_payload_all, export_payload_single, import_payload,
     is_encrypted_container, note_to_plain,
 };
 use super::model::{NOTE_FORMAT_TEXT, Note, NotesData, PreviewMode, new_note_id};
@@ -591,9 +591,10 @@ fn ensure_extension(path: PathBuf, extension: &str) -> PathBuf {
 }
 
 /// Encrypts one export payload with the fixed export passphrase.
+// TODO(R3): must stop using the legacy passphrase for writing.
 fn encrypt_export(payload: &[u8]) -> Result<Vec<u8>, NotesCommandError> {
     let settings = production_settings()?;
-    let normalized = normalize_passphrase(EXPORT_DEFAULT_PASSPHRASE);
+    let normalized = normalize_passphrase(LEGACY_EXPORT_PASSPHRASE);
     let (file, keys) = create(normalized.as_str(), &settings, payload)?;
     drop(keys);
     Ok(file)
@@ -689,7 +690,7 @@ fn import_blocking(
     let bytes = std::fs::read(&path).map_err(|_| NotesError::Io)?;
 
     let notes = if is_encrypted_container(&bytes) {
-        let normalized = normalize_passphrase(EXPORT_DEFAULT_PASSPHRASE);
+        let normalized = normalize_passphrase(LEGACY_EXPORT_PASSPHRASE);
         let (keys, payload) = open(&bytes, normalized.as_str())?;
         drop(keys);
         let mut staging = NotesData::new_empty();
