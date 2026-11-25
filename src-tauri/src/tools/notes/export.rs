@@ -141,7 +141,6 @@ pub fn render_all_export(
 /// Result of trying to open an encrypted export. No variant carries
 /// plaintext except the two that opened.
 #[derive(Debug)]
-#[allow(dead_code)] // used from R4
 pub enum ImportOutcome {
     /// Opened with one of the candidate passphrases.
     Opened(Vec<Note>),
@@ -182,7 +181,6 @@ fn try_open(bytes: &[u8], normalized_words: &str) -> Result<Option<Vec<Note>>, N
 /// passphrase. The legacy attempt is skipped when the header carries
 /// FLAG_USER_PASSPHRASE: the flag is only a hint (a tampered flag breaks the
 /// commitment, it can never make a wrong passphrase succeed).
-#[allow(dead_code)] // used from R4
 pub fn open_export_candidates(
     bytes: &[u8],
     candidates: &[&str],
@@ -204,7 +202,6 @@ pub fn open_export_candidates(
 
 /// Opens with words the user typed (already normalized). Never tries the
 /// legacy passphrase.
-#[allow(dead_code)] // used from R4
 pub fn open_export_typed(
     bytes: &[u8],
     normalized_words: &str,
@@ -223,7 +220,6 @@ pub fn is_encrypted_container(bytes: &[u8]) -> bool {
 
 /// Reads a file of at most `limit` bytes. Bigger files are `FileTooLarge`;
 /// anything that is not a readable regular file is `Io`.
-#[allow(dead_code)] // used from R4b
 pub fn read_file_limited(path: &Path, limit: u64) -> Result<Vec<u8>, NotesError> {
     let meta = std::fs::metadata(path).map_err(|_| NotesError::Io)?;
     if !meta.is_file() {
@@ -244,7 +240,6 @@ pub fn read_file_limited(path: &Path, limit: u64) -> Result<Vec<u8>, NotesError>
 }
 
 /// What a picked import file turned into.
-#[allow(dead_code)] // used from R4b
 #[derive(Debug, PartialEq)]
 pub enum ImportPrep {
     /// The notes are ready to append. `legacy` is true for a v0.5.0 file
@@ -258,7 +253,6 @@ pub enum ImportPrep {
 /// Plain text becomes one note titled `title_stem` (or "Imported note").
 /// Encrypted containers are tried with the built-in legacy passphrase only;
 /// otherwise they need the user's words. Size limits are checked first.
-#[allow(dead_code)] // used from R4b
 pub fn prepare_import(
     bytes: Vec<u8>,
     title_stem: &str,

@@ -15,19 +15,22 @@ use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
 use super::clock::RealClock;
-use super::crypto::{CreateSettings, NOTES_KDF_TARGET, open, tune_kdf};
+use super::crypto::{CreateSettings, NOTES_KDF_TARGET, tune_kdf};
 use super::error::NotesError;
 use super::export::{
-    ExportCrypto, LEGACY_EXPORT_PASSPHRASE, import_payload, is_encrypted_container,
+    ExportCrypto, ImportPrep, open_export_typed, prepare_import, read_file_limited,
     render_all_export, render_note_export, write_export_file,
 };
-use super::model::{NOTE_FORMAT_TEXT, Note, NotesData, PreviewMode, new_note_id};
+use super::format::MAX_FILE_BYTES;
+use super::model::{MAX_NOTE_BODY_BYTES, NotesData, PreviewMode};
 use super::session::{
     LockReport, NoteListItem, NoteView, NotesSession, NotesStatus, RefreshView, SaveState,
     SettingsView, TickOutcome, UnlockOutcome, WordsView,
 };
 use super::store::NotesStore;
-use crate::tools::vault::passphrase::normalize_passphrase;
+use crate::tools::vault::passphrase::{
+    NOTES_WORD_LIMITS, normalize_passphrase, validate_typed_words_with,
+};
 
 /// The label of the hardened notes window.
 pub const NOTES_WINDOW_LABEL: &str = "notes";
@@ -107,6 +110,18 @@ impl From<NotesError> for NotesCommandError {
             message: error.to_string(),
         }
     }
+}
+
+/// What one import step did, as the frontend sees it. JSON shapes:
+/// `{"status":"cancelled"}`,
+/// `{"status":"imported","count":2,"legacy":false}`,
+/// `{"status":"needs_passphrase","token":"<32 hex chars>"}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ImportResult {
+    Cancelled,
+    Imported { count: usize, legacy: bool },
+    NeedsPassphrase { token: String },
 }
 
 /// The session behind the commands. `None` means Secure Notes is unavailable.
@@ -736,11 +751,19 @@ fn unix_now() -> Result<i64, NotesError> {
     i64::try_from(seconds).map_err(|_| NotesError::Internal)
 }
 
-/// Reads one file and appends its notes to the open session.
+/// Picks a file and imports it, or keeps it waiting for the export words.
 fn import_blocking(
     app: &AppHandle,
     shared: &NotesShared,
-) -> Result<Option<usize>, NotesCommandError> {
+) -> Result<ImportResult, NotesCommandError> {
+    // Fail before the dialog when the notes are locked.
+    with_session(shared, |session| {
+        if session.status().unlocked {
+            Ok(())
+        } else {
+            Err(NotesError::NotUnlocked)
+        }
+    })?;
     let target = app
         .dialog()
         .file()
@@ -748,39 +771,32 @@ fn import_blocking(
         .add_filter("All files", &["*"])
         .blocking_pick_file();
     let Some(target) = target else {
-        return Ok(None);
+        return Ok(ImportResult::Cancelled);
     };
     let path = target.into_path().map_err(|_| NotesError::Io)?;
-    let bytes = std::fs::read(&path).map_err(|_| NotesError::Io)?;
-
-    let notes = if is_encrypted_container(&bytes) {
-        let normalized = normalize_passphrase(LEGACY_EXPORT_PASSPHRASE);
-        let (keys, payload) = open(&bytes, normalized.as_str())?;
-        drop(keys);
-        let mut staging = NotesData::new_empty();
-        import_payload(payload.as_slice(), &mut staging)?;
-        std::mem::take(&mut staging.notes)
-    } else {
-        let body = Zeroizing::new(String::from_utf8(bytes).map_err(|_| NotesError::DataInvalid)?);
-        let title = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .filter(|stem| !stem.is_empty())
-            .unwrap_or("Imported note")
-            .to_string();
-        let created = unix_now()?;
-        vec![Note {
-            id: new_note_id()?,
-            title,
-            body: body.to_string(),
-            format: NOTE_FORMAT_TEXT.to_string(),
-            created,
-            modified: created,
-        }]
-    };
-
-    let count = with_session(shared, |session| session.import_notes(&notes))?;
-    Ok(Some(count))
+    let limit = u64::try_from(MAX_FILE_BYTES.max(MAX_NOTE_BODY_BYTES)).unwrap_or(u64::MAX);
+    let bytes = read_file_limited(&path, limit)?;
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("")
+        .to_string();
+    match prepare_import(
+        bytes,
+        &stem,
+        unix_now()?,
+        MAX_FILE_BYTES,
+        MAX_NOTE_BODY_BYTES,
+    )? {
+        ImportPrep::Ready { notes, legacy } => {
+            let count = with_session(shared, |session| session.import_notes(&notes))?;
+            Ok(ImportResult::Imported { count, legacy })
+        }
+        ImportPrep::NeedsPassphrase(bytes) => {
+            let token = with_session(shared, |session| session.stage_import(bytes))?;
+            Ok(ImportResult::NeedsPassphrase { token })
+        }
+    }
 }
 
 /// Saves one note as `txt`, `md` or an encrypted `erxnote` file. Returns the
@@ -855,17 +871,64 @@ pub async fn notes_export_all(
         .map_err(|_| NotesCommandError::internal())?
 }
 
-/// Appends the notes of an `erxnote` backup or a plain `txt` / `md` file.
-/// Returns how many notes were added, or `None` when the dialog was cancelled.
+/// Step 1 of an import. Plain text and old v0.5.0 backups are added at once.
+/// Any other `erxnote` file is kept in Rust and `needs_passphrase` with a
+/// token is returned; the user then types the export words
+/// (`notes_import_with_passphrase`). Returns `cancelled` when the dialog was
+/// cancelled. Notes are only added, never replaced.
 #[tauri::command]
 pub async fn notes_import(
     window: tauri::Window,
     app: AppHandle,
     state: State<'_, NotesState>,
-) -> Result<Option<usize>, NotesCommandError> {
+) -> Result<ImportResult, NotesCommandError> {
     check_window(&window)?;
     let shared = Arc::clone(&state.shared);
     tauri::async_runtime::spawn_blocking(move || import_blocking(&app, &shared))
         .await
         .map_err(|_| NotesCommandError::internal())?
+}
+
+/// Step 2 of an import: opens the waiting file with the typed export words.
+/// Wrong words give `wrong_import_passphrase` and the file keeps waiting, so
+/// the user can try again; the error never says whether the file is damaged.
+/// Words that are not a valid word list give a `words` error and the file
+/// keeps waiting. Any other error forgets the file.
+#[tauri::command]
+pub async fn notes_import_with_passphrase(
+    window: tauri::Window,
+    state: State<'_, NotesState>,
+    token: String,
+    typed: String,
+) -> Result<ImportResult, NotesCommandError> {
+    check_window(&window)?;
+    let typed = Zeroizing::new(typed);
+    let normalized = normalize_passphrase(typed.as_str());
+    drop(typed);
+    let bytes = with_session(&state.shared, |session| session.pending_import(&token))?;
+    validate_typed_words_with(normalized.as_str(), NOTES_WORD_LIMITS)
+        .map_err(|error| NotesError::Words(error.to_string()))?;
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        open_export_typed(bytes.as_slice(), normalized.as_str())
+    })
+    .await
+    .map_err(|_| NotesCommandError::internal())?;
+    let (count, legacy) = with_session(&state.shared, |session| {
+        session.finish_typed_import(&token, outcome)
+    })?;
+    Ok(ImportResult::Imported { count, legacy })
+}
+
+/// Forgets the file that waits for its export words.
+#[tauri::command(async)]
+pub fn notes_import_cancel(
+    window: tauri::Window,
+    state: State<'_, NotesState>,
+) -> Result<(), NotesCommandError> {
+    check_window(&window)?;
+    with_session(&state.shared, |session| {
+        session.cancel_import();
+        Ok(())
+    })?;
+    Ok(())
 }

@@ -135,6 +135,8 @@ pub fn run() {
             tools::notes::commands::notes_export_note,
             tools::notes::commands::notes_export_all,
             tools::notes::commands::notes_import,
+            tools::notes::commands::notes_import_with_passphrase,
+            tools::notes::commands::notes_import_cancel,
             // Update check: the app's only network access (R3), run solely
             // when the user clicks the update button on the home screen.
             tools::update_check::commands::check_for_updates,

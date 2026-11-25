@@ -673,7 +673,6 @@ impl NotesSession {
 
     /// Keeps the bytes of an encrypted import file until the user types the
     /// words. Replaces any earlier waiting file. Returns a random token.
-    #[allow(dead_code)] // used from R4b
     pub fn stage_import(&mut self, bytes: Vec<u8>) -> Result<String, NotesError> {
         if self.unlocked.is_none() {
             return Err(NotesError::NotUnlocked);
@@ -689,7 +688,6 @@ impl NotesSession {
     }
 
     /// The waiting file for this token (shared, not copied).
-    #[allow(dead_code)] // used from R4b
     pub fn pending_import(&self, token: &str) -> Result<std::sync::Arc<Vec<u8>>, NotesError> {
         if self.unlocked.is_none() {
             return Err(NotesError::NotUnlocked);
@@ -701,14 +699,12 @@ impl NotesSession {
     }
 
     /// Forgets the waiting file (cancel).
-    #[allow(dead_code)] // used from R4b
     pub fn cancel_import(&mut self) {
         self.pending_import = None;
     }
 
     /// Appends opened notes and forgets the waiting file in EVERY case
     /// (success or failure): the file was opened, so it is no longer waiting.
-    #[allow(dead_code)] // used from R4b
     pub fn finish_import(&mut self, token: &str, notes: &[Note]) -> Result<usize, NotesError> {
         self.pending_import(token)?;
         let result = self.import_notes(notes);
@@ -722,7 +718,6 @@ impl NotesSession {
     /// - wrong words: `WrongImportPassphrase`, the file KEEPS waiting so the
     ///   user can retry; the message never says whether the file is damaged;
     /// - any other error: the file is forgotten and the error is returned.
-    #[allow(dead_code)] // used from R4b
     pub fn finish_typed_import(
         &mut self,
         token: &str,

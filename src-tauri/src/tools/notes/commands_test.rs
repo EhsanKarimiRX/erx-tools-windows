@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use super::clock::{DateParts, TestClock};
 use super::commands::{
-    AutoLockedEvent, AutosaveEvent, NotesCommandError, NotesShared, TickEvents, check_window_label,
-    events_for, exit_save, finish_create_impl, lock_impl, lock_shared, tick_once, with_session,
+    AutoLockedEvent, AutosaveEvent, ImportResult, NotesCommandError, NotesShared, TickEvents,
+    check_window_label, events_for, exit_save, finish_create_impl, lock_impl, lock_shared,
+    tick_once, with_session,
 };
 use super::crypto::CreateSettings;
 use super::error::NotesError;
@@ -154,8 +155,8 @@ fn w1_window_label() {
 #[test]
 fn w2_source_scan_commands() {
     let source = include_str!("commands.rs");
-    assert_eq!(source.matches("#[tauri::command").count(), 28);
-    assert_eq!(source.matches("check_window(&window)").count(), 28);
+    assert_eq!(source.matches("#[tauri::command").count(), 30);
+    assert_eq!(source.matches("check_window(&window)").count(), 30);
 }
 
 #[test]
@@ -167,13 +168,54 @@ fn r3_source_scan_export() {
         source
             .matches("normalize_passphrase(LEGACY_EXPORT_PASSPHRASE)")
             .count(),
-        1
+        0
     );
+    assert_eq!(source.matches("LEGACY_EXPORT_PASSPHRASE").count(), 0);
     assert_eq!(source.matches("drop(current_words);").count(), 2);
     assert_eq!(source.matches("write_export_file(&path").count(), 2);
     assert_eq!(source.matches("render_all_export(").count(), 1);
     assert_eq!(source.matches("resolve_export_words(").count(), 2);
     assert_eq!(source.matches("std::fs::write(").count(), 0);
+}
+
+#[test]
+fn r4_import_result_json() {
+    let cancelled = serde_json::to_value(ImportResult::Cancelled).unwrap();
+    assert_eq!(cancelled, serde_json::json!({"status": "cancelled"}));
+    let imported = serde_json::to_value(ImportResult::Imported {
+        count: 2,
+        legacy: true,
+    })
+    .unwrap();
+    assert_eq!(
+        imported,
+        serde_json::json!({"status": "imported", "count": 2, "legacy": true})
+    );
+    let waiting = serde_json::to_value(ImportResult::NeedsPassphrase {
+        token: "abc".to_string(),
+    })
+    .unwrap();
+    assert_eq!(
+        waiting,
+        serde_json::json!({"status": "needs_passphrase", "token": "abc"})
+    );
+}
+
+#[test]
+fn r4_source_scan_import() {
+    let source = include_str!("commands.rs");
+    assert_eq!(source.matches("read_file_limited(").count(), 1);
+    assert_eq!(source.matches("prepare_import(").count(), 1);
+    assert_eq!(source.matches("open_export_typed(").count(), 1);
+    assert_eq!(source.matches("finish_typed_import(").count(), 1);
+    assert_eq!(source.matches("stage_import(").count(), 1);
+    assert_eq!(source.matches("cancel_import()").count(), 1);
+    assert_eq!(source.matches("std::fs::read(").count(), 0);
+    assert_eq!(
+        source.matches("fn notes_import_with_passphrase(").count(),
+        1
+    );
+    assert_eq!(source.matches("fn notes_import_cancel(").count(), 1);
 }
 
 #[test]
@@ -208,6 +250,8 @@ fn w3_source_scan_lib() {
         "notes_export_note",
         "notes_export_all",
         "notes_import",
+        "notes_import_with_passphrase",
+        "notes_import_cancel",
     ];
     for name in names {
         let needle = format!("tools::notes::commands::{name},");
