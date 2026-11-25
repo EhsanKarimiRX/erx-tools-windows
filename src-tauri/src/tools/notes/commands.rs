@@ -821,6 +821,7 @@ pub async fn notes_export_note(
         )?;
         Ok((session.get_note(&id)?, Some(words)))
     })?;
+    drop(current_words);
     tauri::async_runtime::spawn_blocking(move || {
         export_note_blocking(&app, note, &format, words.as_ref().map(|w| w.as_str()))
     })
@@ -848,6 +849,7 @@ pub async fn notes_export_all(
         )?;
         Ok((session.export_data()?, words))
     })?;
+    drop(current_words);
     tauri::async_runtime::spawn_blocking(move || export_all_blocking(&app, data, words.as_str()))
         .await
         .map_err(|_| NotesCommandError::internal())?

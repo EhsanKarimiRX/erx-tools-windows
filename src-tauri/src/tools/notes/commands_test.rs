@@ -169,6 +169,7 @@ fn r3_source_scan_export() {
             .count(),
         1
     );
+    assert_eq!(source.matches("drop(current_words);").count(), 2);
     assert_eq!(source.matches("write_export_file(&path").count(), 2);
     assert_eq!(source.matches("render_all_export(").count(), 1);
     assert_eq!(source.matches("resolve_export_words(").count(), 2);
