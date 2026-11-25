@@ -152,8 +152,8 @@ fn w1_window_label() {
 #[test]
 fn w2_source_scan_commands() {
     let source = include_str!("commands.rs");
-    assert_eq!(source.matches("#[tauri::command").count(), 23);
-    assert_eq!(source.matches("check_window(&window)").count(), 23);
+    assert_eq!(source.matches("#[tauri::command").count(), 28);
+    assert_eq!(source.matches("check_window(&window)").count(), 28);
 }
 
 #[test]
@@ -180,6 +180,11 @@ fn w3_source_scan_lib() {
         "notes_finish_create",
         "notes_unlock",
         "notes_change_passphrase",
+        "notes_export_generate_words",
+        "notes_export_refresh_word",
+        "notes_export_confirm_words_saved",
+        "notes_export_retype_words",
+        "notes_export_clear_words",
         "notes_export_note",
         "notes_export_all",
         "notes_import",

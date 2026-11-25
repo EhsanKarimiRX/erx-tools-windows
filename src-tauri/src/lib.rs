@@ -119,12 +119,18 @@ pub fn run() {
             tools::notes::commands::notes_finish_create,
             tools::notes::commands::notes_unlock,
             tools::notes::commands::notes_change_passphrase,
+            tools::notes::commands::notes_export_generate_words,
+            tools::notes::commands::notes_export_refresh_word,
+            tools::notes::commands::notes_export_confirm_words_saved,
+            tools::notes::commands::notes_export_retype_words,
+            tools::notes::commands::notes_export_clear_words,
             // Secure Notes window: open the hardened window and close it.
             tools::notes::window::notes_open_window,
             tools::notes::window::notes_close_window,
             // Secure Notes clipboard: Rust writes the selected text.
             tools::notes::clipboard::notes_copy_text,
             tools::notes::clipboard::notes_copy_words,
+            tools::notes::clipboard::notes_export_copy_words,
             // Secure Notes export and restore: Rust-side dialogs and files.
             tools::notes::commands::notes_export_note,
             tools::notes::commands::notes_export_all,

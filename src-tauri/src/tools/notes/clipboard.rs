@@ -404,3 +404,24 @@ pub async fn notes_copy_words(
         .map_err(|_| NotesCommandError::internal())?
         .map_err(error_to_command_error)
 }
+
+/// Copies the export passphrase words (kept in Rust) to the clipboard. Same 30 s auto-clear as `notes_copy_words`.
+#[tauri::command]
+pub async fn notes_export_copy_words(
+    window: tauri::Window,
+    clipboard: State<'_, NotesClipboardState>,
+    notes: State<'_, NotesState>,
+) -> Result<(), NotesCommandError> {
+    if !check_window_label(window.label()) {
+        return Err(NotesCommandError {
+            code: "wrong_window".to_string(),
+            message: "This window may not use Secure Notes.".to_string(),
+        });
+    }
+    let words = with_session(&notes.shared(), |session| session.export_words_for_copy())?;
+    let core = Arc::clone(&clipboard.core);
+    tauri::async_runtime::spawn_blocking(move || core.copy(words.as_str(), Instant::now()))
+        .await
+        .map_err(|_| NotesCommandError::internal())?
+        .map_err(error_to_command_error)
+}

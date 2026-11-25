@@ -379,6 +379,64 @@ pub fn notes_clear_words(
 }
 
 #[tauri::command(async)]
+pub fn notes_export_generate_words(
+    window: tauri::Window,
+    state: State<'_, NotesState>,
+    count: usize,
+) -> Result<WordsView, NotesCommandError> {
+    check_window(&window)?;
+    with_session(&state.shared, |session| {
+        session.generate_export_words(count)
+    })
+}
+
+#[tauri::command(async)]
+pub fn notes_export_refresh_word(
+    window: tauri::Window,
+    state: State<'_, NotesState>,
+    slot: usize,
+) -> Result<RefreshView, NotesCommandError> {
+    check_window(&window)?;
+    with_session(&state.shared, |session| session.refresh_export_word(slot))
+}
+
+#[tauri::command(async)]
+pub fn notes_export_confirm_words_saved(
+    window: tauri::Window,
+    state: State<'_, NotesState>,
+) -> Result<(), NotesCommandError> {
+    check_window(&window)?;
+    with_session(&state.shared, |session| {
+        session.confirm_export_words_saved()
+    })
+}
+
+#[tauri::command(async)]
+pub fn notes_export_retype_words(
+    window: tauri::Window,
+    state: State<'_, NotesState>,
+    typed: String,
+) -> Result<bool, NotesCommandError> {
+    check_window(&window)?;
+    let typed = Zeroizing::new(typed);
+    with_session(&state.shared, |session| {
+        session.retype_export_words(typed.as_str())
+    })
+}
+
+#[tauri::command(async)]
+pub fn notes_export_clear_words(
+    window: tauri::Window,
+    state: State<'_, NotesState>,
+) -> Result<(), NotesCommandError> {
+    check_window(&window)?;
+    with_session(&state.shared, |session| {
+        session.clear_export_words();
+        Ok(())
+    })
+}
+
+#[tauri::command(async)]
 pub fn notes_lock(
     window: tauri::Window,
     state: State<'_, NotesState>,

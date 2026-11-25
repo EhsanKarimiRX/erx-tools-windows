@@ -159,6 +159,8 @@ pub struct NotesSession {
     clock: Box<dyn Clock>,
     words: PassphraseSession,
     retyped: bool,
+    export_words: PassphraseSession,
+    export_retyped: bool,
     unlocked: Option<Unlocked>,
 }
 
@@ -179,6 +181,8 @@ impl NotesSession {
             clock,
             words: PassphraseSession::new(NOTES_WORD_LIMITS),
             retyped: false,
+            export_words: PassphraseSession::new(NOTES_WORD_LIMITS),
+            export_retyped: false,
             unlocked: None,
         }
     }
@@ -263,6 +267,95 @@ impl NotesSession {
         Ok(Zeroizing::new(joined))
     }
 
+    // ---- Export words: a separate session (never shares `self.words`). ----
+
+    pub fn generate_export_words(&mut self, count: usize) -> Result<WordsView, NotesError> {
+        if self.unlocked.is_none() {
+            return Err(NotesError::NotUnlocked);
+        }
+        let words = self
+            .export_words
+            .generate(count)
+            .map_err(|error| NotesError::Words(error.to_string()))?;
+        self.export_retyped = false;
+        let replacements_left = (0..words.len())
+            .map(|slot| self.export_words.replacements_left(slot).unwrap_or(0))
+            .collect();
+        let figures = strength(words.len());
+        Ok(WordsView {
+            words,
+            replacements_left,
+            entropy_bits: figures.bits,
+            weak: figures.is_weak,
+        })
+    }
+
+    pub fn refresh_export_word(&mut self, slot: usize) -> Result<RefreshView, NotesError> {
+        if self.unlocked.is_none() {
+            return Err(NotesError::NotUnlocked);
+        }
+        let word = self
+            .export_words
+            .refresh(slot)
+            .map_err(|error| NotesError::Words(error.to_string()))?;
+        let replacements_left = self.export_words.replacements_left(slot).unwrap_or(0);
+        Ok(RefreshView {
+            word,
+            replacements_left,
+        })
+    }
+
+    pub fn confirm_export_words_saved(&mut self) -> Result<(), NotesError> {
+        self.export_words
+            .confirm_saved()
+            .map_err(|error| NotesError::Words(error.to_string()))
+    }
+
+    pub fn retype_export_words(&mut self, typed: &str) -> Result<bool, NotesError> {
+        match self.export_words.typed_matches(typed) {
+            Ok(true) => {
+                self.export_retyped = true;
+                Ok(true)
+            }
+            Ok(false) => Ok(false),
+            Err(PassphraseError::NotConfirmed) => Err(NotesError::WordsNotConfirmed),
+            Err(error) => Err(NotesError::Words(error.to_string())),
+        }
+    }
+
+    pub fn clear_export_words(&mut self) {
+        self.export_words.clear();
+        self.export_retyped = false;
+    }
+
+    /// The export words as one text (single spaces) for copying. The caller must wipe the text; the pieces are wiped here.
+    pub fn export_words_for_copy(&self) -> Result<Zeroizing<String>, NotesError> {
+        let mut parts = self.export_words.display_words();
+        if parts.is_empty() {
+            return Err(NotesError::Words(PassphraseError::NoPassphrase.to_string()));
+        }
+        let joined = parts.join(" ");
+        for part in parts.iter_mut() {
+            part.zeroize();
+        }
+        Ok(Zeroizing::new(joined))
+    }
+
+    /// The normalized export words for the key derivation. Refused until the
+    /// words were confirmed saved AND retyped correctly.
+    #[allow(dead_code)] // used from R3
+    pub fn export_words_for_kdf(&self) -> Result<Zeroizing<String>, NotesError> {
+        let words = match self.export_words.normalized_for_kdf() {
+            Ok(words) => words,
+            Err(PassphraseError::NotConfirmed) => return Err(NotesError::WordsNotConfirmed),
+            Err(error) => return Err(NotesError::Words(error.to_string())),
+        };
+        if !self.export_retyped {
+            return Err(NotesError::WordsNotRetyped);
+        }
+        Ok(words)
+    }
+
     pub fn finish_create(&mut self, settings: &CreateSettings) -> Result<(), NotesError> {
         if self.unlocked.is_some() {
             return Err(NotesError::AlreadyUnlocked);
@@ -323,6 +416,8 @@ impl NotesSession {
     }
 
     pub fn lock(&mut self) -> LockReport {
+        self.export_words.clear();
+        self.export_retyped = false;
         let Some(unlocked) = self.unlocked.take() else {
             return LockReport {
                 was_unlocked: false,

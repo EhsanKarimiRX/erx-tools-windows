@@ -381,12 +381,19 @@ fn body_of(source: &str, signature: &str, closing: &str) -> String {
 #[test]
 fn c12_source_scan_clipboard() {
     let source = include_str!("clipboard.rs");
-    assert_eq!(source.matches("#[tauri::command").count(), 2);
+    assert_eq!(source.matches("#[tauri::command").count(), 3);
     assert_eq!(source.matches("pub async fn notes_copy_text(").count(), 1);
     assert_eq!(source.matches("pub async fn notes_copy_words(").count(), 1);
     assert_eq!(
+        source
+            .matches("pub async fn notes_export_copy_words(")
+            .count(),
+        1
+    );
+    assert_eq!(source.matches("export_words_for_copy()").count(), 1);
+    assert_eq!(
         source.matches("check_window_label(window.label())").count(),
-        2
+        3
     );
     assert_eq!(source.matches("status().unlocked").count(), 1);
     assert_eq!(source.matches("words_text()").count(), 1);
@@ -413,6 +420,11 @@ fn c13_source_scan_lib_and_commands() {
         1
     );
     assert_eq!(
+        lib.matches("tools::notes::clipboard::notes_export_copy_words,")
+            .count(),
+        1
+    );
+    assert_eq!(
         lib.matches(".manage(tools::notes::clipboard::NotesClipboardState::default())")
             .count(),
         1
@@ -427,7 +439,7 @@ fn c13_source_scan_lib_and_commands() {
             .count(),
         1
     );
-    assert_eq!(commands.matches("#[tauri::command").count(), 23);
+    assert_eq!(commands.matches("#[tauri::command").count(), 28);
 }
 
 /// Opens the clipboard for reading, with the same retry as the module.
