@@ -384,6 +384,31 @@ impl NotesSession {
         result
     }
 
+    /// Picks the passphrase for ONE encrypted export and wipes the export-words
+    /// session in every case, success or error. `mode` is "new" (the confirmed
+    /// and retyped export words; `current_typed` must be None) or "current"
+    /// (the typed current notebook words, verified against the notebook file;
+    /// `current_typed` is required). Anything else is `DataInvalid`.
+    #[allow(dead_code)] // used from R3b
+    pub fn resolve_export_words(
+        &mut self,
+        mode: Option<&str>,
+        current_typed: Option<&str>,
+    ) -> Result<Zeroizing<String>, NotesError> {
+        match (mode, current_typed) {
+            (Some("new"), None) => self.take_export_words(),
+            (Some("current"), Some(typed)) => {
+                let result = self.verify_current_words(typed);
+                self.clear_export_words();
+                result
+            }
+            _ => {
+                self.clear_export_words();
+                Err(NotesError::DataInvalid)
+            }
+        }
+    }
+
     pub fn finish_create(&mut self, settings: &CreateSettings) -> Result<(), NotesError> {
         if self.unlocked.is_some() {
             return Err(NotesError::AlreadyUnlocked);

@@ -1282,3 +1282,119 @@ fn sn_take_export_words_not_unlocked() {
         Some(NotesError::NotUnlocked)
     );
 }
+
+#[test]
+fn sn_resolve_export_new_ok() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(8).unwrap();
+    let joined = view.words.join(" ");
+    session.confirm_export_words_saved().unwrap();
+    assert!(session.retype_export_words(&joined).unwrap());
+    let words = session.resolve_export_words(Some("new"), None).unwrap();
+    assert_eq!(words.as_str(), normalize_passphrase(&joined).as_str());
+    assert!(session.export_words_for_copy().is_err());
+}
+
+#[test]
+fn sn_resolve_export_new_not_ready() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    session.generate_export_words(8).unwrap();
+    assert_eq!(
+        session.resolve_export_words(Some("new"), None).err(),
+        Some(NotesError::WordsNotConfirmed)
+    );
+    assert!(session.export_words_for_copy().is_err());
+}
+
+#[test]
+fn sn_resolve_export_new_rejects_typed() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(8).unwrap();
+    let joined = view.words.join(" ");
+    session.confirm_export_words_saved().unwrap();
+    assert!(session.retype_export_words(&joined).unwrap());
+    assert_eq!(
+        session.resolve_export_words(Some("new"), Some("x")).err(),
+        Some(NotesError::DataInvalid)
+    );
+    assert!(session.export_words_for_copy().is_err());
+}
+
+#[test]
+fn sn_resolve_export_current_ok() {
+    let clock = test_clock();
+    let (_guard, mut session, words) = create_unlocked(clock);
+    session.generate_export_words(8).unwrap();
+    let resolved = session
+        .resolve_export_words(Some("current"), Some(&words))
+        .unwrap();
+    assert_eq!(resolved.as_str(), normalize_passphrase(&words).as_str());
+    assert!(session.export_words_for_copy().is_err());
+}
+
+#[test]
+fn sn_resolve_export_current_wrong() {
+    let clock = test_clock();
+    let (_guard, mut session, words) = create_unlocked(clock);
+    session.generate_export_words(8).unwrap();
+    let wrong = other_words(5, &words);
+    assert_eq!(
+        session
+            .resolve_export_words(Some("current"), Some(&wrong))
+            .err(),
+        Some(NotesError::WrongPassphraseOrHeader)
+    );
+    assert!(session.status().unlocked);
+    assert!(session.export_words_for_copy().is_err());
+}
+
+#[test]
+fn sn_resolve_export_current_needs_words() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    assert_eq!(
+        session.resolve_export_words(Some("current"), None).err(),
+        Some(NotesError::DataInvalid)
+    );
+}
+
+#[test]
+fn sn_resolve_export_bad_mode() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    assert_eq!(
+        session.resolve_export_words(None, None).err(),
+        Some(NotesError::DataInvalid)
+    );
+    assert_eq!(
+        session.resolve_export_words(None, Some("x")).err(),
+        Some(NotesError::DataInvalid)
+    );
+    assert_eq!(
+        session.resolve_export_words(Some("other"), None).err(),
+        Some(NotesError::DataInvalid)
+    );
+    assert_eq!(
+        session.resolve_export_words(Some("NEW"), None).err(),
+        Some(NotesError::DataInvalid)
+    );
+}
+
+#[test]
+fn sn_resolve_export_not_unlocked() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    assert_eq!(
+        session.resolve_export_words(Some("new"), None).err(),
+        Some(NotesError::NotUnlocked)
+    );
+    assert_eq!(
+        session
+            .resolve_export_words(Some("current"), Some("anything"))
+            .err(),
+        Some(NotesError::NotUnlocked)
+    );
+}
