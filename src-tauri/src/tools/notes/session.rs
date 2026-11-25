@@ -356,6 +356,34 @@ impl NotesSession {
         Ok(words)
     }
 
+    /// Checks the typed current notebook words against the notebook file and
+    /// returns them normalized. Does not change the session. The loaded notes
+    /// are dropped at once: they are only the proof that the words are right.
+    #[allow(dead_code)] // used from R3b
+    pub fn verify_current_words(&self, typed: &str) -> Result<Zeroizing<String>, NotesError> {
+        if self.unlocked.is_none() {
+            return Err(NotesError::NotUnlocked);
+        }
+        let current = normalize_passphrase(typed);
+        validate_typed_words_with(current.as_str(), NOTES_WORD_LIMITS)
+            .map_err(|error| NotesError::Words(error.to_string()))?;
+        drop(self.store.load(current.as_str())?);
+        Ok(current)
+    }
+
+    /// Takes the confirmed and retyped export words for ONE export and wipes
+    /// the export-words session in every case (success or error).
+    #[allow(dead_code)] // used from R3b
+    pub fn take_export_words(&mut self) -> Result<Zeroizing<String>, NotesError> {
+        let result = if self.unlocked.is_none() {
+            Err(NotesError::NotUnlocked)
+        } else {
+            self.export_words_for_kdf()
+        };
+        self.clear_export_words();
+        result
+    }
+
     pub fn finish_create(&mut self, settings: &CreateSettings) -> Result<(), NotesError> {
         if self.unlocked.is_some() {
             return Err(NotesError::AlreadyUnlocked);

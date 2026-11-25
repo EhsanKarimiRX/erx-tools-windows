@@ -16,7 +16,7 @@ use super::session::{
 };
 use super::store::{BACKUP_FILE_NAME, MAIN_FILE_NAME, NotesStore};
 use super::test_support::{TempDir, real_store, scripted_store, scripted_store_counted};
-use crate::tools::vault::passphrase::{NOTES_WORD_LIMITS, PassphraseSession};
+use crate::tools::vault::passphrase::{NOTES_WORD_LIMITS, PassphraseSession, normalize_passphrase};
 
 /// Persian "می‌خواهم" with a Persian yeh.
 const PERSIAN_TITLE: &str = "\u{0645}\u{06CC}\u{200C}\u{062E}\u{0648}\u{0627}\u{0647}\u{0645}";
@@ -1177,6 +1177,108 @@ fn sn_export_words_wiped_on_lock() {
     assert!(session.export_words_for_copy().is_err());
     assert_eq!(
         session.generate_export_words(5).err(),
+        Some(NotesError::NotUnlocked)
+    );
+}
+
+#[test]
+fn sn_verify_current_requires_unlock() {
+    let clock = test_clock();
+    let (_guard, session) = fresh_session(clock);
+    assert_eq!(
+        session.verify_current_words("anything").err(),
+        Some(NotesError::NotUnlocked)
+    );
+}
+
+#[test]
+fn sn_verify_current_ok() {
+    let clock = test_clock();
+    let (_guard, session, words) = create_unlocked(clock);
+    let verified = session.verify_current_words(&words).unwrap();
+    assert_eq!(verified.as_str(), normalize_passphrase(&words).as_str());
+}
+
+#[test]
+fn sn_verify_current_wrong_words() {
+    let clock = test_clock();
+    let (_guard, session, words) = create_unlocked(clock);
+    let wrong = other_words(5, &words);
+    assert_eq!(
+        session.verify_current_words(&wrong).err(),
+        Some(NotesError::WrongPassphraseOrHeader)
+    );
+}
+
+#[test]
+fn sn_verify_current_invalid_words() {
+    let clock = test_clock();
+    let (_guard, session, _words) = create_unlocked(clock);
+    assert!(matches!(
+        session.verify_current_words("hello").err(),
+        Some(NotesError::Words(_))
+    ));
+}
+
+#[test]
+fn sn_verify_current_keeps_state() {
+    let clock = test_clock();
+    let (_guard, mut session, words) = create_unlocked(clock);
+    session.generate_export_words(8).unwrap();
+    let wrong = other_words(5, &words);
+    assert!(session.verify_current_words(&words).is_ok());
+    assert!(session.verify_current_words(&wrong).is_err());
+    assert!(session.status().unlocked);
+    assert!(session.export_words_for_copy().is_ok());
+}
+
+#[test]
+fn sn_take_export_words_ok() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(8).unwrap();
+    let joined = view.words.join(" ");
+    session.confirm_export_words_saved().unwrap();
+    assert!(session.retype_export_words(&joined).unwrap());
+    let taken = session.take_export_words().unwrap();
+    assert_eq!(taken.as_str(), normalize_passphrase(&joined).as_str());
+    assert!(session.export_words_for_copy().is_err());
+}
+
+#[test]
+fn sn_take_export_words_needs_confirm() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    session.generate_export_words(8).unwrap();
+    assert_eq!(
+        session.take_export_words().err(),
+        Some(NotesError::WordsNotConfirmed)
+    );
+    assert!(session.export_words_for_copy().is_err());
+}
+
+#[test]
+fn sn_take_export_words_needs_retype() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(8).unwrap();
+    let joined = view.words.join(" ");
+    session.confirm_export_words_saved().unwrap();
+    let wrong = other_words(8, &joined);
+    assert!(!session.retype_export_words(&wrong).unwrap());
+    assert_eq!(
+        session.take_export_words().err(),
+        Some(NotesError::WordsNotRetyped)
+    );
+    assert!(session.export_words_for_copy().is_err());
+}
+
+#[test]
+fn sn_take_export_words_not_unlocked() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    assert_eq!(
+        session.take_export_words().err(),
         Some(NotesError::NotUnlocked)
     );
 }
