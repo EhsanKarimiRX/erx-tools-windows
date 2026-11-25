@@ -1030,3 +1030,153 @@ fn sn_import_regenerates_colliding_id() {
     assert_eq!(imported_id.len(), 32);
     assert_eq!(id_of(&mut session, "existing"), existing_id);
 }
+
+#[test]
+fn sn_export_words_require_unlock() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    assert_eq!(
+        session.generate_export_words(5).err(),
+        Some(NotesError::NotUnlocked)
+    );
+    assert_eq!(
+        session.refresh_export_word(0).err(),
+        Some(NotesError::NotUnlocked)
+    );
+}
+
+#[test]
+fn sn_export_words_count_limits() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    assert!(matches!(
+        session.generate_export_words(4).err(),
+        Some(NotesError::Words(_))
+    ));
+    assert!(matches!(
+        session.generate_export_words(13).err(),
+        Some(NotesError::Words(_))
+    ));
+    assert!(session.generate_export_words(5).is_ok());
+    assert!(session.generate_export_words(12).is_ok());
+}
+
+#[test]
+fn sn_export_words_weak_flag() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let five = session.generate_export_words(5).unwrap();
+    assert_eq!(five.words.len(), 5);
+    assert_eq!(five.replacements_left.len(), 5);
+    assert!(five.weak);
+    let eight = session.generate_export_words(8).unwrap();
+    assert_eq!(eight.words.len(), 8);
+    assert!(!eight.weak);
+}
+
+#[test]
+fn sn_export_words_kdf_needs_confirm_and_retype() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(8).unwrap();
+    let joined = view.words.join(" ");
+
+    // Not confirmed yet.
+    assert_eq!(
+        session.export_words_for_kdf().err(),
+        Some(NotesError::WordsNotConfirmed)
+    );
+    assert_eq!(
+        session.retype_export_words(&joined).err(),
+        Some(NotesError::WordsNotConfirmed)
+    );
+
+    session.confirm_export_words_saved().unwrap();
+
+    // Confirmed but not retyped.
+    assert_eq!(
+        session.export_words_for_kdf().err(),
+        Some(NotesError::WordsNotRetyped)
+    );
+
+    // Wrong words: no match, still refused.
+    let wrong = other_words(8, &joined);
+    assert_eq!(session.retype_export_words(&wrong).unwrap(), false);
+    assert_eq!(
+        session.export_words_for_kdf().err(),
+        Some(NotesError::WordsNotRetyped)
+    );
+
+    // Right words: now allowed.
+    assert_eq!(session.retype_export_words(&joined).unwrap(), true);
+    let kdf = session.export_words_for_kdf().unwrap();
+    assert_eq!(kdf.as_str().split_whitespace().count(), 8);
+}
+
+#[test]
+fn sn_export_words_generate_again_resets_confirmation() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(5).unwrap();
+    let joined = view.words.join(" ");
+    session.confirm_export_words_saved().unwrap();
+    assert!(session.retype_export_words(&joined).unwrap());
+    assert!(session.export_words_for_kdf().is_ok());
+
+    session.generate_export_words(5).unwrap();
+    assert!(session.export_words_for_kdf().is_err());
+}
+
+#[test]
+fn sn_export_words_copy_text_matches_view() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(6).unwrap();
+    let copied = session.export_words_for_copy().unwrap();
+    assert_eq!(copied.as_str(), view.words.join(" "));
+}
+
+#[test]
+fn sn_export_words_refresh_slot() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    session.generate_export_words(5).unwrap();
+    let refreshed = session.refresh_export_word(0).unwrap();
+    assert!(!refreshed.word.is_empty());
+    assert!(session.refresh_export_word(99).is_err());
+}
+
+#[test]
+fn sn_export_words_clear_wipes_everything() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(5).unwrap();
+    let joined = view.words.join(" ");
+    session.confirm_export_words_saved().unwrap();
+    assert!(session.retype_export_words(&joined).unwrap());
+    assert!(session.export_words_for_kdf().is_ok());
+
+    session.clear_export_words();
+    assert!(session.export_words_for_kdf().is_err());
+    assert!(session.export_words_for_copy().is_err());
+    // The notebook itself is untouched.
+    assert!(session.list("").is_ok());
+}
+
+#[test]
+fn sn_export_words_wiped_on_lock() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let view = session.generate_export_words(5).unwrap();
+    let joined = view.words.join(" ");
+    session.confirm_export_words_saved().unwrap();
+    assert!(session.retype_export_words(&joined).unwrap());
+
+    session.lock();
+    assert!(session.export_words_for_kdf().is_err());
+    assert!(session.export_words_for_copy().is_err());
+    assert_eq!(
+        session.generate_export_words(5).err(),
+        Some(NotesError::NotUnlocked)
+    );
+}
