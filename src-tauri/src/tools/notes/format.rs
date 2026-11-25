@@ -17,6 +17,12 @@ use crate::tools::vault::kdf::{KEY_LEN, KdfParams};
 pub const MAGIC: [u8; 8] = *b"ERXNOTES";
 /// Container format version written by this code.
 pub const FORMAT_VERSION: u16 = 1;
+/// Header flag: the file was exported with a passphrase chosen for that file
+/// (v0.5.1+ exports). A hint only: opening always decides by verifying the
+/// passphrase; notebook files always write flags 0.
+pub const FLAG_USER_PASSPHRASE: u16 = 0x0001;
+/// Every flag bit this code understands.
+pub const KNOWN_FLAGS: u16 = FLAG_USER_PASSPHRASE;
 /// Size of the header in bytes.
 pub const HEADER_LEN: usize = 192;
 /// KDF id for Argon2id, version 0x13.
@@ -104,7 +110,7 @@ impl Header {
             return Err(NotesError::UnsupportedVersion);
         }
         let flags = u16::from_le_bytes(read_array(bytes, OFFSET_FLAGS));
-        if flags != 0 {
+        if flags & !KNOWN_FLAGS != 0 {
             return Err(NotesError::UnsupportedVersion);
         }
         if bytes[OFFSET_KDF_ID] != KDF_ARGON2ID_V13 {

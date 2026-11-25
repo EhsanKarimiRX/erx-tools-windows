@@ -153,7 +153,7 @@ fn parse_rejects_bad_headers_in_the_documented_order() {
     );
 
     let mut bytes = base;
-    write_u16(&mut bytes, OFFSET_FLAGS, 1);
+    write_u16(&mut bytes, OFFSET_FLAGS, 2);
     assert_eq!(
         Header::parse(&bytes).unwrap_err(),
         NotesError::UnsupportedVersion
@@ -274,4 +274,22 @@ fn unpadding_reads_the_length_and_checks_the_zeros() {
         unpad_plaintext(&dirty_padding).unwrap_err(),
         NotesError::DamagedFile
     );
+}
+
+#[test]
+fn parse_accepts_only_known_flag_bits() {
+    let base = sample_header().to_bytes();
+
+    let mut bytes = base;
+    write_u16(&mut bytes, OFFSET_FLAGS, FLAG_USER_PASSPHRASE);
+    assert_eq!(Header::parse(&bytes).unwrap().flags, FLAG_USER_PASSPHRASE);
+
+    for bad in [2u16, 3, 0x8000] {
+        let mut bytes = base;
+        write_u16(&mut bytes, OFFSET_FLAGS, bad);
+        assert_eq!(
+            Header::parse(&bytes).unwrap_err(),
+            NotesError::UnsupportedVersion
+        );
+    }
 }
