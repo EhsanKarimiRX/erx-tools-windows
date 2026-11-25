@@ -109,6 +109,8 @@ fn e2_all_codes() {
         NotesError::AlreadyUnlocked,
         NotesError::WordsNotConfirmed,
         NotesError::WordsNotRetyped,
+        NotesError::WrongImportPassphrase,
+        NotesError::NoPendingImport,
         NotesError::Words("x".to_string()),
     ];
     let mut codes: Vec<String> = errors

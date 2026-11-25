@@ -9,7 +9,8 @@ use std::time::Duration;
 use super::clock::{Clock, DateParts, TestClock};
 use super::crypto::CreateSettings;
 use super::error::NotesError;
-use super::model::{Note, PreviewMode};
+use super::export::ImportOutcome;
+use super::model::{MAX_TITLE_BYTES, Note, PreviewMode};
 use super::session::{
     AUTOSAVE_DELAY, AUTOSAVE_RETRY, LockReport, NoteView, NotesSession, NotesStatus,
     PREVIEW_MAX_CHARS, SaveState,
@@ -1396,5 +1397,245 @@ fn sn_resolve_export_not_unlocked() {
             .resolve_export_words(Some("current"), Some("anything"))
             .err(),
         Some(NotesError::NotUnlocked)
+    );
+}
+
+fn two_import_notes() -> [Note; 2] {
+    [
+        Note::new(
+            "0123456789abcdef0123456789abcdef".to_string(),
+            "first".to_string(),
+            "body one".to_string(),
+            1_700_000_100,
+        ),
+        Note::new(
+            "fedcba9876543210fedcba9876543210".to_string(),
+            "second".to_string(),
+            "body two".to_string(),
+            1_700_000_200,
+        ),
+    ]
+}
+
+#[test]
+fn sn_import_stage_requires_unlock() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    assert_eq!(
+        session.stage_import(vec![1, 2, 3]),
+        Err(NotesError::NotUnlocked)
+    );
+}
+
+#[test]
+fn sn_import_stage_and_read_back() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    assert_eq!(token.len(), 32);
+    assert!(
+        token
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    );
+    assert_eq!(
+        session.pending_import(&token).unwrap().as_slice(),
+        &[1, 2, 3]
+    );
+    assert_eq!(
+        session.pending_import("wrong"),
+        Err(NotesError::NoPendingImport)
+    );
+}
+
+#[test]
+fn sn_import_stage_replaces_old() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let first = session.stage_import(vec![1]).unwrap();
+    let second = session.stage_import(vec![2]).unwrap();
+    assert_ne!(first, second);
+    assert_eq!(
+        session.pending_import(&first),
+        Err(NotesError::NoPendingImport)
+    );
+    assert_eq!(session.pending_import(&second).unwrap().as_slice(), &[2]);
+}
+
+#[test]
+fn sn_import_cancel_clears() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    session.cancel_import();
+    assert_eq!(
+        session.pending_import(&token),
+        Err(NotesError::NoPendingImport)
+    );
+}
+
+#[test]
+fn sn_import_lock_clears() {
+    let clock = test_clock();
+    let (_guard, mut session, words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    session.lock();
+    session.unlock(&words).unwrap();
+    assert_eq!(
+        session.pending_import(&token),
+        Err(NotesError::NoPendingImport)
+    );
+}
+
+#[test]
+fn sn_import_finish_ok_clears_pending() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    let notes = two_import_notes();
+    assert_eq!(session.finish_import(&token, &notes).unwrap(), 2);
+    assert_eq!(session.list("").unwrap().len(), 2);
+    assert_eq!(
+        session.pending_import(&token),
+        Err(NotesError::NoPendingImport)
+    );
+}
+
+#[test]
+fn sn_import_finish_wrong_token() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    let notes = two_import_notes();
+    assert_eq!(
+        session.finish_import("wrong", &notes),
+        Err(NotesError::NoPendingImport)
+    );
+    assert_eq!(session.list("").unwrap().len(), 0);
+    assert_eq!(
+        session.pending_import(&token).unwrap().as_slice(),
+        &[1, 2, 3]
+    );
+}
+
+#[test]
+fn sn_import_finish_failure_clears() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    let too_long = [Note::new(
+        "0123456789abcdef0123456789abcdef".to_string(),
+        "t".repeat(MAX_TITLE_BYTES + 1),
+        "body".to_string(),
+        1_700_000_100,
+    )];
+    assert!(session.finish_import(&token, &too_long).is_err());
+    assert_eq!(session.list("").unwrap().len(), 0);
+    assert_eq!(
+        session.pending_import(&token),
+        Err(NotesError::NoPendingImport)
+    );
+}
+
+#[test]
+fn sn_import_typed_opened() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    assert_eq!(
+        session.finish_typed_import(
+            &token,
+            Ok(ImportOutcome::Opened(two_import_notes().to_vec()))
+        ),
+        Ok((2, false))
+    );
+    assert_eq!(session.list("").unwrap().len(), 2);
+    assert_eq!(
+        session.pending_import(&token),
+        Err(NotesError::NoPendingImport)
+    );
+}
+
+#[test]
+fn sn_import_typed_legacy_flag() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    assert_eq!(
+        session.finish_typed_import(
+            &token,
+            Ok(ImportOutcome::LegacyOpened(two_import_notes().to_vec()))
+        ),
+        Ok((2, true))
+    );
+    assert_eq!(session.list("").unwrap().len(), 2);
+    assert_eq!(
+        session.pending_import(&token),
+        Err(NotesError::NoPendingImport)
+    );
+}
+
+#[test]
+fn sn_import_typed_wrong_keeps_waiting() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    assert_eq!(
+        session.finish_typed_import(&token, Ok(ImportOutcome::WrongPassphrase)),
+        Err(NotesError::WrongImportPassphrase)
+    );
+    assert_eq!(session.list("").unwrap().len(), 0);
+    assert_eq!(
+        session.pending_import(&token).unwrap().as_slice(),
+        &[1, 2, 3]
+    );
+    assert_eq!(
+        session.finish_typed_import(&token, Ok(ImportOutcome::NeedsPassphrase)),
+        Err(NotesError::WrongImportPassphrase)
+    );
+    assert_eq!(session.list("").unwrap().len(), 0);
+    assert_eq!(
+        session.pending_import(&token).unwrap().as_slice(),
+        &[1, 2, 3]
+    );
+}
+
+#[test]
+fn sn_import_typed_hard_error_clears() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    assert_eq!(
+        session.finish_typed_import(&token, Err(NotesError::DamagedFile)),
+        Err(NotesError::DamagedFile)
+    );
+    assert_eq!(
+        session.pending_import(&token),
+        Err(NotesError::NoPendingImport)
+    );
+}
+
+#[test]
+fn sn_import_typed_stale_token() {
+    let clock = test_clock();
+    let (_guard, mut session, _words) = create_unlocked(clock);
+    let token = session.stage_import(vec![1, 2, 3]).unwrap();
+    assert_eq!(
+        session.finish_typed_import("wrong", Ok(ImportOutcome::WrongPassphrase)),
+        Err(NotesError::NoPendingImport)
+    );
+    assert_eq!(
+        session.pending_import(&token).unwrap().as_slice(),
+        &[1, 2, 3]
+    );
+}
+
+#[test]
+fn sn_import_typed_not_unlocked() {
+    let clock = test_clock();
+    let (_guard, mut session) = fresh_session(clock);
+    assert_eq!(
+        session.finish_typed_import("x", Ok(ImportOutcome::WrongPassphrase)),
+        Err(NotesError::NotUnlocked)
     );
 }

@@ -10,6 +10,7 @@ use zeroize::{Zeroize, Zeroizing};
 use super::clock::{Clock, utc_parts};
 use super::crypto::{CreateSettings, NotesKeys};
 use super::error::NotesError;
+use super::export::ImportOutcome;
 use super::model::{
     MAX_AUTO_LOCK_MINUTES, MIN_AUTO_LOCK_MINUTES, Note, NotesData, PreviewMode, Settings,
     default_title, preview_line,
@@ -153,6 +154,13 @@ struct Unlocked {
     last_failed_attempt: Option<Instant>,
 }
 
+/// An import file that waits for the export words. Only the encrypted bytes
+/// are kept; they are useless without the words.
+struct PendingImport {
+    token: String,
+    bytes: std::sync::Arc<Vec<u8>>,
+}
+
 /// The Secure Notes session. The manual `Debug` never shows the notes.
 pub struct NotesSession {
     store: NotesStore,
@@ -162,6 +170,7 @@ pub struct NotesSession {
     export_words: PassphraseSession,
     export_retyped: bool,
     unlocked: Option<Unlocked>,
+    pending_import: Option<PendingImport>,
 }
 
 impl fmt::Debug for NotesSession {
@@ -184,6 +193,7 @@ impl NotesSession {
             export_words: PassphraseSession::new(NOTES_WORD_LIMITS),
             export_retyped: false,
             unlocked: None,
+            pending_import: None,
         }
     }
 
@@ -465,6 +475,7 @@ impl NotesSession {
     }
 
     pub fn lock(&mut self) -> LockReport {
+        self.pending_import = None;
         self.export_words.clear();
         self.export_retyped = false;
         let Some(unlocked) = self.unlocked.take() else {
@@ -658,6 +669,81 @@ impl NotesSession {
             unlocked.last_activity = now;
         }
         Ok(count)
+    }
+
+    /// Keeps the bytes of an encrypted import file until the user types the
+    /// words. Replaces any earlier waiting file. Returns a random token.
+    #[allow(dead_code)] // used from R4b
+    pub fn stage_import(&mut self, bytes: Vec<u8>) -> Result<String, NotesError> {
+        if self.unlocked.is_none() {
+            return Err(NotesError::NotUnlocked);
+        }
+        let mut random = [0u8; 16];
+        getrandom::fill(&mut random).map_err(|_| NotesError::RandomUnavailable)?;
+        let token: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+        self.pending_import = Some(PendingImport {
+            token: token.clone(),
+            bytes: std::sync::Arc::new(bytes),
+        });
+        Ok(token)
+    }
+
+    /// The waiting file for this token (shared, not copied).
+    #[allow(dead_code)] // used from R4b
+    pub fn pending_import(&self, token: &str) -> Result<std::sync::Arc<Vec<u8>>, NotesError> {
+        if self.unlocked.is_none() {
+            return Err(NotesError::NotUnlocked);
+        }
+        match &self.pending_import {
+            Some(pending) if pending.token == token => Ok(std::sync::Arc::clone(&pending.bytes)),
+            _ => Err(NotesError::NoPendingImport),
+        }
+    }
+
+    /// Forgets the waiting file (cancel).
+    #[allow(dead_code)] // used from R4b
+    pub fn cancel_import(&mut self) {
+        self.pending_import = None;
+    }
+
+    /// Appends opened notes and forgets the waiting file in EVERY case
+    /// (success or failure): the file was opened, so it is no longer waiting.
+    #[allow(dead_code)] // used from R4b
+    pub fn finish_import(&mut self, token: &str, notes: &[Note]) -> Result<usize, NotesError> {
+        self.pending_import(token)?;
+        let result = self.import_notes(notes);
+        self.pending_import = None;
+        result
+    }
+
+    /// Turns the result of opening the waiting file with typed words into an
+    /// import. Returns (notes added, legacy).
+    /// - the token must still match, else `NoPendingImport` (`NotUnlocked` if locked);
+    /// - wrong words: `WrongImportPassphrase`, the file KEEPS waiting so the
+    ///   user can retry; the message never says whether the file is damaged;
+    /// - any other error: the file is forgotten and the error is returned.
+    #[allow(dead_code)] // used from R4b
+    pub fn finish_typed_import(
+        &mut self,
+        token: &str,
+        outcome: Result<ImportOutcome, NotesError>,
+    ) -> Result<(usize, bool), NotesError> {
+        self.pending_import(token)?;
+        match outcome {
+            Ok(ImportOutcome::Opened(notes)) => self
+                .finish_import(token, &notes)
+                .map(|count| (count, false)),
+            Ok(ImportOutcome::LegacyOpened(notes)) => {
+                self.finish_import(token, &notes).map(|count| (count, true))
+            }
+            Ok(ImportOutcome::WrongPassphrase) | Ok(ImportOutcome::NeedsPassphrase) => {
+                Err(NotesError::WrongImportPassphrase)
+            }
+            Err(error) => {
+                self.pending_import = None;
+                Err(error)
+            }
+        }
     }
 
     pub fn create_note(&mut self, title: &str, body: &str) -> Result<NoteView, NotesError> {

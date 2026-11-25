@@ -53,4 +53,8 @@ pub enum NotesError {
     WordsNotRetyped,
     #[error("{0}")]
     Words(String),
+    #[error("Those words did not open this file.")]
+    WrongImportPassphrase,
+    #[error("There is no import waiting. Choose the file again.")]
+    NoPendingImport,
 }

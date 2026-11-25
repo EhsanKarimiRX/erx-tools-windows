@@ -98,6 +98,8 @@ impl From<NotesError> for NotesCommandError {
             NotesError::AlreadyUnlocked => "already_unlocked",
             NotesError::WordsNotConfirmed => "words_not_confirmed",
             NotesError::WordsNotRetyped => "words_not_retyped",
+            NotesError::WrongImportPassphrase => "wrong_import_passphrase",
+            NotesError::NoPendingImport => "no_pending_import",
             NotesError::Words(_) => "words",
         };
         NotesCommandError {
