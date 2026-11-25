@@ -343,7 +343,6 @@ impl NotesSession {
 
     /// The normalized export words for the key derivation. Refused until the
     /// words were confirmed saved AND retyped correctly.
-    #[allow(dead_code)] // used from R3
     pub fn export_words_for_kdf(&self) -> Result<Zeroizing<String>, NotesError> {
         let words = match self.export_words.normalized_for_kdf() {
             Ok(words) => words,
@@ -359,7 +358,6 @@ impl NotesSession {
     /// Checks the typed current notebook words against the notebook file and
     /// returns them normalized. Does not change the session. The loaded notes
     /// are dropped at once: they are only the proof that the words are right.
-    #[allow(dead_code)] // used from R3b
     pub fn verify_current_words(&self, typed: &str) -> Result<Zeroizing<String>, NotesError> {
         if self.unlocked.is_none() {
             return Err(NotesError::NotUnlocked);
@@ -373,7 +371,6 @@ impl NotesSession {
 
     /// Takes the confirmed and retyped export words for ONE export and wipes
     /// the export-words session in every case (success or error).
-    #[allow(dead_code)] // used from R3b
     pub fn take_export_words(&mut self) -> Result<Zeroizing<String>, NotesError> {
         let result = if self.unlocked.is_none() {
             Err(NotesError::NotUnlocked)
@@ -389,7 +386,6 @@ impl NotesSession {
     /// and retyped export words; `current_typed` must be None) or "current"
     /// (the typed current notebook words, verified against the notebook file;
     /// `current_typed` is required). Anything else is `DataInvalid`.
-    #[allow(dead_code)] // used from R3b
     pub fn resolve_export_words(
         &mut self,
         mode: Option<&str>,

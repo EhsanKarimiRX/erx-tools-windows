@@ -85,7 +85,6 @@ pub fn import_payload(bytes: &[u8], target: &mut NotesData) -> Result<usize, Not
 }
 
 /// What an export contains.
-#[allow(dead_code)] // used from R3
 pub enum ExportKind<'a> {
     Single(&'a NoteView),
     All(&'a NotesData),
@@ -93,7 +92,6 @@ pub enum ExportKind<'a> {
 
 /// Builds one encrypted export file (fresh randomness, FLAG_USER_PASSPHRASE
 /// set). `normalized_words` must already be normalized by the caller.
-#[allow(dead_code)] // used from R3
 pub fn export_bytes(
     kind: ExportKind<'_>,
     normalized_words: &str,
@@ -109,7 +107,6 @@ pub fn export_bytes(
 }
 
 /// The words and the key-derivation settings for one encrypted export.
-#[allow(dead_code)] // used from R3b
 pub struct ExportCrypto<'a> {
     pub words: &'a str,
     pub settings: &'a CreateSettings,
@@ -118,7 +115,6 @@ pub struct ExportCrypto<'a> {
 /// Builds the bytes of one exported note. `txt` and `md` are plain and must
 /// come with `crypto == None`; `erxnote` is encrypted and needs `Some`.
 /// Anything else is `DataInvalid`.
-#[allow(dead_code)] // used from R3b
 pub fn render_note_export(
     note: &NoteView,
     format: &str,
@@ -135,7 +131,6 @@ pub fn render_note_export(
 }
 
 /// Builds the bytes of an encrypted backup of all notes.
-#[allow(dead_code)] // used from R3b
 pub fn render_all_export(
     data: &NotesData,
     crypto: &ExportCrypto<'_>,
@@ -282,7 +277,6 @@ fn is_valid_id(id: &str) -> bool {
 /// Writes `bytes` to `path` atomically: a temporary file next to the target
 /// is written, synced and read back, then renamed over the target. The
 /// temporary file is removed on every failure.
-#[allow(dead_code)] // used from R3b
 pub fn write_export_file(path: &Path, bytes: &[u8]) -> Result<(), NotesError> {
     let temp = export_temp_path(path)?;
     let written = (|| -> std::io::Result<()> {

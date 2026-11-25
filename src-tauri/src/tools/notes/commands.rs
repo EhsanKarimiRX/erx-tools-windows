@@ -5,7 +5,7 @@
 //! asynchronous and do their work on a blocking thread; all other commands are
 //! asynchronous too, so they never run on the main UI thread.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::time::Duration;
 
@@ -15,11 +15,11 @@ use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
 use super::clock::RealClock;
-use super::crypto::{CreateSettings, NOTES_KDF_TARGET, create, open, tune_kdf};
+use super::crypto::{CreateSettings, NOTES_KDF_TARGET, open, tune_kdf};
 use super::error::NotesError;
 use super::export::{
-    LEGACY_EXPORT_PASSPHRASE, export_payload_all, export_payload_single, import_payload,
-    is_encrypted_container, note_to_plain,
+    ExportCrypto, LEGACY_EXPORT_PASSPHRASE, import_payload, is_encrypted_container,
+    render_all_export, render_note_export, write_export_file,
 };
 use super::model::{NOTE_FORMAT_TEXT, Note, NotesData, PreviewMode, new_note_id};
 use super::session::{
@@ -648,33 +648,31 @@ fn ensure_extension(path: PathBuf, extension: &str) -> PathBuf {
     }
 }
 
-/// Encrypts one export payload with the fixed export passphrase.
-// TODO(R3): must stop using the legacy passphrase for writing.
-fn encrypt_export(payload: &[u8]) -> Result<Vec<u8>, NotesCommandError> {
-    let settings = production_settings()?;
-    let normalized = normalize_passphrase(LEGACY_EXPORT_PASSPHRASE);
-    let (file, keys) = create(normalized.as_str(), &settings, payload)?;
-    drop(keys);
-    Ok(file)
-}
-
-/// Writes one note as plain text or as an encrypted single-note file.
-fn write_note_export(path: &Path, note: &NoteView, format: &str) -> Result<(), NotesCommandError> {
-    if format == "erxnote" {
-        let payload = export_payload_single(note)?;
-        let file = encrypt_export(payload.as_slice())?;
-        std::fs::write(path, file.as_slice()).map_err(|_| NotesError::Io)?;
-    } else {
-        let plain = Zeroizing::new(note_to_plain(note, format)?);
-        std::fs::write(path, plain.as_bytes()).map_err(|_| NotesError::Io)?;
+/// Builds the file bytes of one note. The KDF is tuned ONCE, and only when the
+/// export is encrypted (`words` is Some).
+fn build_note_export(
+    note: &NoteView,
+    format: &str,
+    words: Option<&str>,
+) -> Result<Zeroizing<Vec<u8>>, NotesError> {
+    match words {
+        Some(words) => {
+            let settings = production_settings()?;
+            let crypto = ExportCrypto {
+                words,
+                settings: &settings,
+            };
+            render_note_export(note, format, Some(&crypto))
+        }
+        None => render_note_export(note, format, None),
     }
-    Ok(())
 }
 
 fn export_note_blocking(
     app: &AppHandle,
     note: NoteView,
     format: &str,
+    words: Option<&str>,
 ) -> Result<Option<String>, NotesCommandError> {
     let (label, extension) = match format {
         "txt" => ("Text file", "txt"),
@@ -695,13 +693,15 @@ fn export_note_blocking(
     if path.as_os_str().is_empty() {
         return Ok(None);
     }
-    write_note_export(&path, &note, format)?;
+    let bytes = build_note_export(&note, format, words)?;
+    write_export_file(&path, bytes.as_slice())?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 fn export_all_blocking(
     app: &AppHandle,
     data: NotesData,
+    words: &str,
 ) -> Result<Option<String>, NotesCommandError> {
     let target = app
         .dialog()
@@ -716,9 +716,13 @@ fn export_all_blocking(
     if path.as_os_str().is_empty() {
         return Ok(None);
     }
-    let payload = export_payload_all(&data)?;
-    let file = encrypt_export(payload.as_slice())?;
-    std::fs::write(&path, file.as_slice()).map_err(|_| NotesError::Io)?;
+    let settings = production_settings()?;
+    let crypto = ExportCrypto {
+        words,
+        settings: &settings,
+    };
+    let bytes = render_all_export(&data, &crypto)?;
+    write_export_file(&path, bytes.as_slice())?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
@@ -779,6 +783,12 @@ fn import_blocking(
 
 /// Saves one note as `txt`, `md` or an encrypted `erxnote` file. Returns the
 /// written path, or `None` when the dialog was cancelled.
+///
+/// `txt` and `md` are plain and take no passphrase arguments. `erxnote`
+/// needs `passphrase_mode`: "new" (the confirmed and retyped export words of
+/// the export-words session) or "current" (the current notebook words, typed
+/// again in `current_words` and verified against the notebook file). The
+/// export-words session is wiped in every case.
 #[tauri::command]
 pub async fn notes_export_note(
     window: tauri::Window,
@@ -786,28 +796,57 @@ pub async fn notes_export_note(
     state: State<'_, NotesState>,
     id: String,
     format: String,
+    passphrase_mode: Option<String>,
+    current_words: Option<String>,
 ) -> Result<Option<String>, NotesCommandError> {
     check_window(&window)?;
     if !matches!(format.as_str(), "txt" | "md" | "erxnote") {
         return Err(NotesError::DataInvalid.into());
     }
-    let note = with_session(&state.shared, |session| session.get_note(&id))?;
-    tauri::async_runtime::spawn_blocking(move || export_note_blocking(&app, note, &format))
-        .await
-        .map_err(|_| NotesCommandError::internal())?
+    let encrypted = format == "erxnote";
+    let current_words = current_words.map(Zeroizing::new);
+    let (note, words) = with_session(&state.shared, |session| {
+        if !encrypted {
+            session.clear_export_words();
+            if passphrase_mode.is_some() || current_words.is_some() {
+                return Err(NotesError::DataInvalid);
+            }
+            return Ok((session.get_note(&id)?, None));
+        }
+        let words = session.resolve_export_words(
+            passphrase_mode.as_deref(),
+            current_words.as_ref().map(|typed| typed.as_str()),
+        )?;
+        Ok((session.get_note(&id)?, Some(words)))
+    })?;
+    tauri::async_runtime::spawn_blocking(move || {
+        export_note_blocking(&app, note, &format, words.as_ref().map(|w| w.as_str()))
+    })
+    .await
+    .map_err(|_| NotesCommandError::internal())?
 }
 
 /// Saves every note as one encrypted `erxnote` backup. Returns the written
-/// path, or `None` when the dialog was cancelled.
+/// path, or `None` when the dialog was cancelled. `passphrase_mode` and
+/// `current_words` work exactly as in `notes_export_note` and are required.
 #[tauri::command]
 pub async fn notes_export_all(
     window: tauri::Window,
     app: AppHandle,
     state: State<'_, NotesState>,
+    passphrase_mode: Option<String>,
+    current_words: Option<String>,
 ) -> Result<Option<String>, NotesCommandError> {
     check_window(&window)?;
-    let data = with_session(&state.shared, |session| session.export_data())?;
-    tauri::async_runtime::spawn_blocking(move || export_all_blocking(&app, data))
+    let current_words = current_words.map(Zeroizing::new);
+    let (data, words) = with_session(&state.shared, |session| {
+        let words = session.resolve_export_words(
+            passphrase_mode.as_deref(),
+            current_words.as_ref().map(|typed| typed.as_str()),
+        )?;
+        Ok((session.export_data()?, words))
+    })?;
+    tauri::async_runtime::spawn_blocking(move || export_all_blocking(&app, data, words.as_str()))
         .await
         .map_err(|_| NotesCommandError::internal())?
 }

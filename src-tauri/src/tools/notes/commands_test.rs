@@ -157,6 +157,23 @@ fn w2_source_scan_commands() {
 }
 
 #[test]
+fn r3_source_scan_export() {
+    let source = include_str!("commands.rs");
+    assert_eq!(source.matches("encrypt_export").count(), 0);
+    assert_eq!(source.matches("write_note_export").count(), 0);
+    assert_eq!(
+        source
+            .matches("normalize_passphrase(LEGACY_EXPORT_PASSPHRASE)")
+            .count(),
+        1
+    );
+    assert_eq!(source.matches("write_export_file(&path").count(), 2);
+    assert_eq!(source.matches("render_all_export(").count(), 1);
+    assert_eq!(source.matches("resolve_export_words(").count(), 2);
+    assert_eq!(source.matches("std::fs::write(").count(), 0);
+}
+
+#[test]
 fn w3_source_scan_lib() {
     let source = include_str!("../../lib.rs");
     let names = [
