@@ -1,5 +1,9 @@
 # ERX Tools
 
+<p align="center">
+  <img src="screenshots/logo.png" alt="ERX Tools logo" width="160">
+</p>
+
 A small, offline toolbox for Windows. Every tool opens from a simple square tile on the home screen and does one job: convert images, make QR codes, recolor folder icons, keep the PC awake, tidy up folders, encrypt files, and open common Windows tools.
 
 > **Early beta.** ERX Tools is new and is being tested with friends. Installers are on the [Releases page](https://github.com/EhsanKarimiRX/erx-tools-windows/releases) (see [Download](#download)). So far it has only been tested on Windows 11 (see [Tested on](#tested-on)).
@@ -12,9 +16,20 @@ A small, offline toolbox for Windows. Every tool opens from a simple square tile
 - **Careful with your files.** Originals are never modified. Output files do not overwrite existing files; the only exception is the Vault's Encrypt panel, which replaces its own output only after you tick "Replace the existing files".
 - **Small and focused.** Each tool lives in its own folder and is loaded only when you open it.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/home.png" alt="Home screen" width="720">
+</p>
+
 ## Tools
 
 ### Image Converter
+
+<p align="center">
+  <img src="screenshots/image-converter.png" alt="Image Converter" width="720">
+</p>
+
 Convert images in batches (up to 200 files at a time) with live progress, cancel and a summary.
 - **Input:** JPEG, PNG, WebP, BMP, GIF, TIFF and HEIC/HEIF (iPhone photos). HEIC is read with the codecs installed in Windows, so it needs Microsoft's *HEIF Image Extensions* and *HEVC Video Extensions* from the Microsoft Store (many PCs already have them). If they are missing, the app says so.
 - **Output:** JPEG (with a quality slider), PNG, WebP (lossless), BMP and TIFF.
@@ -22,24 +37,44 @@ Convert images in batches (up to 200 files at a time) with live progress, cancel
 - Camera rotation is applied automatically. Metadata (EXIF, GPS) and color profiles are not kept, so wide-color photos such as iPhone photos may look slightly less vivid. Only the first image/frame of a file is converted.
 
 ### QR Code Generator
+
+<p align="center">
+  <img src="screenshots/qr-code-generator.png" alt="QR Code Generator" width="720">
+</p>
+
 Create QR codes from text, links or Wi-Fi credentials. Sharp or rounded style, custom colors, optional logo in the center, export as PNG or SVG. The export size (256–4096 px, default 1080) is saved exactly as typed, the rounded style draws a rounded plate behind the logo, and Save uses a real Save dialog that always gives the file the right extension.
 
 ### Favicons
 Create a complete favicon package (favicon.ico, PNG icons, Apple touch icon, Android and maskable icons, web manifest, HTML snippet) from one logo image (PNG, JPEG, WebP, BMP, GIF, TIFF, ICO or SVG).
 
 ### Folder Icon Changer
+
+<p align="center">
+  <img src="screenshots/folder-icon-changer.png" alt="Folder Icon Changer" width="720">
+</p>
+
 Recolor Windows folder icons in any color, with optional stripe or checker patterns. It writes a multi-size `.ico` plus `desktop.ini` to the folders you choose and can restore the default icon. Offline, no admin rights.
 - Windows shortcuts (`.lnk`) work too: drop a shortcut and its own icon is changed, without touching the shortcut's target (the icon is kept in the app's own icon folder).
 - Windows usually shows a new folder icon within a few seconds. If one is late, open a different folder and then come back to it, or right-click an empty area and choose Refresh (a restart always shows it).
 - Deleting a customized folder may show a Windows warning about `desktop.ini`. That is normal: the file only stores the icon settings.
 
 ### System Manager
+
+<p align="center">
+  <img src="screenshots/system-manager.png" alt="System Manager" width="720">
+</p>
+
 Everyday Windows utilities in one panel. At the top, a read-only **device card** shows your processor, graphics card, RAM, drives, Windows version and battery health (or uptime on a PC without a battery). It is read again every time System Manager opens, changes nothing and sends nothing anywhere; whatever Windows does not report is shown as "Not reported". Below it:
 - **Awake** — keeps the PC from sleeping during long runs. It temporarily sets the Windows sleep, hibernate and screen-off timeouts to *Never* and puts your original values back when you turn it off. Your original values are saved to disk first, so they can be restored even after a crash. Options: let the screen turn off normally, and an optional auto-off timer. Awake only blocks *automatic* sleep; clicking Sleep or closing a laptop lid still follows Windows.
 - **Quick Launch** — square one-click buttons: the six tools sit in one row. They open Control Panel, Defragment and Optimize Drives, Device Manager, Services, Desktop Icon Settings (the Windows page where you show or hide This PC, Recycle Bin and similar desktop icons) and Microsoft PC Manager (it opens the app if installed, otherwise offers its Microsoft Store page). Below a thin divider, PowerShell (PowerShell 7 if installed) and Command Prompt are available normally, and each also as a purple **Run as administrator** button that asks Windows for permission first.
 - **Command Tips** — a list of handy Windows commands you can copy and run yourself. ERX Tools never runs them for you. It includes "List installed apps" and "Save installed apps to a file", which cover the classic desktop programs and the Microsoft Store apps of your Windows account (portable apps that were never installed are not listed). Long commands start collapsed and expand with a More button. It also has two commands that turn Windows' internet-connection check off and on (they need PowerShell as administrator).
 
 ### Quantum Resistance Vault
+
+<p align="center">
+  <img src="screenshots/quantum-resistance-vault.png" alt="Quantum Resistance Vault" width="720">
+</p>
+
 Encrypt files and whole folders with a passphrase of random words, and decrypt them again later. Everything happens on your PC; nothing is uploaded.
 - **Passphrase:** the app creates 6 to 12 random words (10 by default) from the [EFF Large Wordlist](https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt). You can replace single words, and you confirm that you saved the words before encrypting. To decrypt, you type the words. There is no recovery: **if the words are lost, the files are lost.**
 - **Encryption:** the data is compressed with Zstandard when that helps, then encrypted with XChaCha20-Poly1305 using a 256-bit key. The key is made from your words with Argon2id (256 MiB of memory, tuned on your PC to take about 0.7 seconds), which makes guessing the words slow. Any change to an encrypted file is detected when you decrypt it. The file format and the threat model are described in [docs/VAULT_FORMAT.md](docs/VAULT_FORMAT.md).
@@ -56,6 +91,11 @@ Encrypt files and whole folders with a passphrase of random words, and decrypt t
   - It cannot protect you from malware or a keylogger on your PC, or from someone who gets your words.
 
 ### Metadata Remover
+
+<p align="center">
+  <img src="screenshots/metadata-remover.png" alt="Metadata Remover" width="720">
+</p>
+
 See what is hidden inside photos and videos (GPS location, camera and lens, dates, software, serial numbers, comments, thumbnails) and save a copy with that data removed. Your original is never changed or deleted; the new copy is written next to it (or into a folder you choose).
 - **Input:** JPEG, PNG, WebP, GIF, BMP, TIFF, HEIC/HEIF, MP4, MOV, MKV and WebM. The type is read from the content, never from the extension. WebM is cleaned by the same Matroska engine as MKV and is shown as MKV. A BMP (and a TIFF with no hidden tags) is reported as "This file has no metadata." and no copy is made.
 - **Not supported:** AVIF, M4V, audio files, Word documents, PDF, BigTIFF, TIFF files with more than one page, RAW/DNG files, and TIFF files with sub-pictures. M4V is recognized by its content (an M4V brand in the file header), not by its name. Audio, documents and PDF are answered with "not a supported photo or video file".
