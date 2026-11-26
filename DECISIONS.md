@@ -1289,3 +1289,42 @@ The prompt specifications and progress logs of Prompts 5 to 11 (`docs/PROMPT_*_S
 - **Exit save.** The window saves on close and on exit; the last edit can still be lost in a crash, because only committed saves are on disk.
 - **Limitations recorded.** One PC and one WebView2 version were tested for the leak experiment; deleting a folder does not wipe disk blocks; screenshot protection was tested with Win+Shift+S and PrintScreen only; screen recording, Windows Recall and remote-control tools were not tested; the clipboard marker behaviour is proven by hand, not by unit tests.
 - **Version consistency.** The app version lives in five places (`package.json`, `package-lock.json`, `Cargo.toml`, `tauri.conf.json`, `Cargo.lock`) and `cargo test version_is_consistent` guards three of them.
+
+## Secure Notes: export and import passphrase (v0.5.1)
+
+- **Problem.** In v0.5.0 every `.erxnote` export (a single note and export-all) was encrypted with one fixed passphrase built into the program (`erx-notes-export-default`). Anyone with such a file could open it, so the files were effectively unprotected. v0.5.1 fixes this. The fixed passphrase is never used for writing again.
+- **Target behavior.** A single note can be exported as `txt`, `md` or `erxnote`. After choosing `erxnote` the user picks either "Use current Secure Notes password" (the current notebook words, typed again and checked against the notebook file) or a new set of words generated for this file. Export-all (the backup in Settings) gets the same choice; it is `erxnote` only, there is no `txt` or `md` export-all.
+- **G1 - notebook words are not kept in memory (D1).** After unlock the app does not keep the notebook words. Therefore the "current words" export makes the user type them again, and import opens only old v0.5.0 files at once; every other encrypted file asks for its words. Rejected: D2 (keep the words in memory until lock or exit, so that current-words files could open automatically), because it keeps the words in memory longer; D3 (reuse the notebook header and keys for exports), because it breaks "a fresh data key for every file". "Default passphrase" always means the current notebook passphrase.
+- **G2 - export-all has the same choice.** Required, because otherwise the fixed passphrase would still be used for new exports.
+- **G3 - export words are generated.** The words are made in Rust (5 to 12 words), the user never types a custom set. The same words UI rules as the Vault and the notebook apply: a copy button, and a blinking message with a timer that says the copied words are cleared from the clipboard after 30 seconds. Fewer than 8 words show a warning but are allowed.
+- **G4 - flag bit, not a new version.** `FORMAT_VERSION` stays 1. New exports set the header flag bit `FLAG_USER_PASSPHRASE = 0x0001`. The flag is only a hint: opening always decides by checking the words, and a changed flag breaks the commitment tag. Notebook files always write flags 0. v0.5.0 refuses the flag bit, so it shows "needs a different version" for a new export.
+- **G5 - old constant is read-only.** The old passphrase stays in the code as `LEGACY_EXPORT_PASSPHRASE`, only to open v0.5.0 exports. The app tells the user to export again and delete the old file.
+- **Rust decisions (Phase 2).**
+  - `txt` and `md` exports take no passphrase arguments; passing any is `data_invalid`, so a UI bug cannot make a plain file look encrypted.
+  - Every `notes_export_note` and `notes_export_all` call wipes the export-words session, on success, cancel and error. After any such call the UI starts the words flow again.
+  - The typed current words are dropped in Rust before the save dialog opens. The export key derivation is tuned once per export (about 1 second), only for `erxnote`.
+  - Export files are written atomically: a temporary file `<name>.<8 hex>.erxtmp` next to the target, synced, read back, renamed over the target, removed on every normal failure.
+  - A file that waits for its import words lives inside the session, so lock and exit wipe it. A wrong typed word list keeps the file waiting (retry allowed); a stale token, a lock or any other error forgets it. Import only adds notes; only id collisions get new ids.
+  - Size limits on import: an encrypted file over `MAX_FILE_BYTES` (67,371,008 bytes) is `file_too_large`; a plain-text file over `MAX_NOTE_BODY_BYTES` (4 MiB) is `note_too_large`.
+- **UI decisions (Phase 3).**
+  - The export words use a separate `WordsPanel`. `CreateScreen` and `SettingsScreen` keep their own duplicated words UI and their own `CopyCountdown`; they were deliberately not refactored, to avoid regressions in working security flows (so there are three copies of `CopyCountdown`; listed in `NEXT.md`).
+  - The export dialog and the import prompt are overlays inside the existing screens, not new top-level screens. The activity ping keeps working while they are open.
+  - The notebook words wrappers (`generateWords`, `refreshWord`, `copyWords`, `confirmWordsSaved`, `retypeWords`, `clearWords`) are never used for export or import; export uses only the `export*` wrappers and import only `importNotes`, `importWithPassphrase` and `cancelImport`.
+  - The export dialog never calls the export API itself; the parent passes a `run` function. The notes screen saves the pending editor edit before opening the dialog and again inside `run`, so a backup does not miss the last edit.
+  - Wrong current words: the typed words are cleared from React state before the call and never kept; the user types them again. The same holds for the import prompt.
+  - A failed export with new words restarts the whole words flow.
+  - Wrong import words never close the prompt. Stale or hard errors close it and show a message in Settings. Cancel and unmount cancel the pending import.
+  - Importing an old v0.5.0 file shows "This file used the built-in v0.5.0 passphrase. Re-export it and delete the old file." until the next restore or export starts (no timer).
+- **Small UI decisions (Phase 4a).** The export button says "Use current Secure Notes password". The words panel keeps one width in the dialog (it no longer grows when the copy message appears). The import prompt shows moving stripes while the words are checked (display only; respects reduced motion). The progress stripes are not added to the export "current words" check or to export-all.
+- **No focus trap.** The export dialog and the import prompt do not trap the Tab key; Tab can reach the page behind. The owner had no preference; recorded as a known limit.
+- **Known wording inconsistency.** The export dialog button says "Secure Notes password", but the text under it, the label "Your notebook words" and the intro of the words panel still say "notebook words". Left as is; listed in `NEXT.md`.
+- **Honest limits.**
+  - The "current password" option is only as strong as the notebook words (5 words are about 64.6 bits).
+  - Losing the export words loses the file. There is no recovery. Changing the notebook passphrase does not change older exports; importing an older export after a change needs the old words.
+  - Export words of 5 to 7 words are allowed with a warning.
+  - Old v0.5.0 `.erxnote` files stay effectively unprotected. v0.5.0 cannot open new exports.
+  - The import prompt has no attempt limit; each guess costs about 1 second of key derivation, and the file is offline.
+  - `txt` and `md` exports are plain text.
+  - A crash during an export can leave a `*.erxtmp` file next to the target.
+  - The Tauri commands and dialogs are covered by source-scan tests and manual tests only (there is no frontend test suite).
+  - No professional security audit.
