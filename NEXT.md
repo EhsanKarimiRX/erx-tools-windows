@@ -10,6 +10,13 @@ This file is a list of ideas. They are not promises and they have no dates. When
 - **Pin notes.** Keep chosen notes at the top of the list.
 - **Windows Hello.** Unlock Secure Notes with Windows Hello (TPM). Left out of v0.5.0 on purpose.
 
+## Secure Notes (after v0.5.1)
+
+- **One words panel.** `CreateScreen`, `SettingsScreen` and the export `WordsPanel` each have their own copy of `CopyCountdown`, and Create and Settings have the same words UI inline. Merge them into one shared component. Left alone in v0.5.1 on purpose, to avoid breaking working security flows.
+- **Focus trap.** The export dialog and the import prompt do not trap the Tab key; Tab can reach the page behind them. Add a focus trap.
+- **Wording.** The export button says "Use current Secure Notes password", but the text under it, the label "Your notebook words" and the intro of the words panel still say "notebook words". Use one wording.
+- **Progress stripes.** The import prompt shows moving stripes while the words are checked. The export "current words" check and export-all do not. Add them if the wait feels unclear.
+
 ## Home screen
 
 - **Move tiles.** Let the user change the order of the tiles on the home screen.
