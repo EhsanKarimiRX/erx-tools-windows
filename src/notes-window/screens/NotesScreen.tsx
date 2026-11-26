@@ -20,8 +20,9 @@ import {
   saveNow,
   updateNote,
 } from "../api";
+import ExportDialog from "../ExportDialog";
 import { toApiError } from "../errors";
-import type { NoteListItem } from "../types";
+import type { ExportPassphraseMode, NoteListItem } from "../types";
 
 const SEARCH_DEBOUNCE_MS = 200;
 const UPDATE_DEBOUNCE_MS = 400;
@@ -61,6 +62,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
   const [copiedUntil, setCopiedUntil] = useState<number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportDialogId, setExportDialogId] = useState<string | null>(null);
   const [history, setHistory] = useState<NoteSnapshot[]>([]);
   const [historyIndex, setHistoryIndex] = useState(0);
 
@@ -73,6 +75,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
   const noteSeq = useRef(0);
   const titleRef = useRef<HTMLInputElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
   const focusTitle = useRef(false);
   const newNoteRef = useRef<() => void>(() => {});
   // Mirrors of the undo stack so two edits in one frame cannot read stale
@@ -221,6 +224,13 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
         setExportMessage(null);
       }, clearAfter);
     }
+  }
+
+  /** Closes the export dialog and gives the Export button its focus back. */
+  function closeExportDialog() {
+    setExportDialogId(null);
+    setWorking(false);
+    exportButtonRef.current?.focus();
   }
 
   async function refreshList(search: string): Promise<void> {
@@ -476,6 +486,24 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     const id = selectedIdRef.current;
     setExportOpen(false);
     if (id === null || working) return;
+    if (format === "erxnote") {
+      setError(null);
+      setWorking(true);
+      let opened = false;
+      try {
+        // Save what is on screen before the dialog asks for the words.
+        const flushed = await flushPending();
+        if (!flushed) return;
+        opened = true;
+        setExportDialogId(id);
+      } catch (flushError) {
+        setError(toApiError(flushError).message);
+      } finally {
+        // Keep the controls disabled while the dialog is open.
+        if (!opened) setWorking(false);
+      }
+      return;
+    }
     setWorking(true);
     setError(null);
     try {
@@ -692,6 +720,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
                 <button
                   type="button"
                   className="nw-button-secondary"
+                  ref={exportButtonRef}
                   onClick={() => setExportOpen((open) => !open)}
                   disabled={selectedId === null || working || loadingNote}
                   aria-expanded={exportOpen}
@@ -748,6 +777,34 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
           </p>
         )}
       </section>
+      {/* Known limit: there is no focus trap, so Tab can reach the editor
+          behind the dialog; checked in R7. */}
+      {exportDialogId !== null && (
+        <ExportDialog
+          title="Export as encrypted file"
+          run={async (mode: ExportPassphraseMode, currentWords?: string) => {
+            // Edits typed while the dialog is open must be saved before the
+            // file is written.
+            const flushed = await flushPending();
+            if (!flushed) {
+              throw {
+                code: "flush_failed",
+                message:
+                  "Your latest edit could not be saved, so the export was stopped.",
+              };
+            }
+            return exportNote(exportDialogId, "erxnote", mode, currentWords);
+          }}
+          onDone={(path) => {
+            closeExportDialog();
+            showExportStatus(
+              path === null ? "Export cancelled." : `Exported to ${path}.`,
+              EXPORT_STATUS_MS,
+            );
+          }}
+          onCancel={closeExportDialog}
+        />
+      )}
     </div>
   );
 }
