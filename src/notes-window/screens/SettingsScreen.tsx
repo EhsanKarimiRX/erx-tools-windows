@@ -84,6 +84,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   const [backupWorking, setBackupWorking] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [backupNotice, setBackupNotice] = useState<string | null>(null);
   const [exportAllOpen, setExportAllOpen] = useState(false);
   const [importToken, setImportToken] = useState<string | null>(null);
 
@@ -194,6 +195,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   function handleExportAll() {
     setBackupMessage(null);
     setBackupError(null);
+    setBackupNotice(null);
     setBackupWorking(true);
     setExportAllOpen(true);
   }
@@ -204,15 +206,22 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
     setBackupWorking(false);
   }
 
-  function finishRestore(count: number, _legacy: boolean) {
-    // _legacy is not used yet (a later step shows a notice).
-    setBackupMessage(`Added ${count} note(s).`);
+  function finishRestore(count: number, legacy: boolean) {
+    setBackupMessage(
+      count === 0 ? "No notes were added." : `Added ${count} note(s).`,
+    );
+    setBackupNotice(
+      legacy
+        ? "This file used the built-in v0.5.0 passphrase. Re-export it and delete the old file."
+        : null,
+    );
     setBackupWorking(false);
   }
 
   async function handleRestore() {
     setBackupMessage(null);
     setBackupError(null);
+    setBackupNotice(null);
     setBackupWorking(true);
     try {
       const result = await importNotes();
@@ -457,7 +466,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
                 setPhase("choose");
                 setChanging(true);
               }}
-              disabled={loading || saving}
+              disabled={loading || saving || backupWorking}
             >
               Change passphrase
             </button>
@@ -480,7 +489,9 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
                 onClick={() => void handleExportAll()}
                 disabled={loading || saving || backupWorking || changing}
               >
-                {backupWorking ? "Working..." : "Export all notes"}
+                {(backupWorking && !exportAllOpen && importToken === null)
+                  ? "Working..."
+                  : "Export all notes"}
               </button>
               <button
                 type="button"
@@ -495,6 +506,11 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
             {backupMessage !== null && (
               <p className="nw-status" role="status">
                 {backupMessage}
+              </p>
+            )}
+            {backupNotice !== null && (
+              <p className="nw-warning" role="status">
+                {backupNotice}
               </p>
             )}
             {backupError !== null && (
