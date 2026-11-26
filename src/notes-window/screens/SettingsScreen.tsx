@@ -6,6 +6,7 @@ import {
   clearWords,
   confirmWordsSaved,
   copyWords,
+  exportAll,
   generateWords,
   getSettings,
   importNotes,
@@ -13,12 +14,14 @@ import {
   retypeWords,
   setSettings,
 } from "../api";
+import ExportDialog from "../ExportDialog";
 import { toApiError } from "../errors";
 import {
   CLIPBOARD_CLEAR_SECONDS,
   DEFAULT_WORDS,
   MAX_WORDS,
   MIN_WORDS,
+  type ExportPassphraseMode,
   type PreviewMode,
   type WordsView,
 } from "../types";
@@ -81,6 +84,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   const [backupWorking, setBackupWorking] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [exportAllOpen, setExportAllOpen] = useState(false);
 
   const [changing, setChanging] = useState(false);
   const [phase, setPhase] = useState<ChangePhase>("choose");
@@ -99,6 +103,8 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
 
   const changed = useRef(false);
   const savedTimer = useRef<number | null>(null);
+  const exportAllButtonRef = useRef<HTMLButtonElement>(null);
+  const focusExportAllAfterClose = useRef(false);
 
   // Load the current settings once.
   useEffect(() => {
@@ -137,6 +143,15 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
     };
   }, []);
 
+  // Return focus to "Export all notes" after the dialog closes. The button is
+  // still disabled in the same tick, so wait until backupWorking is false.
+  useEffect(() => {
+    if (focusExportAllAfterClose.current && !backupWorking) {
+      focusExportAllAfterClose.current = false;
+      exportAllButtonRef.current?.focus();
+    }
+  }, [backupWorking]);
+
   function showSaved() {
     setSaved(true);
     if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
@@ -169,11 +184,17 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
     }
   }
 
-  async function handleExportAll() {
+  function handleExportAll() {
     setBackupMessage(null);
     setBackupError(null);
-    // TEMP(R5a): replaced in R5d/R6a
-    setBackupError("Export is being updated.");
+    setBackupWorking(true);
+    setExportAllOpen(true);
+  }
+
+  function closeExportAll() {
+    setExportAllOpen(false);
+    focusExportAllAfterClose.current = true;
+    setBackupWorking(false);
   }
 
   async function handleRestore() {
@@ -346,7 +367,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
                 type="button"
                 className="nw-button-secondary"
                 onClick={onBack}
-                disabled={saving}
+                disabled={saving || backupWorking}
               >
                 Back
               </button>
@@ -427,8 +448,9 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
               <button
                 type="button"
                 className="nw-button-secondary"
+                ref={exportAllButtonRef}
                 onClick={() => void handleExportAll()}
-                disabled={loading || saving || backupWorking}
+                disabled={loading || saving || backupWorking || changing}
               >
                 {backupWorking ? "Working..." : "Export all notes"}
               </button>
@@ -700,6 +722,26 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
             </p>
           )}
         </div>
+      )}
+
+      {/* Known limit: there is no focus trap, so Tab can reach the page
+          behind the dialog; checked in R7. */}
+      {/* The pending editor edit is sent when NotesScreen unmounts; the
+          dialog steps take seconds, so it is saved before the export. */}
+      {exportAllOpen && (
+        <ExportDialog
+          title="Export all notes as encrypted file"
+          run={(mode: ExportPassphraseMode, currentWords?: string) =>
+            exportAll(mode, currentWords)
+          }
+          onDone={(path) => {
+            closeExportAll();
+            setBackupMessage(
+              path === null ? "Export cancelled." : `Exported to ${path}.`,
+            );
+          }}
+          onCancel={closeExportAll}
+        />
       )}
     </div>
   );
