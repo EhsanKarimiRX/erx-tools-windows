@@ -293,7 +293,7 @@ export default function CreateScreen({ onCreated }: CreateScreenProps) {
             <div className="nw-actions">
               <button
                 type="button"
-                className="button-secondary"
+                className="nw-button-secondary"
                 onClick={() => void handleCopy()}
                 disabled={working}
               >
