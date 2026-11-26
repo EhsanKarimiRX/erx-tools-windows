@@ -229,7 +229,7 @@ export default function WordsPanel({ onReady, onCancel }: WordsPanelProps) {
   }
 
   function handleCancel() {
-    if (working) {
+    if (working || readyRef.current) {
       return;
     }
     clearLocal();
@@ -241,7 +241,7 @@ export default function WordsPanel({ onReady, onCancel }: WordsPanelProps) {
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape" && !working) {
+    if (event.key === "Escape" && !working && !readyRef.current) {
       event.preventDefault();
       handleCancel();
     }
