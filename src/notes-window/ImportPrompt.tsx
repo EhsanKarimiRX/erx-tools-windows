@@ -32,6 +32,8 @@ export default function ImportPrompt({
   // hard error). While false, leaving the prompt cancels the pending import.
   const endedRef = useRef(false);
   const mountedRef = useRef(true);
+  const cancelTimerRef = useRef<number | null>(null);
+  const focusAfterErrorRef = useRef(false);
 
   // Move keyboard focus to the textarea when the prompt opens.
   useEffect(() => {
@@ -39,17 +41,34 @@ export default function ImportPrompt({
   }, []);
 
   // Leaving without a finished import: ask Rust to forget the waiting file.
-  // Best effort; the result is ignored because there is nothing to show on a
-  // closed prompt.
+  // The cancel is deferred by one tick so that the StrictMode re-mount in
+  // development can cancel it; a real unmount still cancels the pending import
+  // (best effort, result ignored).
   useEffect(() => {
     mountedRef.current = true;
+    if (cancelTimerRef.current !== null) {
+      window.clearTimeout(cancelTimerRef.current);
+      cancelTimerRef.current = null;
+    }
     return () => {
       mountedRef.current = false;
       if (!endedRef.current) {
-        void cancelImport().catch(() => undefined);
+        cancelTimerRef.current = window.setTimeout(() => {
+          cancelTimerRef.current = null;
+          if (!endedRef.current) {
+            void cancelImport().catch(() => undefined);
+          }
+        }, 0);
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!working && focusAfterErrorRef.current) {
+      focusAfterErrorRef.current = false;
+      textareaRef.current?.focus();
+    }
+  }, [working]);
 
   async function handleImport() {
     if (working || words.trim() === "") {
@@ -78,12 +97,12 @@ export default function ImportPrompt({
         setError(
           "These words do not match this file. Check them and try again.",
         );
+        focusAfterErrorRef.current = true;
         setWorking(false);
-        textareaRef.current?.focus();
       } else if (isCode(problem, "words")) {
         setError(toApiError(problem).message);
+        focusAfterErrorRef.current = true;
         setWorking(false);
-        textareaRef.current?.focus();
       } else if (isCode(problem, "no_pending_import")) {
         endedRef.current = true;
         onClose("This file is no longer waiting. Choose it again to restore.");
