@@ -76,6 +76,7 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
   const titleRef = useRef<HTMLInputElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const focusExportAfterClose = useRef(false);
   const focusTitle = useRef(false);
   const newNoteRef = useRef<() => void>(() => {});
   // Mirrors of the undo stack so two edits in one frame cannot read stale
@@ -165,6 +166,15 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, [exportOpen]);
 
+  // Return focus to the Export button after the dialog closes. The button is
+  // still disabled in the same tick, so wait until working is false.
+  useEffect(() => {
+    if (focusExportAfterClose.current && !working) {
+      focusExportAfterClose.current = false;
+      exportButtonRef.current?.focus();
+    }
+  }, [working]);
+
   // Send an edit that is still waiting in the debounce before the window
   // closes or locks. This is fire-and-forget: the window may be going away.
   useEffect(() => {
@@ -229,8 +239,8 @@ export default function NotesScreen({ onDirty }: NotesScreenProps) {
   /** Closes the export dialog and gives the Export button its focus back. */
   function closeExportDialog() {
     setExportDialogId(null);
+    focusExportAfterClose.current = true;
     setWorking(false);
-    exportButtonRef.current?.focus();
   }
 
   async function refreshList(search: string): Promise<void> {
