@@ -162,9 +162,14 @@ export default function ImportPrompt({
           />
         </div>
         {working && (
-          <p className="nw-status" role="status">
-            Checking the words...
-          </p>
+          <>
+            <p className="nw-status" role="status">
+              Checking the words...
+            </p>
+            <div className="nw-progress" aria-hidden="true">
+              <span />
+            </div>
+          </>
         )}
         {error !== null && (
           <p className="nw-error" role="alert">

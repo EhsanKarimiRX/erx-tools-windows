@@ -882,3 +882,37 @@
   max-width: none;
   margin: 0;
 }
+
+/* Indeterminate progress stripes, shown while the import words are checked
+   (about one second). Colours come from the theme. */
+.nw-progress {
+  height: 14px;
+  border-radius: 7px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.nw-progress > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--accent) 0 12px,
+    color-mix(in srgb, var(--accent) 55%, #000) 12px 24px
+  );
+  animation: nw-progress-move 1s linear infinite;
+}
+
+@keyframes nw-progress-move {
+  to {
+    background-position: 34px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nw-progress > span {
+    animation: none;
+  }
+}
