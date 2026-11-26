@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Copy, RefreshCw } from "lucide-react";
 import {
+  cancelImport,
   changePassphrase,
   clearWords,
   confirmWordsSaved,
   copyWords,
-  exportAll,
   generateWords,
   getSettings,
   importNotes,
@@ -172,17 +172,8 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   async function handleExportAll() {
     setBackupMessage(null);
     setBackupError(null);
-    setBackupWorking(true);
-    try {
-      const path = await exportAll();
-      setBackupMessage(
-        path === null ? "Export cancelled." : `Exported to ${path}.`,
-      );
-    } catch (problem) {
-      setBackupError(toApiError(problem).message);
-    } finally {
-      setBackupWorking(false);
-    }
+    // TEMP(R5a): replaced in R5d/R6a
+    setBackupError("Export is being updated.");
   }
 
   async function handleRestore() {
@@ -190,13 +181,15 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
     setBackupError(null);
     setBackupWorking(true);
     try {
-      const count = await importNotes();
-      if (count === null) {
+      // TEMP(R5a): replaced in R5d/R6a
+      const result = await importNotes();
+      if (result.status === "cancelled") {
         setBackupMessage("Restore cancelled.");
-      } else if (count === 0) {
-        setBackupMessage("No notes were added.");
+      } else if (result.status === "imported") {
+        setBackupMessage(`Added ${result.count} note(s).`);
       } else {
-        setBackupMessage(`Added ${count} note(s).`);
+        await cancelImport();
+        setBackupError("This file needs its words. This is not supported yet.");
       }
     } catch (problem) {
       setBackupError(toApiError(problem).message);

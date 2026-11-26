@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { toApiError } from "./errors";
 import type {
   ChangePassphraseResult,
+  ExportPassphraseMode,
+  ImportResult,
   LockReport,
   NoteListItem,
   NotesStatus,
@@ -194,25 +196,119 @@ export async function changePassphrase(
 export async function exportNote(
   id: string,
   format: "txt" | "md" | "erxnote",
+  passphraseMode?: ExportPassphraseMode,
+  currentWords?: string,
 ): Promise<string | null> {
   try {
-    return await invoke<string | null>("notes_export_note", { id, format });
+    const args: {
+      id: string;
+      format: "txt" | "md" | "erxnote";
+      passphraseMode?: ExportPassphraseMode;
+      currentWords?: string;
+    } = { id, format };
+    if (passphraseMode !== undefined) {
+      args.passphraseMode = passphraseMode;
+    }
+    if (currentWords !== undefined) {
+      args.currentWords = currentWords;
+    }
+    return await invoke<string | null>("notes_export_note", args);
   } catch (error) {
     throw toApiError(error);
   }
 }
 
-export async function exportAll(): Promise<string | null> {
+export async function exportAll(
+  passphraseMode: ExportPassphraseMode,
+  currentWords?: string,
+): Promise<string | null> {
   try {
-    return await invoke<string | null>("notes_export_all");
+    const args: {
+      passphraseMode: ExportPassphraseMode;
+      currentWords?: string;
+    } = { passphraseMode };
+    if (currentWords !== undefined) {
+      args.currentWords = currentWords;
+    }
+    return await invoke<string | null>("notes_export_all", args);
   } catch (error) {
     throw toApiError(error);
   }
 }
 
-export async function importNotes(): Promise<number | null> {
+export async function exportGenerateWords(count: number): Promise<WordsView> {
   try {
-    return await invoke<number | null>("notes_import");
+    return await invoke<WordsView>("notes_export_generate_words", { count });
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function exportRefreshWord(slot: number): Promise<RefreshView> {
+  try {
+    return await invoke<RefreshView>("notes_export_refresh_word", { slot });
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function exportConfirmWordsSaved(): Promise<void> {
+  try {
+    return await invoke<void>("notes_export_confirm_words_saved");
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function exportRetypeWords(typed: string): Promise<boolean> {
+  try {
+    return await invoke<boolean>("notes_export_retype_words", { typed });
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function exportClearWords(): Promise<void> {
+  try {
+    return await invoke<void>("notes_export_clear_words");
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function exportCopyWords(): Promise<void> {
+  try {
+    return await invoke<void>("notes_export_copy_words");
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function importNotes(): Promise<ImportResult> {
+  try {
+    return await invoke<ImportResult>("notes_import");
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function importWithPassphrase(
+  token: string,
+  typed: string,
+): Promise<ImportResult> {
+  try {
+    return await invoke<ImportResult>("notes_import_with_passphrase", {
+      token,
+      typed,
+    });
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function cancelImport(): Promise<void> {
+  try {
+    return await invoke<void>("notes_import_cancel");
   } catch (error) {
     throw toApiError(error);
   }

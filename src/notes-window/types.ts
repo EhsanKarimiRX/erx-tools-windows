@@ -86,6 +86,15 @@ export interface ChangePassphraseResult {
   oldBackupGone: boolean;
 }
 
+/** Which words an export uses (serde rename_all = "lowercase"). */
+export type ExportPassphraseMode = "new" | "current";
+
+/** How a restore ended (tagged by "status"). */
+export type ImportResult =
+  | { status: "cancelled" }
+  | { status: "imported"; count: number; legacy: boolean }
+  | { status: "needs_passphrase"; token: string };
+
 /** An error of a Secure Notes command, as the frontend sees it. */
 export interface NotesApiError {
   code: string;
