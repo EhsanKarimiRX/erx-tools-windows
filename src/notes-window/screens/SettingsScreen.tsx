@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Copy, RefreshCw } from "lucide-react";
 import {
-  cancelImport,
   changePassphrase,
   clearWords,
   confirmWordsSaved,
@@ -15,6 +14,7 @@ import {
   setSettings,
 } from "../api";
 import ExportDialog from "../ExportDialog";
+import ImportPrompt from "../ImportPrompt";
 import { toApiError } from "../errors";
 import {
   CLIPBOARD_CLEAR_SECONDS,
@@ -85,6 +85,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [exportAllOpen, setExportAllOpen] = useState(false);
+  const [importToken, setImportToken] = useState<string | null>(null);
 
   const [changing, setChanging] = useState(false);
   const [phase, setPhase] = useState<ChangePhase>("choose");
@@ -105,6 +106,8 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
   const savedTimer = useRef<number | null>(null);
   const exportAllButtonRef = useRef<HTMLButtonElement>(null);
   const focusExportAllAfterClose = useRef(false);
+  const restoreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const focusRestoreAfterClose = useRef(false);
 
   // Load the current settings once.
   useEffect(() => {
@@ -149,6 +152,10 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
     if (focusExportAllAfterClose.current && !backupWorking) {
       focusExportAllAfterClose.current = false;
       exportAllButtonRef.current?.focus();
+    }
+    if (!backupWorking && focusRestoreAfterClose.current) {
+      focusRestoreAfterClose.current = false;
+      restoreButtonRef.current?.focus();
     }
   }, [backupWorking]);
 
@@ -197,26 +204,47 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
     setBackupWorking(false);
   }
 
+  function finishRestore(count: number, _legacy: boolean) {
+    // _legacy is not used yet (a later step shows a notice).
+    setBackupMessage(`Added ${count} note(s).`);
+    setBackupWorking(false);
+  }
+
   async function handleRestore() {
     setBackupMessage(null);
     setBackupError(null);
     setBackupWorking(true);
     try {
-      // TEMP(R5a): replaced in R5d/R6a
       const result = await importNotes();
       if (result.status === "cancelled") {
         setBackupMessage("Restore cancelled.");
+        setBackupWorking(false);
       } else if (result.status === "imported") {
-        setBackupMessage(`Added ${result.count} note(s).`);
-      } else {
-        await cancelImport();
-        setBackupError("This file needs its words. This is not supported yet.");
+        finishRestore(result.count, result.legacy);
+      } else if (result.status === "needs_passphrase") {
+        setImportToken(result.token);
       }
     } catch (problem) {
       setBackupError(toApiError(problem).message);
-    } finally {
       setBackupWorking(false);
     }
+  }
+
+  function handleImportPromptImported(count: number, legacy: boolean) {
+    setImportToken(null);
+    focusRestoreAfterClose.current = true;
+    finishRestore(count, legacy);
+  }
+
+  function handleImportPromptClose(message?: string) {
+    setImportToken(null);
+    focusRestoreAfterClose.current = true;
+    if (message !== undefined) {
+      setBackupError(message);
+    } else {
+      setBackupMessage("Restore cancelled.");
+    }
+    setBackupWorking(false);
   }
 
   function resetChange() {
@@ -457,6 +485,7 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
               <button
                 type="button"
                 className="nw-button-secondary"
+                ref={restoreButtonRef}
                 onClick={() => void handleRestore()}
                 disabled={loading || saving || backupWorking}
               >
@@ -741,6 +770,14 @@ export default function SettingsScreen({ onBack }: SettingsScreenProps) {
             );
           }}
           onCancel={closeExportAll}
+        />
+      )}
+      {importToken !== null && (
+        <ImportPrompt
+          key={importToken}
+          token={importToken}
+          onImported={handleImportPromptImported}
+          onClose={handleImportPromptClose}
         />
       )}
     </div>
