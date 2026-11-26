@@ -23,7 +23,7 @@ cd C:\dev\erxtools
 npm version X.Y.Z --no-git-tag-version
 ```
 
-Then set `version = "X.Y.Z"` in `src-tauri/Cargo.toml` (under `[package]`) and `"version": "X.Y.Z"` in `src-tauri/tauri.conf.json`. Then run `cargo check` inside `src-tauri` so `Cargo.lock` picks the new version up, and `cargo test version_is_consistent` — it fails if the versions differ, so it must pass. The five places are: `package.json` and `package-lock.json` (both changed by `npm version`), `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` (changed by `cargo check`).
+Then set `version = "X.Y.Z"` in `src-tauri/Cargo.toml` (under `[package]`) and `"version": "X.Y.Z"` in `src-tauri/tauri.conf.json`. Then run `cargo check` inside `src-tauri` so `Cargo.lock` picks the new version up, and `cargo test version_is_consistent_across_config_files` — it fails if the versions differ, so it must pass. The five places are: `package.json` and `package-lock.json` (both changed by `npm version`), `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` (changed by `cargo check`).
 
 ## 4. Write the release notes
 
