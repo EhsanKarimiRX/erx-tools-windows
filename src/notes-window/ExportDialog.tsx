@@ -144,7 +144,7 @@ export default function ExportDialog({
               className="nw-button-primary"
               onClick={() => setStage("current")}
             >
-              Use my notebook words
+              Use current Secure Notes password
             </button>
             <p className="nw-muted">
               You type your notebook words now. The file is only as strong as
