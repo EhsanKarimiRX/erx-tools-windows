@@ -1,6 +1,6 @@
 # ERX Secure Notes container format (version 1)
 
-Work in progress for ERX Tools 0.5.0. This document describes the encrypted container (header and encrypted body), the notes data (the payload) inside it, and how the file is saved to disk. The folder is chosen by the app.
+Work in progress for ERX Tools 0.5.1 (first written for 0.5.0). This document describes the encrypted container (header and encrypted body), the notes data (the payload) inside it, how the file is saved to disk, and the exported `.erxnote` files (section 12). The folder is chosen by the app.
 
 The source code in `src-tauri/src/tools/notes/` is the final truth (`format.rs`, `crypto.rs`, `model.rs`, `search.rs`, `error.rs`). All integers are little-endian unless a section says otherwise. The format has not been audited by a security professional.
 
@@ -19,7 +19,7 @@ The payload is the notes content as an opaque byte slice. The encrypted body is 
 |---|---|---|
 | 0 | 8 | magic `ERXNOTES` |
 | 8 | 2 | format version (1) |
-| 10 | 2 | flags, must be zero |
+| 10 | 2 | flags: bit 0 (`0x0001`) is `FLAG_USER_PASSPHRASE`, every other bit must be zero; notebook files always have 0 (see section 12) |
 | 12 | 16 | file UUID (random) |
 | 28 | 1 | KDF id (1 = Argon2id, version 0x13) |
 | 29 | 4 | Argon2 memory cost in KiB |
@@ -31,7 +31,7 @@ The payload is the notes content as an opaque byte slice. The encrypted body is 
 | 129 | 31 | reserved, must be zero |
 | 160 | 32 | commitment tag, see section 3 |
 
-Parsing is strict. The checks run in this order: length, magic, version, flags, KDF id, KDF parameters, reserved bytes. A file with a wrong length, a wrong KDF id or non-zero reserved bytes is damaged; a wrong magic means it is not a notes file; a different version or any flag bit is refused.
+Parsing is strict. The checks run in this order: length, magic, version, flags, KDF id, KDF parameters, reserved bytes. A file with a wrong length, a wrong KDF id or non-zero reserved bytes is damaged; a wrong magic means it is not a notes file; a different version or any unknown flag bit is refused.
 
 ## 3. Keys
 
@@ -136,7 +136,7 @@ Container and key errors (raised while opening or saving a file):
 | Condition | Error | Message |
 |---|---|---|
 | Wrong magic | `NotANotesFile` | This file is not an ERX Secure Notes file. |
-| Version other than 1, or any flag bit set | `UnsupportedVersion` | This notes file needs a different version of ERX Tools. |
+| Version other than 1, or an unknown flag bit set | `UnsupportedVersion` | This notes file needs a different version of ERX Tools. |
 | A newer payload version than this code knows | `DataTooNew` | These notes were saved by a newer version of ERX Tools. |
 | Header length not 192, KDF id not 1, reserved bytes not zero, file too short, file length not a multiple of 262,144, or the wrapped key or body fails authentication | `DamagedFile` | The notes file is damaged. |
 | Commitment tag mismatch: wrong words or a changed UUID, salt, wrap nonce, wrapped key or commitment tag | `WrongPassphraseOrHeader` | The words are wrong, or the notes file is damaged. |
@@ -203,13 +203,55 @@ Every file length is a multiple of 262,144 bytes.
 - Loss of the words. There is no recovery and no reset.
 - Mistakes in the code. The container is new and has had no professional security audit.
 
-Strength depends on the words. The passphrase code accepts 5 to 12 words. With the 7776-word list a word is about 12.9 bits, so 5 words are about 64.6 bits and 8 words are about 103.4 bits.
+Strength depends on the words. The passphrase code accepts 5 to 12 words. With the 7776-word list a word is about 12.9 bits, so 5 words are about 64.6 bits and 8 words are about 103.4 bits. An exported file is only as strong as the words it was made with (section 12).
 
-## 12. Versioning
+## 12. Exported files (`.erxnote`)
 
-The version field is 1. A different version or any flag bit is refused with `UnsupportedVersion`. The 31 reserved header bytes must be zero; anything else is `DamagedFile`.
+An exported note or a backup of all notes is a normal notes container (sections 1 to 4) with its own keys. It is not the notebook file and shares no keys with it.
 
-## 13. Tests
+**Words and keys.** Every export gets its own random file UUID, Argon2 salt, data key and body key, so two exports of the same notes never share keys. The words come from one of two sources:
+
+- new export words that the app generates (5 to 12 words; the user never types a custom set), or
+- the current notebook words, which the user must type again. The app checks them against the notebook file before it uses them. The app does not keep the notebook words in memory after the notebook is unlocked, which is why they must be typed again.
+
+The Argon2 settings are stored in the header, as for notebook files, so an export can be opened on another PC.
+
+**Flag.** Exports made by 0.5.1 or later set bit 0 of the flags field (`FLAG_USER_PASSPHRASE`, `0x0001`). The flag is only a hint. The commitment tag covers header bytes 0 to 160, which include the flags, so changing the flag makes the file fail to open; it can never make a wrong passphrase succeed. Notebook files always write flags 0.
+
+**Payload.** Two shapes, both UTF-8 JSON:
+
+- A backup of all notes: the same JSON as section 7, including the settings.
+- A single note: a JSON object `{"note": ...}` whose value has the fields of the note view: `id`, `title`, `body`, `created`, `modified`.
+
+Reading tries the section 7 shape first. A payload from a newer version is refused with `DataTooNew`. Otherwise the single-note shape is read, and the note gets the format `text`.
+
+**Opening (import).**
+
+1. The header is parsed strictly (section 2).
+2. If the flag bit is NOT set, the app tries the old built-in passphrase (see below). If the flag is set, it does not.
+3. In 0.5.1 the notebook words are not tried automatically. A file that does not open with the built-in passphrase always asks the user for the words.
+4. Typed words are normalized as in section 3 and are never tried against the built-in passphrase. Wrong words give no plaintext. The file stays waiting in memory so the user can try again. There is no attempt limit; every guess costs one Argon2 run (about 1 second), and the file is offline.
+5. Import only adds notes. A note whose id already exists gets a new id; the timestamps are kept. If any note is invalid or the notebook would exceed its limits, nothing is added.
+6. Size limits: a file larger than 67,371,008 bytes is `FileTooLarge`; a plain-text file larger than 4 MiB is `NoteTooLarge`.
+
+**Files made by 0.5.0.** 0.5.0 encrypted every export with one fixed passphrase built into the program (`erx-notes-export-default`) and wrote flags 0. Anyone who has such a file can open it, so these files are effectively unprotected. 0.5.1 can still open them and tells the user to export again and delete the old file. The constant is kept in the code only for reading (`LEGACY_EXPORT_PASSPHRASE`); it is never used to write.
+
+**0.5.0 cannot open 0.5.1 exports.** 0.5.0 refuses any flag bit, so a new export shows "needs a different version of ERX Tools" there.
+
+**Limits.**
+
+- Losing the export words loses the file. There is no recovery.
+- Changing the notebook passphrase does not change older exports.
+- An export made with the current notebook words is only as strong as those words (5 words are about 64.6 bits).
+- Export words of 5 to 7 words are allowed, with a warning in the app.
+- Plain-text exports (`txt`, `md`) are not encrypted at all.
+- A crash during an export can leave a temporary `*.erxtmp` file next to the target.
+
+## 13. Versioning
+
+The version field is 1. A different version or any flag bit other than `FLAG_USER_PASSPHRASE` is refused with `UnsupportedVersion`. Version 1 stays: the flag bit was added in 0.5.1 without a new version number (see section 12). The 31 reserved header bytes must be zero; anything else is `DamagedFile`.
+
+## 14. Tests
 The tests in `format_test.rs` and `crypto_test.rs` check:
 
 - The header offsets and sizes add up to 192 bytes, and a header survives a write and parse round trip.
